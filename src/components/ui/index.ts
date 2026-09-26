@@ -24,3 +24,4 @@ export * from './star-rating';
 export * from './status-bar-scrim';
 export * from './text-field';
 export * from './use-theme-config';
+export * from './ola-map-view';

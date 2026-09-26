@@ -1,3 +1,3 @@
-import { OrdersScreen } from '@/features/orders/orders-screen';
+import { DriverTripsScreen } from '@/features/driver/screens/driver-trips-screen';
 
-export default OrdersScreen;
+export default DriverTripsScreen;

@@ -1,3 +1,3 @@
-import { SupportScreen } from '@/features/support/support-screen';
+import { DriverSupportScreen } from '@/features/driver/screens/driver-support-screen';
 
-export default SupportScreen;
+export default DriverSupportScreen;

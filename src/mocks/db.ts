@@ -4,6 +4,10 @@
  */
 import type {
   AuthSession,
+  DriverActiveJobModel,
+  DriverJobRequestModel,
+  DriverPastTripModel,
+  DriverProfileModel,
   Order,
   PaymentMethod,
   SavedAddress,
@@ -88,4 +92,8 @@ export const db = {
   wallets: new Table<WalletRecord>('wallets'),
   /** token → share */
   shares: new Table<ShareRecord>('shares'),
+  driverProfile: new Table<DriverProfileModel>('driver_profile'),
+  driverRequests: new Table<DriverJobRequestModel[]>('driver_requests'),
+  driverActiveJob: new Table<DriverActiveJobModel | null>('driver_active_job'),
+  driverPastTrips: new Table<DriverPastTripModel[]>('driver_past_trips'),
 };

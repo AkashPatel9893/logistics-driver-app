@@ -27,6 +27,7 @@ Before proposing, generating, or applying ANY code changes, every AI assistant a
 4. **Step 4: Post-Change Verification**
    - If dependencies or native configurations change, run `npx expo-doctor@latest`.
    - Ensure code passes styling and lint rules (`yarn lint`, `yarn format:check`).
+   - **Automatic Argent Verification:** For any mobile UI, screen, component, navigation, or app logic changes, automatically verify changes using Argent (`argent run screenshot`, `argent run describe`, device interactions, and log inspections) whenever a simulator, emulator, or test target is active.
 
 ---
 

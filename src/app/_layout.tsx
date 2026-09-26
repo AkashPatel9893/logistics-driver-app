@@ -7,8 +7,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useThemeConfig } from '@/components/ui';
 import { hydrateAuth } from '@/features/auth/use-auth-store';
-import { useStackAnimation } from '@/hooks/use-stack-animation';
 import { loadSelectedTheme } from '@/hooks/use-selected-theme';
+import { useStackAnimation } from '@/hooks/use-stack-animation';
 import { APIProvider } from '@/lib/api';
 
 export { ErrorBoundary } from 'expo-router';
@@ -38,13 +38,21 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false, animation }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="location-select" />
-        <Stack.Screen name="select-location-map" />
-        <Stack.Screen name="trip-confirmation" />
-        <Stack.Screen name="order-tracking" />
         <Stack.Screen name="wallet" />
         <Stack.Screen name="support" />
-        <Stack.Screen name="track/[token]" />
+        <Stack.Screen name="earnings" />
+        <Stack.Screen name="incoming-job" />
+        <Stack.Screen name="active-delivery" />
+        <Stack.Screen name="pickup-verification" />
+        <Stack.Screen name="drop-verification" />
+        <Stack.Screen name="payment-qr" />
+        <Stack.Screen name="trip-complete" />
+        <Stack.Screen name="customer-chat" />
+        <Stack.Screen name="daily-check" />
+        <Stack.Screen name="driver-profile" />
+        <Stack.Screen name="setup-vehicle" />
+        <Stack.Screen name="setup-kyc" />
+        <Stack.Screen name="setup-bank" />
       </Stack>
     </Providers>
   );

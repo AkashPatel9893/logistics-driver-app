@@ -253,3 +253,122 @@ export interface SupportInfo {
   email: string;
   faqs: { id: string; question: string; answer: string }[];
 }
+
+// ─── Driver Domain Models ───────────────────────────────────────────────────
+
+export interface DriverVehicleModel {
+  type: string;
+  model: string;
+  plateNumber: string;
+  capacity: string;
+  rcUploaded: boolean;
+  photoUploaded: boolean;
+}
+
+export interface DriverKycModel {
+  panNumber: string;
+  dlNumber: string;
+  aadhaarUploaded: boolean;
+  dlUploaded: boolean;
+  selfieUploaded: boolean;
+  verified: boolean;
+}
+
+export interface DriverBankModel {
+  holderName: string;
+  accountNumber: string;
+  rawAccountNumber: string;
+  ifscCode: string;
+  chequeUploaded: boolean;
+  verified: boolean;
+}
+
+export interface DailyCheckModel {
+  completed: boolean;
+  photoUri: string | null;
+  rewardEarned: number;
+}
+
+export interface DriverProfileModel {
+  id: string;
+  name: string;
+  phone: string;
+  rating: number;
+  partnerSince: string;
+  dob: string;
+  city: string;
+  isOnline: boolean;
+  vehicle: DriverVehicleModel;
+  kyc: DriverKycModel;
+  bank: DriverBankModel;
+  dailyCheck: DailyCheckModel;
+  setupStatus: {
+    vehicle: boolean;
+    kyc: boolean;
+    bank: boolean;
+  };
+  welcomeBonusDismissed: boolean;
+  walletBalance: number;
+  totalEarnings: number;
+  tripsCount: number;
+  onlineHours: string;
+  incentives: number;
+}
+
+export interface DriverJobRequestModel {
+  id: string;
+  vehicleType: string;
+  pickupName: string;
+  pickupAddress: string;
+  customerName: string;
+  customerPhone: string;
+  pickupLocation: GeoPoint;
+  dropName: string;
+  dropAddress: string;
+  recipientName: string;
+  recipientPhone: string;
+  dropLocation: GeoPoint;
+  distanceKm: number;
+  durationMin: number;
+  fare: number;
+  driverEarning: number;
+  paymentMode: 'Cash' | 'Prepaid';
+  pickupOtp: string;
+  dropOtp: string;
+}
+
+export interface DriverChatMessageModel {
+  id: string;
+  sender: 'driver' | 'customer';
+  text: string;
+  time: string;
+  status?: 'Delivered' | 'Read';
+}
+
+export interface DriverActiveJobModel extends DriverJobRequestModel {
+  status:
+    | 'idle'
+    | 'incoming'
+    | 'accepted'
+    | 'arrived_pickup'
+    | 'pickup_verified'
+    | 'in_transit'
+    | 'arrived_drop'
+    | 'drop_verified'
+    | 'completed';
+  pickupPhoto: string | null;
+  dropPhoto: string | null;
+  paymentCollected: boolean;
+  chatMessages: DriverChatMessageModel[];
+}
+
+export interface DriverPastTripModel {
+  id: string;
+  pickup: string;
+  drop: string;
+  dateStr: string;
+  status: 'Completed' | 'Cancelled';
+  fare: number;
+  distanceKm: number;
+  vehicleIconKey?: string;
+}

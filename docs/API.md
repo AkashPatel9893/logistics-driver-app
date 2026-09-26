@@ -21,6 +21,7 @@ every model live in `src/lib/api/models.ts`.
 - [8. Realtime tracking (WebSocket)](#8-realtime-tracking-websocket)
 - [9. Wallet & payment methods](#9-wallet--payment-methods)
 - [10. Content](#10-content)
+- [11. Driver App API & lifecycle](#11-driver-app-api--lifecycle)
 
 ---
 
@@ -860,5 +861,225 @@ Returns the updated wallet. Errors: `404 METHOD_NOT_FOUND`.
   "phone": "+911800000000",
   "email": "support@ryno.in",
   "faqs": [{ "id": "faq-otp", "question": "Why do I need to share the pickup OTP?", "answer": "…" }]
+}
+```
+
+---
+
+## 11. Driver App API & lifecycle
+
+The Driver App runs against the in-app mock server (`src/mocks/handlers/driver.ts`) backed by persistent tables in local storage (`kvStorage` via `src/mocks/db.ts`). When connecting to a production environment, the client endpoints in `src/lib/api/driver.ts` seamlessly target the corresponding REST backend.
+
+### 11.1 Driver job lifecycle state machine
+
+```mermaid
+stateDiagram-v2
+  [*] --> Offline
+  Offline --> Online : PUT /driver/status { isOnline: true }
+  Online --> IncomingRequest : Server push / Polling
+  IncomingRequest --> Online : POST /driver/requests/:id/decline
+  IncomingRequest --> Accepted : POST /driver/requests/:id/accept
+  Accepted --> ArrivedPickup : PUT /driver/active-job/status { status: "arrived_pickup" }
+  ArrivedPickup --> ParcelPicked : POST /driver/active-job/pickup-photo + PUT status: "parcel_picked"
+  ParcelPicked --> OutForDelivery : PUT /driver/active-job/status { status: "out_for_delivery" }
+  OutForDelivery --> ArrivedDrop : PUT /driver/active-job/status { status: "arrived_drop" }
+  ArrivedDrop --> PaymentCollection : COD Order (pending)
+  ArrivedDrop --> Delivered : Prepaid Order
+  PaymentCollection --> Delivered : POST /driver/active-job/collect-payment
+  Delivered --> Completed : POST /driver/active-job/complete
+  Completed --> Online : Earnings credited to driver wallet
+  Online --> Offline : PUT /driver/status { isOnline: false }
+```
+
+### 11.2 Endpoints index
+
+| Method | Endpoint                             | Description                                                              |
+| ------ | ------------------------------------ | ------------------------------------------------------------------------ |
+| `GET`  | `/driver/profile`                    | Get driver profile, ratings, vehicle info, earnings summary              |
+| `PUT`  | `/driver/status`                     | Toggle driver duty status (`isOnline: boolean`)                          |
+| `GET`  | `/driver/requests`                   | Fetch queued / incoming delivery dispatch requests                       |
+| `POST` | `/driver/requests/:id/accept`        | Accept a dispatched delivery request; creates active job                 |
+| `POST` | `/driver/requests/:id/decline`       | Decline a dispatched request                                             |
+| `GET`  | `/driver/active-job`                 | Fetch the currently assigned active delivery job                         |
+| `PUT`  | `/driver/active-job/status`          | Update delivery progression milestone                                    |
+| `POST` | `/driver/active-job/pickup-photo`    | Attach verified parcel photo at pickup                                   |
+| `POST` | `/driver/active-job/collect-payment` | Mark cash/UPI payment collected for COD shipments                        |
+| `POST` | `/driver/active-job/complete`        | Complete job, credit earnings to driver wallet, archive to past trips    |
+| `POST` | `/driver/active-job/messages`        | Send driver-to-customer chat message                                     |
+| `POST` | `/driver/vehicle`                    | Save driver vehicle registration, RC, and model details                  |
+| `POST` | `/driver/kyc`                        | Submit driving licence, Aadhaar, and PAN documentation                   |
+| `POST` | `/driver/bank`                       | Submit bank account & UPI payout details                                 |
+| `POST` | `/driver/daily-check`                | Submit daily vehicle inspection checklist (tires, brakes, battery, fuel) |
+| `GET`  | `/driver/past-trips`                 | Fetch historical completed deliveries and earnings                       |
+| `POST` | `/driver/wallet/withdraw`            | Request payout transfer to linked bank/UPI account                       |
+
+### 11.3 Request & response schemas
+
+#### GET /driver/profile
+
+Returns the current authenticated driver profile.
+
+```json
+{
+  "id": "driver_001",
+  "name": "Rajesh Kumar",
+  "phone": "+91 98765 43210",
+  "rating": 4.9,
+  "totalTrips": 482,
+  "isOnline": true,
+  "todayEarnings": 1420,
+  "walletBalance": 3850,
+  "vehicle": {
+    "type": "2-Wheeler (EV Bike)",
+    "vehicleNumber": "KA 01 EK 4920",
+    "model": "Ather 450X"
+  }
+}
+```
+
+#### PUT /driver/status
+
+Update online/offline duty status.
+
+Request:
+
+```json
+{
+  "isOnline": true
+}
+```
+
+Response:
+
+```json
+{
+  "isOnline": true
+}
+```
+
+#### GET /driver/requests
+
+Fetch pending delivery dispatch offers.
+
+Response:
+
+```json
+[
+  {
+    "id": "req_101",
+    "pickup": {
+      "name": "Sony World Signal, Koramangala 4th Block",
+      "address": "100 Feet Rd, Koramangala, Bengaluru, Karnataka 560034",
+      "contactName": "Aarav Sharma",
+      "contactPhone": "+91 98111 22334"
+    },
+    "drop": {
+      "name": "Indiranagar 100ft Road",
+      "address": "12th Main Rd, HAL 2nd Stage, Indiranagar, Bengaluru, Karnataka 560038",
+      "contactName": "Pooja Reddy",
+      "contactPhone": "+91 98777 66554"
+    },
+    "distanceKm": 4.2,
+    "estimatedEarnings": 145,
+    "packageWeight": "3.5 kg",
+    "packageType": "Electronics & Documents",
+    "expiresInSeconds": 45
+  }
+]
+```
+
+#### POST /driver/requests/:id/accept
+
+Converts a dispatched request into an assigned active job.
+
+Response:
+
+```json
+{
+  "id": "job_101",
+  "customerName": "Aarav Sharma",
+  "customerPhone": "+91 98111 22334",
+  "pickup": {
+    "name": "Sony World Signal, Koramangala 4th Block",
+    "address": "100 Feet Rd, Koramangala, Bengaluru, Karnataka 560034"
+  },
+  "drop": {
+    "name": "Indiranagar 100ft Road",
+    "address": "12th Main Rd, HAL 2nd Stage, Indiranagar, Bengaluru, Karnataka 560038"
+  },
+  "earnings": 145,
+  "status": "accepted",
+  "paymentMethod": "Cash on Delivery",
+  "paymentCollected": false,
+  "otp": "4829"
+}
+```
+
+#### PUT /driver/active-job/status
+
+Advance the active delivery milestone. Valid transitions:
+`accepted` $\rightarrow$ `arrived_pickup` $\rightarrow$ `parcel_picked` $\rightarrow$ `out_for_delivery` $\rightarrow$ `arrived_drop` $\rightarrow$ `delivered`.
+
+Request:
+
+```json
+{
+  "status": "arrived_pickup"
+}
+```
+
+Response:
+
+```json
+{
+  "status": "arrived_pickup"
+}
+```
+
+#### POST /driver/active-job/collect-payment
+
+Mark COD payment collected from the recipient.
+
+Response:
+
+```json
+{
+  "paymentCollected": true
+}
+```
+
+#### POST /driver/active-job/complete
+
+Complete the trip. Adds `earnings` to `driverProfile.todayEarnings` and `walletBalance`, creates a record in `driverPastTrips`, and clears `driverActiveJob`.
+
+Response:
+
+```json
+{
+  "completed": true,
+  "earned": 145,
+  "totalEarnings": 1565
+}
+```
+
+#### POST /driver/wallet/withdraw
+
+Request balance payout.
+
+Request:
+
+```json
+{
+  "amount": 1000
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "amount": 1000,
+  "newBalance": 2850
 }
 ```

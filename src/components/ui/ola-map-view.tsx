@@ -27,6 +27,7 @@ import {
   UserLocation,
 } from '@maplibre/maplibre-react-native';
 import { useEffect, useId, useMemo, type ComponentPropsWithRef, type ReactElement } from 'react';
+import { StyleSheet, View } from 'react-native';
 
 const OLA_API_KEY = process.env.EXPO_PUBLIC_OLA_MAPS_API_KEY ?? '';
 const OLA_STYLE_URL =
@@ -47,17 +48,54 @@ function ensureOlaRequestTransform() {
 
 export type OlaMapViewProps = Omit<ComponentPropsWithRef<typeof MapLibreMap>, 'mapStyle'>;
 
-export function OlaMapView({ style, ...props }: OlaMapViewProps) {
+export function OlaMapView({ style, children, ...props }: OlaMapViewProps) {
   useEffect(() => {
     ensureOlaRequestTransform();
   }, []);
 
+  if (!OLA_API_KEY) {
+    return (
+      <View
+        style={[
+          {
+            overflow: 'hidden',
+            backgroundColor: '#e5e7eb',
+            justifyContent: 'center',
+            alignItems: 'center',
+          },
+          style,
+        ]}
+      >
+        <View style={StyleSheet.absoluteFill} className="bg-neutral-200 dark:bg-neutral-800" />
+        {children}
+      </View>
+    );
+  }
+
   return (
-    <MapLibreMap mapStyle={OLA_STYLE_URL} style={[{ overflow: 'hidden' }, style]} {...props} />
+    <MapLibreMap mapStyle={OLA_STYLE_URL} style={[{ overflow: 'hidden' }, style]} {...props}>
+      {children}
+    </MapLibreMap>
   );
 }
 
-export { Camera as OlaMapCamera, UserLocation as OlaMapUserLocation };
+export interface OlaMapCameraProps {
+  centerCoordinate: OlaMapCoordinate;
+  zoomLevel?: number;
+}
+
+export function OlaMapCamera({ centerCoordinate, zoomLevel = 14 }: OlaMapCameraProps) {
+  return (
+    <Camera
+      initialViewState={{
+        center: [centerCoordinate.longitude, centerCoordinate.latitude],
+        zoom: zoomLevel,
+      }}
+    />
+  );
+}
+
+export { UserLocation as OlaMapUserLocation };
 export type { CameraRef as OlaMapCameraRef, MapRef as OlaMapViewRef };
 
 // ─── Marker ────────────────────────────────────────────────────────────────

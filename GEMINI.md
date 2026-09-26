@@ -23,6 +23,12 @@
    - **Navigation:** Expo Router (`src/app/`). Consult `.agents/skills/expo-router/SKILL.md`.
    - **Architecture:** Follow `.agents/skills/odin-component-architecture/SKILL.md`. Check for existing components before creating new ones.
 
-3. **Post-Change Verification:**
+3. **Post-Change Verification & Automatic Argent Verification:**
    - Run `npx expo-doctor@latest` if native dependencies or configurations were modified.
    - Verify that changes pass linting (`yarn lint`) and formatting (`yarn format:check`).
+   - **Mandatory Automatic Verification with Argent (agy / Antigravity):**
+     - Whenever ANY code change is made (especially mobile UI, styling, layout, screens, components, navigation, forms, or app logic), Antigravity **MUST automatically use Argent** to verify changes without waiting for explicit user instructions.
+     - **Inspect Devices:** Check available/booted devices (`argent run list-devices`). If a simulator/emulator is booted or available, launch/reload the app (`argent run launch-app` or `argent run debugger-reload-metro`).
+     - **Visual & Structural Validation:** Capture and inspect the UI using `argent run screenshot` and `argent run describe` (or `mcp__argent__*` tools) to ensure there are no layout shifts, clipping, text overflow, or UI breaks.
+     - **Interaction & Flow Testing:** If modifying buttons, navigation, modals, or inputs, interact with the UI (`argent run gesture-tap`, `argent run keyboard`, `argent run run-sequence`) to verify behavior end-to-end.
+     - **Logs & Diagnostics:** Check JS runtime logs (`argent run debugger-log-registry`) to ensure no unhandled exceptions, console warnings, or crashes occurred.

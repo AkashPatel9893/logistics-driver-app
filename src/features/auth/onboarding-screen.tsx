@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   AppKeyboardAvoidingView,
+  AppPressable,
   AppScrollView,
   AppText,
   AppView,
@@ -14,18 +16,20 @@ import {
 
 import { useOnboardingForm } from './hooks/use-onboarding-form';
 
-function CountryCode() {
-  return (
-    <AppView row className="mr-2.5 border-r border-border pr-2.5">
-      <Icon name="phone" size={16} tone="icon-subtle" />
-      <AppText className="ml-1.5 text-[14px] font-bold text-foreground-secondary">+91</AppText>
-    </AppView>
-  );
-}
+const POPULAR_CITIES = [
+  'Delhi NCR',
+  'Mumbai',
+  'Bengaluru',
+  'Hyderabad',
+  'Pune',
+  'Chennai',
+  'Kolkata',
+];
 
 export function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const form = useOnboardingForm();
+  const [showCityPicker, setShowCityPicker] = useState(false);
 
   return (
     <AppView className="flex-1 bg-background">
@@ -34,62 +38,123 @@ export function OnboardingScreen() {
         <AppScrollView
           style={{ paddingTop: insets.top + 8 }}
           contentContainerClassName="px-6 pb-12"
+          showsVerticalScrollIndicator={false}
         >
           <AppView className="mb-4 min-h-[48px] justify-center">
             <LiquidGlassBackButton onPress={form.handleSignOut} />
           </AppView>
 
-          <AppView className="mb-6 mt-2">
+          <AppView className="mb-8 mt-2">
             <AppText className="text-[28px] font-extrabold leading-8 tracking-tight text-foreground">
-              Complete your profile
+              Driver details
             </AppText>
-            <AppText className="mt-1.5 text-[14px] leading-5 text-muted">
-              Set up your account details before heading to the dashboard.
+            <AppText className="mt-1.5 text-[15px] leading-5 text-muted">
+              Enter your personal details to get started
             </AppText>
           </AppView>
 
-          <AppView className="mt-2 gap-4">
+          <AppView className="gap-5">
+            {/* Full Name */}
             <TextField
               variant="outlined"
               label="Full Name"
               required
               value={form.name}
               onChangeText={form.handleNameChange}
-              placeholder="e.g. John Doe"
+              placeholder="Enter your full name"
               autoCapitalize="words"
               autoComplete="name"
               autoCorrect={false}
               error={form.validationErrors.name}
-              leading={<Icon name="person" size={18} tone="icon-subtle" />}
-              inputClassName="ml-3"
+              leading={<Icon name="person" size={20} tone="icon-subtle" />}
+              inputClassName="ml-2 text-[15px]"
             />
+
+            {/* Date of Birth */}
             <TextField
               variant="outlined"
-              label="Phone Number"
+              label="Date of birth"
               required
-              value={form.phone}
-              onChangeText={form.handlePhoneChange}
-              placeholder="98765 43210"
-              keyboardType="phone-pad"
-              autoComplete="tel"
-              maxLength={15}
-              error={form.validationErrors.phone}
-              hint="Couriers will call this number for pickup & delivery coordination."
-              leading={<CountryCode />}
+              value={form.dob}
+              onChangeText={form.handleDobChange}
+              placeholder="DD / MM / YYYY"
+              keyboardType="number-pad"
+              maxLength={14}
+              error={form.validationErrors.dob}
+              leading={<Icon name="calendar" size={20} tone="icon-subtle" />}
+              inputClassName="ml-2 text-[15px]"
             />
+
+            {/* Location / City */}
+            <AppView>
+              <AppText className="mb-2 text-[13px] font-semibold text-foreground-secondary">
+                Location
+              </AppText>
+              <AppPressable
+                onPress={() => setShowCityPicker((prev) => !prev)}
+                className="flex-row items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
+              >
+                <AppView row className="items-center gap-3">
+                  <Icon name="location" size={20} tone="brand" />
+                  <AppText className="text-[15px] font-semibold text-foreground">
+                    {form.city || 'Select city'}
+                  </AppText>
+                </AppView>
+                <Icon
+                  name={showCityPicker ? 'chevron.up' : 'chevron.down'}
+                  size={18}
+                  tone="icon-subtle"
+                />
+              </AppPressable>
+
+              {showCityPicker ? (
+                <AppView className="mt-2 rounded-2xl border border-border bg-card p-2 shadow-md">
+                  {POPULAR_CITIES.map((cityItem) => (
+                    <AppPressable
+                      key={cityItem}
+                      onPress={() => {
+                        form.handleCitySelect(cityItem);
+                        setShowCityPicker(false);
+                      }}
+                      className={`flex-row items-center justify-between rounded-xl px-3 py-2.5 ${
+                        form.city === cityItem
+                          ? 'bg-brand/10'
+                          : 'active:bg-neutral-100 dark:active:bg-neutral-800'
+                      }`}
+                    >
+                      <AppText
+                        className={`text-[14px] ${
+                          form.city === cityItem
+                            ? 'font-bold text-brand'
+                            : 'font-medium text-foreground'
+                        }`}
+                      >
+                        {cityItem}
+                      </AppText>
+                      {form.city === cityItem ? <Icon name="check" size={16} tone="brand" /> : null}
+                    </AppPressable>
+                  ))}
+                </AppView>
+              ) : null}
+            </AppView>
           </AppView>
 
-          <AppView className="mt-8">
+          <AppView className="mt-10">
             <Button
-              label={form.isLoading ? 'Creating Profile...' : 'Complete Profile & Continue'}
+              label={form.isLoading ? 'Saving...' : 'Continue'}
               onPress={form.handleSubmit}
               disabled={!form.isFormValid}
               loading={form.isLoading}
-              textClassName="font-bold"
+              size="lg"
+              textClassName="font-bold text-base"
             />
-            <AppText className="mt-3 px-4 text-center text-[11px] text-subtle">
-              By proceeding, you agree to our Terms of Service & Privacy Policy.
-            </AppText>
+
+            <AppView row className="mt-5 items-center justify-center gap-1.5">
+              <Icon name="shield" size={14} tone="icon-subtle" />
+              <AppText className="text-center text-[12px] text-muted">
+                Your details are encrypted and secure
+              </AppText>
+            </AppView>
           </AppView>
         </AppScrollView>
       </AppKeyboardAvoidingView>

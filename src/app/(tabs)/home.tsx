@@ -1,3 +1,3 @@
-import { HomeScreen } from '@/features/home/home-screen';
+import { DriverHomeScreen } from '@/features/driver/screens/driver-home-screen';
 
-export default HomeScreen;
+export default DriverHomeScreen;

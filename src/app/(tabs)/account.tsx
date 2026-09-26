@@ -1,3 +1,3 @@
-import { AccountScreen } from '@/features/account/account-screen';
+import { DriverAccountScreen } from '@/features/driver/screens/driver-account-screen';
 
-export default AccountScreen;
+export default DriverAccountScreen;

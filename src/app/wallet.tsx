@@ -1,3 +1,3 @@
-import { WalletScreen } from '@/features/wallet/wallet-screen';
+import { DriverWalletScreen } from '@/features/driver/screens/driver-wallet-screen';
 
-export default WalletScreen;
+export default DriverWalletScreen;

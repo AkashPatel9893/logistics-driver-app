@@ -2,19 +2,19 @@ import type { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: 'Logistics-app',
+  name: 'Logistics-driver-app',
   slug: 'logistics-app',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
-  scheme: 'logisticsapp',
+  scheme: 'logisticsdriverapp',
   userInterfaceStyle: 'automatic',
   ios: {
-    bundleIdentifier: 'com.logisticsapp',
+    bundleIdentifier: 'com.logisticsdriverapp',
     icon: './assets/expo.icon',
   },
   android: {
-    package: 'com.logisticsapp',
+    package: 'com.logisticsdriverapp',
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',
       foregroundImage: './assets/images/android-icon-foreground.png',

@@ -27,9 +27,9 @@ const TABS: readonly TabConfig[] = [
   },
   {
     name: 'orders',
-    label: 'Orders',
+    label: 'Trips',
     icon: 'box.truck',
-    activeIcon: 'box.truck',
+    activeIcon: 'box.truck.fill',
     inactiveIconTone: 'foreground-emphasis',
     inactiveLabelClassName: 'font-medium text-foreground-emphasis',
   },
@@ -73,7 +73,7 @@ function TabButton({ tab, isActive, onPress }: TabButtonProps) {
       pressScale={0.94}
       className={cn(
         'h-12 flex-1 items-center justify-center rounded-full',
-        isActive && 'bg-surface-muted',
+        isActive && 'bg-brand/10 dark:bg-brand/20',
       )}
     >
       <Icon

@@ -60,6 +60,22 @@ const ANDROID_ICON_REGISTRY = {
   globe: { set: 'ionicons', name: 'globe-outline' },
   'square.and.arrow.up': { set: 'ionicons', name: 'share-outline' },
   'lock.fill': { set: 'ionicons', name: 'lock-closed' },
+  calendar: { set: 'ionicons', name: 'calendar-outline' },
+  camera: { set: 'ionicons', name: 'camera-outline' },
+  'camera.fill': { set: 'ionicons', name: 'camera' },
+  qrcode: { set: 'ionicons', name: 'qr-code-outline' },
+  'bell.fill': { set: 'ionicons', name: 'notifications' },
+  bell: { set: 'ionicons', name: 'notifications-outline' },
+  'message.fill': { set: 'ionicons', name: 'chatbubble' },
+  message: { set: 'ionicons', name: 'chatbubble-outline' },
+  shield: { set: 'ionicons', name: 'shield-outline' },
+  xmark: { set: 'ionicons', name: 'close' },
+  check: { set: 'ionicons', name: 'checkmark' },
+  crosshair: { set: 'ionicons', name: 'locate-outline' },
+  power: { set: 'ionicons', name: 'power-outline' },
+  document: { set: 'ionicons', name: 'document-text-outline' },
+  'arrow.left': { set: 'ionicons', name: 'arrow-back' },
+  plus: { set: 'ionicons', name: 'add' },
 } as const satisfies Record<string, AndroidGlyph>;
 
 export type IconName = keyof typeof ANDROID_ICON_REGISTRY;
@@ -80,7 +96,7 @@ export function Icon({ name, size = 20, tone = 'foreground', color, weight }: Ic
   const tintColor = color ?? themeColor;
 
   if (Platform.OS === 'ios') {
-    return <SymbolView name={name} size={size} tintColor={tintColor} weight={weight} />;
+    return <SymbolView name={name as any} size={size} tintColor={tintColor} weight={weight} />;
   }
 
   const glyph: AndroidGlyph = ANDROID_ICON_REGISTRY[name];

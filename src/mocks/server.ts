@@ -7,6 +7,7 @@ import { errorBody, HttpError, type MockRequest, type MockResponse } from './htt
 import { authRoutes } from './handlers/auth';
 import { catalogRoutes } from './handlers/catalog';
 import { contentRoutes } from './handlers/content';
+import { driverRoutes } from './handlers/driver';
 import { orderRoutes } from './handlers/orders';
 import { placeRoutes } from './handlers/places';
 import type { Route } from './handlers/types';
@@ -19,6 +20,7 @@ const ROUTES: Route[] = [
   ...orderRoutes,
   ...walletRoutes,
   ...contentRoutes,
+  ...driverRoutes,
 ];
 
 function match(pattern: string, path: string): Record<string, string> | null {
