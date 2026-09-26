@@ -1083,3 +1083,207 @@ Response:
   "newBalance": 2850
 }
 ```
+
+#### POST /driver/active-job/pickup-photo
+
+Upload and attach parcel verification photo at pickup.
+
+Request:
+
+```json
+{
+  "pickupPhoto": "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "pickupPhoto": "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80"
+}
+```
+
+#### POST /driver/active-job/messages
+
+Send an in-app driver-to-customer chat message for the active trip.
+
+Request:
+
+```json
+{
+  "text": "I have arrived at the main gate."
+}
+```
+
+Response (`201`):
+
+```json
+{
+  "id": "msg_904",
+  "sender": "driver",
+  "text": "I have arrived at the main gate.",
+  "time": "4:42 PM",
+  "status": "Delivered"
+}
+```
+
+#### POST /driver/vehicle
+
+Submit vehicle model, registration number, and fuel/RC details.
+
+Request:
+
+```json
+{
+  "vehicleType": "Mini Truck",
+  "vehicleNumber": "KA 03 MX 2814",
+  "model": "Tata Ace Gold",
+  "fuelType": "Diesel / CNG",
+  "rcNumber": "RC-KA03-2023-8841"
+}
+```
+
+Response (`200`):
+
+```json
+{
+  "success": true,
+  "vehicle": {
+    "vehicleType": "Mini Truck",
+    "vehicleNumber": "KA 03 MX 2814",
+    "model": "Tata Ace Gold"
+  }
+}
+```
+
+#### POST /driver/kyc
+
+Submit driver identity verification documents (Driving Licence, Aadhaar, PAN).
+
+Request:
+
+```json
+{
+  "dlNumber": "DL-0420110098421",
+  "aadhaarNumber": "XXXX-XXXX-4912",
+  "panNumber": "ABCDE1234F"
+}
+```
+
+Response (`200`):
+
+```json
+{
+  "success": true,
+  "kycStatus": "verified"
+}
+```
+
+#### POST /driver/bank
+
+Link bank account and UPI VPA for automated daily driver payouts.
+
+Request:
+
+```json
+{
+  "accountHolder": "Arun Kumar",
+  "accountNumber": "501002394821",
+  "ifscCode": "HDFC0000128",
+  "bankName": "HDFC Bank",
+  "upiId": "arun.kumar@okhdfcbank"
+}
+```
+
+Response (`200`):
+
+```json
+{
+  "success": true,
+  "bankStatus": "verified",
+  "last4": "4821"
+}
+```
+
+#### POST /driver/daily-check
+
+Submit the daily shift safety and vehicle condition inspection checklist.
+
+Request:
+
+```json
+{
+  "selfieUri": "file:///path/to/selfie.jpg",
+  "tiresChecked": true,
+  "brakesChecked": true,
+  "lightsChecked": true,
+  "fuelBatteryOk": true
+}
+```
+
+Response (`200`):
+
+```json
+{
+  "success": true,
+  "bonusCredited": 50,
+  "newWalletBalance": 8713
+}
+```
+
+#### GET /driver/past-trips
+
+Fetch completed trips history with fares, timestamps, and route stops.
+
+Response:
+
+```json
+[
+  {
+    "id": "RY2048-4821",
+    "pickup": "Hans Bhawan Wing-1",
+    "drop": "DLF Cyber City",
+    "dateStr": "Today, 4:40 PM",
+    "status": "Completed",
+    "fare": 524,
+    "distanceKm": 18.4,
+    "vehicleIconKey": "mini-truck"
+  },
+  {
+    "id": "RY2841",
+    "pickup": "Indiranagar",
+    "drop": "Whitefield",
+    "dateStr": "21 Sep, 6:42 PM",
+    "status": "Completed",
+    "fare": 620,
+    "distanceKm": 14.2,
+    "vehicleIconKey": "mini-truck"
+  }
+]
+```
+
+---
+
+### 11.4 Local storage persistence schema (`kvStorage`)
+
+The in-app mock server saves table records via `src/mocks/db.ts` into key-value storage:
+
+| Storage Key                 | Type                           | Description                                                  |
+| --------------------------- | ------------------------------ | ------------------------------------------------------------ |
+| `mock_db_driver_profile`    | `Table<DriverProfileModel>`    | Driver credentials, ratings, duty switch, and wallet balance |
+| `mock_db_driver_requests`   | `Table<DriverJobRequestModel>` | Dispatched available delivery pool                           |
+| `mock_db_driver_active_job` | `Table<DriverActiveJobModel>`  | Currently accepted delivery and milestone state              |
+| `mock_db_driver_past_trips` | `Table<DriverPastTripModel>`   | Historical delivery records and payout logs                  |
+| `driver_app_state_v1`       | `DriverStoreState`             | Zustand offline persistence mirror for instant warm startup  |
+
+### 11.5 Error codes
+
+| Status | Code                  | Description                                                         |
+| ------ | --------------------- | ------------------------------------------------------------------- |
+| `400`  | `INVALID_JOB_STATUS`  | Milestone progression not allowed from current job status           |
+| `404`  | `JOB_NOT_FOUND`       | Dispatched delivery request or active job ID does not exist         |
+| `422`  | `INVALID_OTP`         | Provided pickup or delivery verification OTP does not match         |
+| `422`  | `INSUFFICIENT_FUNDS`  | Requested payout withdrawal amount exceeds available wallet balance |
+| `422`  | `PAYMENT_UNCOLLECTED` | Cannot complete COD delivery without payment confirmation           |
