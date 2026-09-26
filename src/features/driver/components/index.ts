@@ -1,6 +1,7 @@
 export * from './active-delivery-card';
 export * from './daily-check-banner';
 export * from './delivery-request-card';
+export * from './demo-otp-hint';
 export * from './driver-online-toggle';
 export * from './driver-past-trip-card';
 export * from './driver-setup-checklist';
@@ -9,3 +10,6 @@ export * from './earnings-trend-chart';
 export * from './photo-upload-box';
 export * from './waiting-timer-ring';
 export * from './welcome-bonus-modal';
+export * from './route-map';
+export * from './payment-collect-card';
+export * from './setup-screen-layout';

@@ -1,142 +1,44 @@
 import { request } from './client';
 import type {
-  DailyCheckModel,
-  DriverActiveJobModel,
-  DriverBankModel,
-  DriverChatMessageModel,
-  DriverJobRequestModel,
-  DriverKycModel,
-  DriverPastTripModel,
-  DriverProfileModel,
-  DriverVehicleModel,
+  BankInput,
+  DailyCheck,
+  DriverProfile,
+  GeoPoint,
+  KycInput,
+  VehicleInput,
+  VehicleTypeOption,
 } from './models';
 
+export interface LocationUpdate extends GeoPoint {
+  heading: number | null;
+  speedKmph: number | null;
+  recordedAt: string;
+}
+
 export const driverApi = {
-  getProfile: (): Promise<DriverProfileModel> =>
-    request<DriverProfileModel>({
-      method: 'GET',
-      url: '/driver/profile',
-    }),
+  getProfile: (signal?: AbortSignal) => request<DriverProfile>({ url: '/driver/profile', signal }),
 
-  updateStatus: (isOnline: boolean): Promise<{ isOnline: boolean }> =>
-    request<{ isOnline: boolean }>({
-      method: 'PATCH',
-      url: '/driver/status',
-      data: { isOnline },
-    }),
+  setOnline: (isOnline: boolean) =>
+    request<DriverProfile>({ method: 'PUT', url: '/driver/status', data: { isOnline } }),
 
-  getAvailableJobs: (): Promise<DriverJobRequestModel[]> =>
-    request<DriverJobRequestModel[]>({
-      method: 'GET',
-      url: '/driver/requests',
-    }),
+  reportLocation: (update: LocationUpdate) =>
+    request<{ receivedAt: string }>({ method: 'POST', url: '/driver/location', data: update }),
 
-  acceptJob: (jobId: string): Promise<DriverActiveJobModel> =>
-    request<DriverActiveJobModel>({
-      method: 'POST',
-      url: `/driver/jobs/${jobId}/accept`,
-    }),
+  getVehicleTypes: (signal?: AbortSignal) =>
+    request<VehicleTypeOption[]>({ url: '/driver/vehicle-types', signal }),
 
-  declineJob: (jobId: string): Promise<{ success: boolean }> =>
-    request<{ success: boolean }>({
-      method: 'POST',
-      url: `/driver/jobs/${jobId}/decline`,
-    }),
+  saveVehicle: (input: VehicleInput) =>
+    request<DriverProfile>({ method: 'PUT', url: '/driver/vehicle', data: input }),
 
-  updateJobStatus: (
-    jobId: string,
-    status: DriverActiveJobModel['status'],
-  ): Promise<DriverActiveJobModel> =>
-    request<DriverActiveJobModel>({
-      method: 'PATCH',
-      url: `/driver/jobs/${jobId}/status`,
-      data: { status },
-    }),
+  saveKyc: (input: KycInput) =>
+    request<DriverProfile>({ method: 'PUT', url: '/driver/kyc', data: input }),
 
-  verifyPickup: (
-    jobId: string,
-    otp: string,
-    photoUri?: string | null,
-  ): Promise<DriverActiveJobModel> =>
-    request<DriverActiveJobModel>({
-      method: 'POST',
-      url: `/driver/jobs/${jobId}/verify-pickup`,
-      data: { otp, photoUri },
-    }),
+  saveBank: (input: BankInput) =>
+    request<DriverProfile>({ method: 'PUT', url: '/driver/bank', data: input }),
 
-  verifyDrop: (
-    jobId: string,
-    otp: string,
-    photoUri?: string | null,
-  ): Promise<DriverActiveJobModel> =>
-    request<DriverActiveJobModel>({
-      method: 'POST',
-      url: `/driver/jobs/${jobId}/verify-drop`,
-      data: { otp, photoUri },
-    }),
+  submitDailyCheck: (photoUrl: string) =>
+    request<DailyCheck>({ method: 'POST', url: '/driver/daily-check', data: { photoUrl } }),
 
-  collectPayment: (
-    jobId: string,
-    amount: number,
-    mode: 'Cash' | 'QR',
-  ): Promise<{ collected: boolean; newBalance: number }> =>
-    request<{ collected: boolean; newBalance: number }>({
-      method: 'POST',
-      url: `/driver/jobs/${jobId}/collect-payment`,
-      data: { amount, mode },
-    }),
-
-  sendChatMessage: (jobId: string, text: string): Promise<DriverChatMessageModel> =>
-    request<DriverChatMessageModel>({
-      method: 'POST',
-      url: `/driver/jobs/${jobId}/chat`,
-      data: { text },
-    }),
-
-  saveVehicle: (vehicle: Partial<DriverVehicleModel>): Promise<DriverVehicleModel> =>
-    request<DriverVehicleModel>({
-      method: 'POST',
-      url: '/driver/vehicle',
-      data: vehicle,
-    }),
-
-  saveKyc: (kyc: Partial<DriverKycModel>): Promise<DriverKycModel> =>
-    request<DriverKycModel>({
-      method: 'POST',
-      url: '/driver/kyc',
-      data: kyc,
-    }),
-
-  saveBank: (bank: Partial<DriverBankModel>): Promise<DriverBankModel> =>
-    request<DriverBankModel>({
-      method: 'POST',
-      url: '/driver/bank',
-      data: bank,
-    }),
-
-  submitDailyCheck: (photoUri: string): Promise<DailyCheckModel> =>
-    request<DailyCheckModel>({
-      method: 'POST',
-      url: '/driver/daily-check',
-      data: { photoUri },
-    }),
-
-  getPastTrips: (): Promise<DriverPastTripModel[]> =>
-    request<DriverPastTripModel[]>({
-      method: 'GET',
-      url: '/driver/trips',
-    }),
-
-  withdrawWallet: (amount: number): Promise<{ newBalance: number; txId: string }> =>
-    request<{ newBalance: number; txId: string }>({
-      method: 'POST',
-      url: '/driver/wallet/withdraw',
-      data: { amount },
-    }),
-
-  claimBonus: (): Promise<{ newBalance: number; bonus: number }> =>
-    request<{ newBalance: number; bonus: number }>({
-      method: 'POST',
-      url: '/driver/bonus/claim',
-    }),
+  markWelcomeBonusSeen: () =>
+    request<DriverProfile>({ method: 'POST', url: '/driver/welcome-bonus/seen' }),
 };

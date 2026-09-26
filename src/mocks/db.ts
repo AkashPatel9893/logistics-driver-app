@@ -4,19 +4,21 @@
  */
 import type {
   AuthSession,
-  DriverActiveJobModel,
-  DriverJobRequestModel,
-  DriverPastTripModel,
-  DriverProfileModel,
-  Order,
-  PaymentMethod,
-  SavedAddress,
+  BankDetails,
+  ChatMessage,
+  DriverJob,
+  DriverTransaction,
+  GeoPoint,
+  JobOffer,
+  KycDetails,
+  PaymentQr,
   User,
-  WalletTransaction,
+  VehicleDetails,
 } from '@/lib/api/models';
+import type { UploadedFile } from '@/lib/api/uploads';
 import { kvStorage } from '@/lib/storage';
 
-const PREFIX = 'mock_db_v2:';
+const PREFIX = 'mock_driver_db_v1:';
 
 class Table<T> {
   private cache: Record<string, T> | null = null;
@@ -59,23 +61,55 @@ class Table<T> {
   }
 }
 
-/** Server-side order record: the public Order minus derived fields, plus owner. */
-export interface OrderRecord extends Omit<Order, 'status' | 'driver'> {
+/** Server-side driver account; the public DriverProfile is derived from it. */
+export interface DriverRecord {
   userId: string;
-  /** Pre-picked driver, revealed once `driverAssignAt` passes. */
-  assignedDriverId: string;
+  joinedAt: string;
+  isOnline: boolean;
+  onlineSince: string | null;
+  vehicle: VehicleDetails | null;
+  kyc: KycDetails | null;
+  bank: BankDetails | null;
+  /** Full account number stays server-side. */
+  bankAccountNumber: string | null;
+  /** Local date (YYYY-MM-DD) → selfie URL. */
+  dailyChecks: Record<string, string>;
+  welcomeBonusSeen: boolean;
+  welcomeBonusPaid: boolean;
+  lastLocation: (GeoPoint & { recordedAt: string }) | null;
+  /** When the dispatcher may send the next offer (epoch ms). */
+  nextOfferAt: number | null;
+  ratings: number[];
 }
 
-export interface WalletRecord {
-  balance: number;
-  paymentMethods: PaymentMethod[];
-  defaultPaymentMethodId: string;
-  transactions: WalletTransaction[];
+/** Everything needed to turn an offer into a job, including secrets the driver never sees. */
+export interface OfferRecord extends JobOffer {
+  driverId: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'expired';
+  sender: { name: string; phone: string };
+  paymentMethodLabel: string;
+  commission: number;
+  pickupOtp: string;
+  deliveryOtp: string;
 }
 
-export interface ShareRecord {
-  orderId: string;
-  expiresAt: string;
+export interface JobRecord extends Omit<DriverJob, 'unreadMessages'> {
+  driverId: string;
+  pickupOtp: string;
+  deliveryOtp: string;
+  /** The simulated gateway confirms a QR payment at `paidAt` (epoch ms). */
+  paymentQr: (PaymentQr & { paidAt: number }) | null;
+}
+
+/** A customer chat message the simulation will deliver later. */
+export interface ScheduledMessage {
+  text: string;
+  deliverAt: number;
+}
+
+export interface OnlineSession {
+  start: string;
+  end: string | null;
 }
 
 export const db = {
@@ -86,14 +120,18 @@ export const db = {
   sessions: new Table<Pick<AuthSession, 'accessToken' | 'refreshToken'> & { userId: string }>(
     'sessions',
   ),
-  /** userId → addresses */
-  addresses: new Table<SavedAddress[]>('addresses'),
-  orders: new Table<OrderRecord>('orders'),
-  wallets: new Table<WalletRecord>('wallets'),
-  /** token → share */
-  shares: new Table<ShareRecord>('shares'),
-  driverProfile: new Table<DriverProfileModel>('driver_profile'),
-  driverRequests: new Table<DriverJobRequestModel[]>('driver_requests'),
-  driverActiveJob: new Table<DriverActiveJobModel | null>('driver_active_job'),
-  driverPastTrips: new Table<DriverPastTripModel[]>('driver_past_trips'),
+  /** userId → driver account */
+  drivers: new Table<DriverRecord>('drivers'),
+  offers: new Table<OfferRecord>('offers'),
+  /** orderId → job */
+  jobs: new Table<JobRecord>('jobs'),
+  /** orderId → messages */
+  messages: new Table<ChatMessage[]>('messages'),
+  /** orderId → customer messages not delivered yet */
+  scheduledMessages: new Table<ScheduledMessage[]>('scheduled_messages'),
+  /** userId → wallet ledger (newest first) */
+  ledger: new Table<DriverTransaction[]>('ledger'),
+  /** userId → online sessions */
+  onlineSessions: new Table<OnlineSession[]>('online_sessions'),
+  uploads: new Table<UploadedFile & { ownerId: string }>('uploads'),
 };

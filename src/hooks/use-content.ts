@@ -14,13 +14,6 @@ export function useLanguages() {
   });
 }
 
-export function useAccountSummary() {
-  return useQuery({
-    queryKey: queryKeys.accountSummary,
-    queryFn: ({ signal }) => contentApi.getAccountSummary(signal),
-  });
-}
-
 export function useSupportInfo() {
   return useQuery({
     queryKey: queryKeys.support,

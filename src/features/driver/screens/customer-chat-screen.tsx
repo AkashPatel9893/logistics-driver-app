@@ -1,111 +1,94 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Linking, TextInput } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Linking, type ScrollView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  AppImage,
   AppKeyboardAvoidingView,
   AppPressable,
   AppScrollView,
+  AppSpinner,
   AppText,
   AppView,
+  Button,
   FocusAwareStatusBar,
-  Icon,
   LiquidGlassBackButton,
 } from '@/components/ui';
-import { useDriverStore } from '@/stores/driver-store';
+import { useActiveJob, useMarkMessagesRead, useMessages, useSendMessage } from '@/hooks/use-jobs';
+import { getErrorMessage } from '@/lib/api/api-error';
+import type { DriverJob } from '@/lib/api/models';
+import { formatTime } from '@/lib/format';
+import { useLocationStore } from '@/stores/location-store';
 
-const QUICK_REPLIES = ["I'm here", '2 mins away', 'Share location'];
+import { currentStop, JOB_STAGE_LABEL } from '../job-stage';
 
-export function CustomerChatScreen() {
+const QUICK_REPLIES = ["I've reached", '5 mins away', 'Stuck in traffic', 'Share my location'];
+
+function Chat({ job }: { job: DriverJob }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-
-  const activeJob = useDriverStore((s) => s.activeJob);
-  const addChatMessage = useDriverStore((s) => s.addChatMessage);
-
-  const customerName = activeJob?.customerName || 'Priya Sharma';
-  const customerPhone = activeJob?.customerPhone || '+91 98765 43210';
-  const orderRef = activeJob ? `MV-${activeJob.id.slice(-4).toUpperCase()}` : 'MV-2048';
-  const pickupAddress = activeJob?.pickupAddress || 'Hans Bhawan Wing-1, IP Estate';
-
-  const defaultMessages = [
-    {
-      id: 'm1',
-      sender: 'customer' as const,
-      text: "Hi, I'm near Hans Bhawan but the main gate is busy.",
-      time: '9:34 AM',
-    },
-    {
-      id: 'm2',
-      sender: 'driver' as const,
-      text: "I'm on Deen Dayal Marg now. Which entrance should I use?",
-      time: '9:35 AM',
-      status: 'Delivered' as const,
-    },
-    {
-      id: 'm3',
-      sender: 'customer' as const,
-      text: "Please come to Wing-1, beside the tea stall. I'm wearing a blue kurta.",
-      time: '9:36 AM',
-    },
-    {
-      id: 'm4',
-      sender: 'driver' as const,
-      text: 'Got it — I can see the Wing-1 sign. Reaching in about 2 minutes.',
-      time: '9:37 AM',
-      status: 'Read' as const,
-    },
-  ];
-
-  const chatMessages =
-    activeJob?.chatMessages && activeJob.chatMessages.length > 0
-      ? activeJob.chatMessages
-      : defaultMessages;
-
+  const scrollRef = useRef<ScrollView>(null);
+  const messagesQuery = useMessages(job.id);
+  const messages = messagesQuery.data ?? [];
+  const send = useSendMessage(job.id);
+  const markRead = useMarkMessagesRead(job.id);
+  const location = useLocationStore((s) => s.current);
   const [inputText, setInputText] = useState('');
 
-  const handleSend = (textToSend?: string) => {
-    const text = (textToSend || inputText).trim();
+  const unread = messages.filter((m) => m.sender === 'customer' && !m.readAt).length;
+  useEffect(() => {
+    if (unread > 0 && !markRead.isPending) markRead.mutate();
+    // Only react to new unread messages.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unread]);
+
+  const sendText = (raw: string) => {
+    let text = raw.trim();
+    if (text === 'Share my location') {
+      if (!location) {
+        Alert.alert('Location unavailable', 'Turn on location to share where you are.');
+        return;
+      }
+      text = `My live location: https://maps.google.com/?q=${location.latitude.toFixed(5)},${location.longitude.toFixed(5)}`;
+    }
     if (!text) return;
-    addChatMessage(text);
-    setInputText('');
+    send.mutate(text, {
+      onSuccess: () => setInputText(''),
+      onError: (error) => Alert.alert('Message not sent', getErrorMessage(error)),
+    });
   };
 
-  const handleCall = () => {
-    Linking.openURL(`tel:${customerPhone}`);
-  };
+  const stop = currentStop(job.status);
+  const stopLabel = stop === 'pickup' ? job.pickup : job.drop;
 
   return (
     <AppView className="flex-1 bg-[#FBFBFC] dark:bg-background">
       <FocusAwareStatusBar />
 
-      {/* Header */}
       <AppView
         style={{ paddingTop: Math.max(insets.top, 12) + 4 }}
         className="border-b border-border/70 bg-card px-5 pb-3 shadow-xs"
       >
         <AppView row className="items-center justify-between">
-          <AppView row className="items-center gap-3">
+          <AppView row className="flex-1 items-center gap-3">
             <LiquidGlassBackButton onPress={() => router.back()} />
-            <AppView className="h-11 w-11 overflow-hidden rounded-full border border-border/80 bg-neutral-200">
-              <AppImage
-                source={{
-                  uri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-                }}
-                contentFit="cover"
-                className="h-full w-full"
-              />
+            <AppView className="h-11 w-11 items-center justify-center rounded-full bg-brand/10">
+              <AppText className="text-[17px] font-black text-brand">
+                {job.sender.name.slice(0, 1)}
+              </AppText>
             </AppView>
-            <AppView>
-              <AppText className="text-[17px] font-black text-foreground">{customerName}</AppText>
-              <AppText className="text-[12px] font-medium text-muted">Pickup · 6 min away</AppText>
+            <AppView className="flex-1">
+              <AppText className="text-[17px] font-black text-foreground" numberOfLines={1}>
+                {job.sender.name}
+              </AppText>
+              <AppText className="text-[12px] font-medium text-muted">
+                Sender · {JOB_STAGE_LABEL[job.status]}
+              </AppText>
             </AppView>
           </AppView>
 
           <AppPressable
-            onPress={handleCall}
+            onPress={() => Linking.openURL(`tel:${job.sender.phone}`)}
             pressScale={0.94}
             className="rounded-full border border-border/90 bg-card px-4 py-1.5 shadow-xs active:bg-neutral-100 dark:active:bg-neutral-800"
           >
@@ -114,47 +97,30 @@ export function CustomerChatScreen() {
         </AppView>
       </AppView>
 
-      {/* Booking banner */}
-      <AppView className="border-b border-border/60 bg-[#FBFBFC] dark:bg-card/40 px-5 py-3">
-        <AppView row className="items-center justify-between mb-2">
-          <AppText className="text-[11px] font-bold uppercase tracking-wider text-muted">
-            BOOKING #{orderRef}
-          </AppText>
-          <AppView className="rounded-full bg-[#FFEFE9] dark:bg-brand/20 px-3 py-1">
-            <AppText className="text-[11px] font-black text-brand">En route</AppText>
-          </AppView>
-        </AppView>
-        <AppView className="rounded-2xl border border-border/70 bg-card p-3 shadow-xs">
-          <AppView row className="items-center gap-2.5">
-            <AppView className="h-4 w-4 rounded-full border-2 border-brand items-center justify-center">
-              <AppView className="h-1.5 w-1.5 rounded-full bg-brand" />
-            </AppView>
-            <AppView className="flex-1">
-              <AppText className="text-[10px] font-bold uppercase tracking-wider text-muted">
-                PICKUP POINT
-              </AppText>
-              <AppText className="text-[14px] font-bold text-foreground" numberOfLines={1}>
-                {pickupAddress}
-              </AppText>
-            </AppView>
-          </AppView>
-        </AppView>
+      <AppView className="border-b border-border/60 bg-[#FBFBFC] px-5 py-3 dark:bg-card/40">
+        <AppText className="text-[11px] font-bold uppercase tracking-wider text-muted">
+          ORDER #{job.number} · {stop === 'pickup' ? 'PICKUP POINT' : 'DROP POINT'}
+        </AppText>
+        <AppText className="mt-1 text-[14px] font-bold text-foreground" numberOfLines={1}>
+          {stopLabel.houseNumber}, {stopLabel.label}
+        </AppText>
       </AppView>
 
       <AppKeyboardAvoidingView>
         <AppScrollView
-          contentContainerClassName="px-4 py-4 gap-3 flex-grow justify-end"
+          ref={scrollRef}
+          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+          contentContainerClassName="flex-grow justify-end gap-3 px-4 py-4"
           showsVerticalScrollIndicator={false}
         >
-          <AppView row className="items-center justify-center my-1 gap-3">
-            <AppView className="flex-1 h-[1px] bg-border/60" />
-            <AppText className="text-[11px] font-bold uppercase text-muted tracking-wider">
-              TODAY
+          {messagesQuery.isLoading ? <AppSpinner /> : null}
+          {!messagesQuery.isLoading && messages.length === 0 ? (
+            <AppText className="text-center text-[13px] text-muted">
+              Messages with {job.sender.name.split(' ')[0]} appear here. Numbers stay private.
             </AppText>
-            <AppView className="flex-1 h-[1px] bg-border/60" />
-          </AppView>
+          ) : null}
 
-          {chatMessages.map((msg) => {
+          {messages.map((msg) => {
             const isDriver = msg.sender === 'driver';
             return (
               <AppView
@@ -164,27 +130,15 @@ export function CustomerChatScreen() {
                 }`}
               >
                 <AppText
-                  className={`text-[15px] leading-5 ${
-                    isDriver ? 'font-medium text-white' : 'font-medium text-foreground'
-                  }`}
+                  className={`text-[15px] font-medium leading-5 ${isDriver ? 'text-white' : 'text-foreground'}`}
                 >
                   {msg.text}
                 </AppText>
-                <AppView
-                  row
-                  className={`mt-1.5 items-center gap-1.5 ${
-                    isDriver ? 'justify-end' : 'justify-start'
-                  }`}
+                <AppText
+                  className={`mt-1.5 text-[11px] ${isDriver ? 'self-end text-white/80' : 'text-muted'}`}
                 >
-                  <AppText className={`text-[11px] ${isDriver ? 'text-white/80' : 'text-muted'}`}>
-                    {msg.time}
-                  </AppText>
-                  {isDriver ? (
-                    <AppText className="text-[11px] font-semibold text-white/90">
-                      ✓✓ {msg.status || 'Delivered'}
-                    </AppText>
-                  ) : null}
-                </AppView>
+                  {formatTime(msg.createdAt)}
+                </AppText>
               </AppView>
             );
           })}
@@ -199,9 +153,10 @@ export function CustomerChatScreen() {
             {QUICK_REPLIES.map((reply) => (
               <AppPressable
                 key={reply}
-                onPress={() => handleSend(reply)}
+                onPress={() => sendText(reply)}
+                disabled={send.isPending}
                 pressScale={0.96}
-                className="rounded-full bg-[#F3ECE6] dark:bg-card px-4 py-2 border border-border/60"
+                className="rounded-full border border-border/60 bg-[#F3ECE6] px-4 py-2 dark:bg-card"
               >
                 <AppText className="text-[12px] font-semibold text-foreground-secondary">
                   {reply}
@@ -216,27 +171,24 @@ export function CustomerChatScreen() {
           className="border-t border-border/80 bg-card px-4 pt-3"
         >
           <AppView row className="items-center gap-2.5">
-            <AppPressable
-              pressScale={0.92}
-              className="h-12 w-12 items-center justify-center rounded-full border border-border/80 bg-[#F9F9FB] dark:bg-card shadow-xs active:bg-neutral-100"
-            >
-              <Icon name="plus" size={20} tone="icon-strong" />
-            </AppPressable>
-
             <TextInput
               value={inputText}
               onChangeText={setInputText}
-              placeholder={`Message ${customerName.split(' ')[0]}...`}
+              placeholder={`Message ${job.sender.name.split(' ')[0]}…`}
               placeholderTextColor="#9ca3af"
-              className="flex-1 rounded-full border border-border/80 bg-[#F4F5F7] dark:bg-card/90 px-5 py-3 text-[15px] text-foreground"
-              onSubmitEditing={() => handleSend()}
+              accessibilityLabel="Message"
+              maxLength={500}
+              className="flex-1 rounded-full border border-border/80 bg-[#F4F5F7] px-5 py-3 text-[15px] text-foreground dark:bg-card/90"
+              onSubmitEditing={() => sendText(inputText)}
               returnKeyType="send"
             />
-
             <AppPressable
-              onPress={() => handleSend()}
+              onPress={() => sendText(inputText)}
+              disabled={send.isPending || !inputText.trim()}
               pressScale={0.94}
-              className="rounded-full bg-brand px-6 py-3.5 shadow-md shadow-brand/25 active:bg-brand/90"
+              className={`rounded-full px-6 py-3.5 shadow-md shadow-brand/25 ${
+                inputText.trim() ? 'bg-brand' : 'bg-brand/50'
+              }`}
             >
               <AppText className="text-[14px] font-black text-white">Send</AppText>
             </AppPressable>
@@ -245,4 +197,27 @@ export function CustomerChatScreen() {
       </AppKeyboardAvoidingView>
     </AppView>
   );
+}
+
+export function CustomerChatScreen() {
+  const router = useRouter();
+  const { data: job, isLoading } = useActiveJob();
+
+  if (!job) {
+    return (
+      <AppView className="flex-1 items-center justify-center bg-background p-6">
+        {isLoading ? (
+          <AppSpinner size="large" />
+        ) : (
+          <>
+            <AppText className="text-[16px] font-bold text-foreground">
+              Chat is available during a trip.
+            </AppText>
+            <Button label="Back" className="mt-5" onPress={() => router.back()} />
+          </>
+        )}
+      </AppView>
+    );
+  }
+  return <Chat job={job} />;
 }

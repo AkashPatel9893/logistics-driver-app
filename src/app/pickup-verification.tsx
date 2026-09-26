@@ -1,3 +1,3 @@
-import { PickupVerificationScreen } from '@/features/driver/screens/pickup-verification-screen';
+import { PickupVerificationScreen } from '@/features/driver/screens/stop-verification-screen';
 
 export default PickupVerificationScreen;

@@ -1,5 +1,5 @@
 import { request } from './client';
-import type { AuthSession, LanguageOption, OtpChallenge, UsageType, User } from './models';
+import type { AuthSession, LanguageOption, OtpChallenge, UpdateProfileInput, User } from './models';
 
 export const authApi = {
   sendOtp: (email: string) =>
@@ -10,7 +10,7 @@ export const authApi = {
 
   getMe: (signal?: AbortSignal) => request<User>({ url: '/me', signal }),
 
-  updateProfile: (input: { name?: string; phone?: string; usageType?: UsageType }) =>
+  updateProfile: (input: UpdateProfileInput) =>
     request<User>({ method: 'PATCH', url: '/me', data: input }),
 
   getLanguages: (signal?: AbortSignal) =>

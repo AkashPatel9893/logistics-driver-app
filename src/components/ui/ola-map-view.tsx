@@ -79,17 +79,24 @@ export function OlaMapView({ style, children, ...props }: OlaMapViewProps) {
   );
 }
 
-export interface OlaMapCameraProps {
-  centerCoordinate: OlaMapCoordinate;
-  zoomLevel?: number;
-}
+export type OlaMapCameraProps =
+  | { centerCoordinate: OlaMapCoordinate; zoomLevel?: number; bounds?: never }
+  | {
+      /** [west, south, east, north], e.g. from `computeBounds` in lib/geo. */
+      bounds: [number, number, number, number];
+      padding?: { top: number; right: number; bottom: number; left: number };
+      centerCoordinate?: never;
+    };
 
-export function OlaMapCamera({ centerCoordinate, zoomLevel = 14 }: OlaMapCameraProps) {
+export function OlaMapCamera(props: OlaMapCameraProps) {
+  if (props.bounds) {
+    return <Camera initialViewState={{ bounds: props.bounds, padding: props.padding }} />;
+  }
   return (
     <Camera
       initialViewState={{
-        center: [centerCoordinate.longitude, centerCoordinate.latitude],
-        zoom: zoomLevel,
+        center: [props.centerCoordinate.longitude, props.centerCoordinate.latitude],
+        zoom: props.zoomLevel ?? 14,
       }}
     />
   );

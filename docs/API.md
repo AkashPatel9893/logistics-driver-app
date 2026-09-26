@@ -1,1289 +1,631 @@
-# RYNO customer app — API & data flow
+# RYNO Partner (driver app) — API & data flow
 
-Everything the app exchanges with the backend, in one place: how data moves
-(REST, WebSocket, push, public tracking page), the shared conventions, and every
-endpoint and socket event.
+Everything the driver app exchanges with the backend: transports, conventions,
+every endpoint and every realtime event, with request/response shapes.
+
+This file covers **only the driver app**. The customer app has its own
+`Logistics-app/docs/API.md`; the shared contract (order state machine, common
+models), the system design and the end-to-end flows between both apps are in
+`../GlobalApi.md`, `../Architecture.md` and `../Flow.md` at the workspace root.
 
 The app currently runs against an **in-app mock server** (`src/mocks`) that
-implements exactly these contracts, so moving to a real backend is a
-configuration change (see _Switching to the real backend_ below). Types for
-every model live in `src/lib/api/models.ts`.
+implements exactly these contracts. Types for every model live in
+`src/lib/api/models.ts`; endpoint functions in `src/lib/api/*.ts`; React Query
+hooks in `src/hooks/use-*.ts`.
 
 ## Contents
 
-- [1. Data flow & architecture](#1-data-flow--architecture)
-- [2. API conventions](#2-api-conventions)
+- [1. Transports](#1-transports)
+- [2. Conventions](#2-conventions)
 - [3. Endpoint index](#3-endpoint-index)
-- [4. Auth & profile](#4-auth--profile)
-- [5. Catalogue & pricing](#5-catalogue--pricing)
-- [6. Places & saved addresses](#6-places--saved-addresses)
-- [7. Orders](#7-orders)
-- [8. Realtime tracking (WebSocket)](#8-realtime-tracking-websocket)
-- [9. Wallet & payment methods](#9-wallet--payment-methods)
-- [10. Content](#10-content)
-- [11. Driver App API & lifecycle](#11-driver-app-api--lifecycle)
+- [4. Auth & account](#4-auth--account)
+- [5. Driver profile & onboarding](#5-driver-profile--onboarding)
+- [6. Availability & location](#6-availability--location)
+- [7. Offers](#7-offers)
+- [8. Jobs (the trip state machine)](#8-jobs-the-trip-state-machine)
+- [9. Payment collection](#9-payment-collection)
+- [10. Chat](#10-chat)
+- [11. Earnings, wallet & trips](#11-earnings-wallet--trips)
+- [12. Uploads](#12-uploads)
+- [13. Realtime channel](#13-realtime-channel)
+- [14. Error codes](#14-error-codes)
+- [15. Mock mode](#15-mock-mode)
 
 ---
 
-## 1. Data flow & architecture
+## 1. Transports
 
-### Transport choice
+| Data                                              | Transport                                   | Why                                                                            |
+| ------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------ |
+| Everything the driver reads or changes on request | **REST over HTTPS** (JSON)                  | Cacheable, retryable, easy to debug                                            |
+| Photos (parcel, documents, selfie)                | **HTTPS multipart** `POST /uploads`         | Binary upload; returns a hosted URL the JSON APIs reference                    |
+| Offers, job changes, chat, payment confirmations  | **WebSocket** `driver:<userId>`             | Server-initiated and time-critical (an offer lives 30 s)                       |
+| GPS position while online                         | **REST** `POST /driver/location` every 15 s | Survives flaky networks; the server fans it out to customers over their socket |
+| Offers while the app is backgrounded              | **Push** (FCM/APNs, high priority)          | Sockets close in the background; push rings the phone                          |
 
-| Data                                                                                         | Transport                                                                                   | Why                                                                                   |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Everything the user reads or changes on request (login, addresses, quotes, orders, wallet)   | **REST over HTTPS** (JSON)                                                                  | Request/response, cacheable, easy to retry and debug, works with any backend stack    |
-| Live order status and driver location while a tracking screen is open                        | **WebSocket** (`wss://…/v1/ws`)                                                             | Server pushes every 2–5 s; polling that often wastes battery and data and still lags  |
-| Status changes while the app is closed or in the background ("Driver assigned", "Delivered") | **Push notifications** (APNs/FCM via `expo-notifications`)                                  | Sockets are closed in the background; push wakes the user and deep-links to the order |
-| Receiver without the app                                                                     | **Web tracking page** at `https://ryno.app/track/<token>`, which opens the app if installed | No login or install needed to follow a delivery                                       |
+## 2. Conventions
 
-Why not only polling? Tracking needs second-level freshness; polling would mean
-a request every 2 s per viewer. Why not only sockets? Sockets are a poor fit
-for CRUD, don't cache, and can't reach a backgrounded app. The split above is
-the standard setup for delivery apps (REST + socket + push).
-
-Server-Sent Events would also work for the one-way tracking stream, but a
-WebSocket leaves room for the driver app (which sends location) to share the
-same gateway, and React Native supports WebSockets natively.
-
-### Layers in the app
-
-```mermaid
-flowchart LR
-  Screen["Screen / component"] --> Hook["Query / mutation hook<br/>src/hooks/use-*.ts"]
-  Hook --> Endpoint["Endpoint function<br/>src/lib/api/*.ts"]
-  Endpoint --> Client["HTTP client<br/>src/lib/api/client.ts"]
-  Client -->|mock mode| Mock["In-app mock server<br/>src/mocks"]
-  Client -->|real mode| API[("RYNO API")]
-  Screen --> Live["useLiveTracking<br/>src/hooks/use-live-tracking.ts"]
-  Live --> Socket["Tracking socket<br/>src/lib/realtime/tracking-socket.ts"]
-  Socket -->|mock mode| MockRT["Mock realtime<br/>src/mocks/realtime.ts"]
-  Socket -->|real mode| WS[("wss://…/v1/ws")]
-```
-
-Rules (from `.agents/skills/odin-component-architecture/references/api-and-server-state.md`):
-
-- Screens never call Axios directly. They use hooks; hooks call endpoint
-  functions; endpoint functions call `request()` in the client.
-- **Server data lives only in the TanStack Query cache.** Zustand holds only
-  client state: the session (`use-auth-store`) and the booking draft
-  (`trip-store`).
-- Every failed call becomes an `ApiError` (`kind`, `status`, backend `code`,
-  user-facing `message`). A 401 anywhere signs the user out.
-- Queries retry transient failures twice; 4xx errors and mutations never retry.
-- On logout the whole query cache is cleared so the next account starts clean.
-
-### Main flows
-
-#### Login
-
-```mermaid
-sequenceDiagram
-  participant App
-  participant API
-  App->>API: POST /auth/otp/send {email}
-  API-->>App: {otpLength, resendInSeconds}
-  App->>API: POST /auth/otp/verify {email, otp}
-  API-->>App: {accessToken, refreshToken, user}
-  Note over App: store session; user.isOnboarded ? Home : Onboarding
-  App->>API: PATCH /me {name, phone}   (onboarding)
-```
-
-#### Booking
-
-```mermaid
-sequenceDiagram
-  participant App
-  participant API
-  App->>API: GET /places/search?q=…  +  GET /me/addresses
-  App->>API: POST /me/addresses {name, address, location}  (pick = mark as used)
-  App->>API: POST /rides/quote {pickup, drop, couponCode}
-  API-->>App: options[] with server-computed fares and coupon check per vehicle
-  App->>API: POST /coupons/validate {code}   (when the user types a code)
-  App->>API: POST /orders {pickup, drop, vehicleId, couponCode, paymentMethodId, paymentTiming}
-  API-->>App: Order (fare recomputed server-side, OTPs, driverAssignAt)
-```
-
-The quote is display-only: `POST /orders` always recomputes the price, so a
-tampered client can't change what the user pays.
-
-#### Live tracking (sender)
-
-```mermaid
-sequenceDiagram
-  participant App
-  participant API
-  participant WS as Tracking socket
-  App->>API: GET /orders/:id
-  App->>WS: subscribe order:<id>
-  WS-->>App: order.status {status, driver}
-  loop every ~2 s while the driver is moving
-    WS-->>App: driver.location {location, leg, path}
-  end
-  Note over App: on order.status → refetch GET /orders/:id and /orders
-```
-
-Driver location is ephemeral UI state (kept in the screen, not the cache).
-Status pushes trigger a refetch of the authoritative order.
-
-#### Receiver sharing
-
-1. Sender taps **Share tracking** → `POST /orders/:id/share` returns a
-   24-hour token and `https://ryno.app/track/<token>`.
-2. The OS share sheet sends the link (WhatsApp/SMS/…).
-3. The receiver opens it: the web page, or the app's public route
-   `/track/[token]` (no login). It calls `GET /tracking/:token` and subscribes
-   to `tracking:<token>`.
-4. The page shows live status, the driver (name, vehicle, call button) and the
-   **delivery OTP**. The receiver reads the OTP to the driver at drop; the
-   driver app submits it to complete the delivery.
-
-Two OTPs keep each hand-over honest: the **pickup OTP** is seen only by the
-sender, the **delivery OTP** only by the sender and whoever has the link.
-
-Recommended next steps for receivers: an SMS with the link sent by the backend
-when the order is created (the receiver's phone is already collected), a
-"Delivery photo" at drop, and optional "leave with security" instructions.
-
-### Mock mode
-
-`src/lib/api/config.ts`: when `EXPO_PUBLIC_API_URL` is not set, the Axios
-client uses `src/mocks/adapter.ts`, which routes every request to handlers in
-`src/mocks/handlers` with 250–650 ms latency, real status codes and error
-envelopes. Data persists in MMKV (`mock_db_v2:*`), so orders survive restarts.
-
-The mock simulates what the driver app would do: a driver is assigned 8–25 s
-after booking, reaches pickup 30 s later (compressed from the vehicle's
-`etaMinutes`, which is still what the app displays), and delivers one minute
-after that — about 2 minutes end to end. Demo login code: **1234**. A new account's wallet
-starts with a seeded transaction history and the balance it adds up to.
-
-### Switching to the real backend
-
-1. Set `EXPO_PUBLIC_API_URL=https://api.ryno.app/v1` and
-   `EXPO_PUBLIC_WS_URL=wss://api.ryno.app/v1/ws` in `.env`.
-2. The client stops using the mock adapter; the tracking socket connects with
-   `?token=<accessToken>` and resubscribes after reconnects (exponential
-   backoff up to 30 s).
-3. Move the access token from MMKV to `expo-secure-store` and add a refresh
-   flow (single in-flight refresh on 401) — the mock issues a refresh token
-   but no refresh endpoint yet.
-4. Remove `src/mocks` from release builds.
-
-Device-side pieces that should move server-side later: free-text geocoding
-(currently the phone's geocoder; use a places API such as Ola Maps via the
-backend) and road distance (currently straight-line × 1.3).
-
----
-
-## 2. API conventions
-
-- **Base URL:** `https://api.ryno.app/v1` (`EXPO_PUBLIC_API_URL`). All paths below are relative to it.
-- **Format:** JSON request and response bodies, UTF-8, ISO-8601 UTC timestamps.
-- **Auth:** `Authorization: Bearer <accessToken>` on every endpoint except those marked _Public_.
-- **Money:** rupees as numbers (`249`, `283.82`). **Coordinates:** `{ "latitude": 28.63, "longitude": 77.21 }`.
-
-### Response envelope
-
-Success:
+- Base URL `https://api.ryno.app/v1` (`EXPO_PUBLIC_API_URL`); socket `wss://api.ryno.app/v1/ws` (`EXPO_PUBLIC_WS_URL`).
+- `Authorization: Bearer <accessToken>` on every call except `/auth/*` and `/config/*`.
+- Success envelope:
 
 ```json
 {
   "success": true,
   "statusCode": 200,
-  "message": "Order placed",
+  "message": "OK",
   "data": {},
-  "timestamp": "2026-09-23T10:00:00.000Z"
+  "timestamp": "2026-09-26T12:30:00.000Z"
 }
 ```
 
-Error:
+- Error envelope (the app shows `message`; logic branches on `error`):
 
 ```json
 {
   "success": false,
-  "statusCode": 409,
-  "error": "CANNOT_CANCEL",
-  "message": "Your package has already been picked up.",
-  "timestamp": "2026-09-23T10:00:00.000Z"
+  "statusCode": 422,
+  "error": "INVALID_OTP",
+  "message": "That code doesn't match. Ask the sender to check it.",
+  "timestamp": "…"
 }
 ```
 
-`message` is safe to show to users. `error` is a stable machine code.
-
-| Status | Meaning                                          |
-| ------ | ------------------------------------------------ |
-| 400    | Malformed request / wrong OTP                    |
-| 401    | Missing or expired token — the app signs out     |
-| 404    | Resource not found (or not yours)                |
-| 409    | Action not allowed in the current state          |
-| 410    | Expired (e.g. tracking link)                     |
-| 422    | Validation failed                                |
-| 5xx    | Server error — the app retries reads up to twice |
-
-### Idempotency
-
-`POST /orders` should accept an `Idempotency-Key` header so a retried request
-after a timeout can't create two orders. (Not sent by the prototype yet.)
-
----
+- Money is in rupees (number, up to 2 decimals). Times are ISO-8601 UTC strings. IDs are opaque strings.
+- `401` anywhere signs the driver out (`setUnauthorizedHandler` in `src/lib/api/client.ts`).
 
 ## 3. Endpoint index
 
-| Method   | Path                          | Auth   | Section             |
-| -------- | ----------------------------- | ------ | ------------------- |
-| `POST`   | `/auth/otp/send`              | Public | Auth & profile      |
-| `POST`   | `/auth/otp/verify`            | Public | Auth & profile      |
-| `GET`    | `/me`                         | Bearer | Auth & profile      |
-| `PATCH`  | `/me`                         | Bearer | Auth & profile      |
-| `GET`    | `/config/languages`           | Public | Auth & profile      |
-| `GET`    | `/vehicles`                   | Public | Catalogue & pricing |
-| `POST`   | `/rides/quote`                | Bearer | Catalogue & pricing |
-| `POST`   | `/coupons/validate`           | Bearer | Catalogue & pricing |
-| `GET`    | `/offers/banners`             | Public | Catalogue & pricing |
-| `GET`    | `/places/search?q=`           | Bearer | Places & addresses  |
-| `GET`    | `/me/addresses`               | Bearer | Places & addresses  |
-| `POST`   | `/me/addresses`               | Bearer | Places & addresses  |
-| `PATCH`  | `/me/addresses/:id`           | Bearer | Places & addresses  |
-| `PUT`    | `/me/addresses/:id/contact`   | Bearer | Places & addresses  |
-| `POST`   | `/me/addresses/:id/favorite`  | Bearer | Places & addresses  |
-| `DELETE` | `/me/addresses/:id`           | Bearer | Places & addresses  |
-| `POST`   | `/orders`                     | Bearer | Orders              |
-| `GET`    | `/orders`                     | Bearer | Orders              |
-| `GET`    | `/orders/:id`                 | Bearer | Orders              |
-| `POST`   | `/orders/:id/cancel`          | Bearer | Orders              |
-| `POST`   | `/orders/:id/rating`          | Bearer | Orders              |
-| `POST`   | `/orders/:id/share`           | Bearer | Orders              |
-| `GET`    | `/tracking/:token`            | Public | Orders              |
-| `GET`    | `/me/wallet`                  | Bearer | Wallet              |
-| `POST`   | `/me/wallet/topups`           | Bearer | Wallet              |
-| `POST`   | `/me/payment-methods`         | Bearer | Wallet              |
-| `PUT`    | `/me/payment-methods/default` | Bearer | Wallet              |
-| `GET`    | `/me/account-summary`         | Bearer | Content             |
-| `GET`    | `/support`                    | Public | Content             |
-
-The live tracking socket is described in section 8.
+| Method | Path                             | Section |
+| ------ | -------------------------------- | ------- |
+| POST   | `/auth/otp/send`                 | 4       |
+| POST   | `/auth/otp/verify`               | 4       |
+| GET    | `/me`                            | 4       |
+| PATCH  | `/me`                            | 4       |
+| GET    | `/config/languages`              | 4       |
+| GET    | `/driver/profile`                | 5       |
+| GET    | `/driver/vehicle-types`          | 5       |
+| PUT    | `/driver/vehicle`                | 5       |
+| PUT    | `/driver/kyc`                    | 5       |
+| PUT    | `/driver/bank`                   | 5       |
+| POST   | `/driver/daily-check`            | 5       |
+| POST   | `/driver/welcome-bonus/seen`     | 5       |
+| PUT    | `/driver/status`                 | 6       |
+| POST   | `/driver/location`               | 6       |
+| GET    | `/driver/offers`                 | 7       |
+| POST   | `/driver/offers/:id/accept`      | 7       |
+| POST   | `/driver/offers/:id/reject`      | 7       |
+| GET    | `/driver/jobs/active`            | 8       |
+| GET    | `/driver/jobs/:id`               | 8       |
+| POST   | `/driver/jobs/:id/arrive-pickup` | 8       |
+| POST   | `/driver/jobs/:id/verify-pickup` | 8       |
+| POST   | `/driver/jobs/:id/arrive-drop`   | 8       |
+| POST   | `/driver/jobs/:id/verify-drop`   | 8       |
+| POST   | `/driver/jobs/:id/cancel`        | 8       |
+| POST   | `/driver/jobs/:id/payment/qr`    | 9       |
+| POST   | `/driver/jobs/:id/payment/cash`  | 9       |
+| GET    | `/driver/jobs/:id/messages`      | 10      |
+| POST   | `/driver/jobs/:id/messages`      | 10      |
+| POST   | `/driver/jobs/:id/messages/read` | 10      |
+| GET    | `/driver/earnings?period=`       | 11      |
+| GET    | `/driver/wallet`                 | 11      |
+| POST   | `/driver/wallet/payouts`         | 11      |
+| GET    | `/driver/trips`                  | 11      |
+| GET    | `/driver/support`                | 11      |
+| POST   | `/uploads`                       | 12      |
 
 ---
 
-## 4. Auth & profile
+## 4. Auth & account
 
-### POST /auth/otp/send — _Public_
+Same OTP flow as the customer app, but a **separate user pool** (driver accounts are not customer accounts).
 
-Sends a login code to the email.
-
-```json
-{ "email": "akash@example.com" }
-```
-
-Response `data`:
+### POST /auth/otp/send
 
 ```json
+// request
+{ "email": "ravi.driver@ryno.in" }
+// data
 { "otpLength": 4, "resendInSeconds": 24, "expiresInSeconds": 300 }
 ```
 
-Errors: `422 INVALID_EMAIL`.
-
-### POST /auth/otp/verify — _Public_
+### POST /auth/otp/verify
 
 ```json
-{ "email": "akash@example.com", "otp": "1234" }
-```
-
-Response `data` (`AuthSession`):
-
-```json
+// request
+{ "email": "ravi.driver@ryno.in", "otp": "1234" }
+// data
 {
   "accessToken": "at_…",
   "refreshToken": "rt_…",
-  "user": {
-    "id": "usr_…",
-    "email": "akash@example.com",
-    "name": "",
-    "phone": null,
-    "usageType": "personal",
-    "isOnboarded": false
-  }
+  "user": { "id": "drv_…", "email": "ravi.driver@ryno.in", "name": "", "phone": null, "dob": null, "city": null, "isOnboarded": false }
 }
 ```
 
-Creates the account on first login. The app routes to onboarding while
-`isOnboarded` is false. Errors: `400 INVALID_OTP`, `422 INVALID_EMAIL`.
+### GET /me · PATCH /me
 
-### GET /me
+`PATCH` body (all optional): `{ "name": "Ravi Chauhan", "phone": "+919876012345", "dob": "14 / 08 / 1992", "city": "Delhi NCR" }`.
+Returns the `User`. `isOnboarded` becomes `true` once name, phone and city are set. Errors: `INVALID_NAME`, `INVALID_PHONE`.
 
-Returns the current `User`.
+### GET /config/languages
 
-### PATCH /me
-
-Completes onboarding / edits the profile.
-
-```json
-{ "name": "Akash Patel", "phone": "9876543210", "usageType": "personal" }
-```
-
-Returns the updated `User`; `isOnboarded` becomes true once name and phone are
-set. Errors: `422 INVALID_NAME`.
-
-### GET /config/languages — _Public_
-
-```json
-[{ "code": "hi", "label": "Hindi", "nativeLabel": "हिन्दी" }]
-```
+`[{ "code": "en", "label": "English", "nativeLabel": "English" }, …]`
 
 ---
 
-## 5. Catalogue & pricing
+## 5. Driver profile & onboarding
 
-### GET /vehicles — _Public_
-
-Vehicle types for the home grid.
+### GET /driver/profile → `DriverProfile`
 
 ```json
 {
-  "featured": [
-    {
-      "id": "bike",
-      "name": "Bike",
-      "description": "Up to 20 kg · Documents, food, small parcels",
-      "capacityKg": 20,
-      "imageKey": "bike"
-    }
-  ],
-  "standard": [
-    {
-      "id": "large-truck",
-      "name": "Large Truck",
-      "description": null,
-      "capacityKg": 2500,
-      "imageKey": "large-truck"
-    }
-  ]
+  "id": "drv_…",
+  "name": "Ravi Chauhan",
+  "phone": "+919876012345",
+  "email": "ravi.driver@ryno.in",
+  "city": "Delhi NCR",
+  "dob": "14 / 08 / 1992",
+  "joinedAt": "2026-09-26T12:22:55.000Z",
+  "rating": 4.8,
+  "ratingCount": 5,
+  "isOnline": true,
+  "onlineSince": "2026-09-26T12:29:40.000Z",
+  "vehicle": {
+    "vehicleTypeId": "mini-truck",
+    "vehicleTypeName": "Mini Truck",
+    "model": "Tata Ace Gold",
+    "plateNumber": "DL 1L AB 4521",
+    "rcPhotoUrl": "https://cdn.ryno.app/u/…",
+    "frontPhotoUrl": "https://cdn.ryno.app/u/…",
+    "status": "verified",
+    "submittedAt": "2026-09-26T12:26:21.000Z"
+  },
+  "kyc": {
+    "panNumber": "BQRPC4821K",
+    "dlNumber": "DL-0420190034127",
+    "dlPhotoUrl": "…",
+    "aadhaarPhotoUrl": "…",
+    "status": "verified",
+    "submittedAt": "…"
+  },
+  "bank": {
+    "holderName": "Ravi Chauhan",
+    "accountLast4": "5849",
+    "ifscCode": "ICIC0001102",
+    "bankName": "ICICI Bank",
+    "chequePhotoUrl": "…",
+    "status": "verified",
+    "submittedAt": "…"
+  },
+  "pendingSteps": [],
+  "canGoOnline": true,
+  "dailyCheck": { "completedToday": true, "photoUrl": "…", "reward": 50 },
+  "welcomeBonus": {
+    "amount": 1000,
+    "targetTrips": 15,
+    "completedTrips": 1,
+    "expiresAt": "2026-10-03T12:22:55.000Z",
+    "status": "active",
+    "seen": true
+  },
+  "walletBalance": 362,
+  "lifetimeTrips": 1
 }
 ```
 
-`imageKey` maps to artwork bundled in the app; production can return an image URL instead.
+- `vehicle`, `kyc`, `bank` are `null` until submitted. `status` is `under_review → verified | rejected` (back-office review).
+- `pendingSteps` lists steps not yet **verified**; `canGoOnline = pendingSteps.length === 0`.
+- `rating` is `null` until the first customer rating.
+- The full bank account number is never returned.
 
-### POST /rides/quote
+### GET /driver/vehicle-types
 
-Prices every vehicle for a trip, and checks a coupon against each.
+```json
+[{ "id": "mini-truck", "name": "Mini Truck", "capacityKg": 600, "imageKey": "mini-truck" }, …]
+```
+
+Same ids as the customer app's vehicle catalogue, so offers match the driver's vehicle.
+
+### PUT /driver/vehicle → `DriverProfile`
 
 ```json
 {
-  "pickup": { "latitude": 28.628, "longitude": 77.2405 },
-  "drop": { "latitude": 28.6315, "longitude": 77.2167 },
-  "couponCode": "RYNO50"
+  "vehicleTypeId": "mini-truck",
+  "model": "Tata Ace Gold",
+  "plateNumber": "DL 1L AB 4521",
+  "rcPhotoUrl": "…",
+  "frontPhotoUrl": "…"
 }
 ```
 
-`pickup`/`drop` may be `null` (flat fares are returned). Response `data`:
+Errors: `INVALID_VEHICLE_TYPE`, `INVALID_PLATE` (Indian format, e.g. `DL 1L AB 1234`, `KA 03 MX 2814`), `INVALID_MODEL`, `PHOTO_REQUIRED`, `ONLINE` (go offline first).
+
+### PUT /driver/kyc → `DriverProfile`
 
 ```json
 {
-  "distanceKm": 3.1,
-  "couponCode": "RYNO50",
-  "options": [
-    {
-      "vehicleId": "bike",
-      "name": "Bike",
-      "description": "Up to 20 kg · Documents, food, small parcels",
-      "imageKey": "bike",
-      "etaMinutes": 8,
-      "fare": 80,
-      "coupon": { "valid": true, "discount": 40 }
+  "panNumber": "BQRPC4821K",
+  "dlNumber": "DL-0420190034127",
+  "dlPhotoUrl": "…",
+  "aadhaarPhotoUrl": "…"
+}
+```
+
+Errors: `INVALID_PAN` (`ABCDE1234F`), `INVALID_DL` (15 characters), `PHOTO_REQUIRED`.
+
+### PUT /driver/bank → `DriverProfile`
+
+```json
+{
+  "holderName": "Ravi Chauhan",
+  "accountNumber": "50100482915849",
+  "ifscCode": "ICIC0001102",
+  "chequePhotoUrl": "…"
+}
+```
+
+The server derives `bankName` from the IFSC prefix and keeps only `accountLast4` in responses. Errors: `INVALID_HOLDER`, `INVALID_ACCOUNT` (9–18 digits), `INVALID_IFSC`, `PHOTO_REQUIRED`.
+
+### POST /driver/daily-check → `DailyCheck`
+
+`{ "photoUrl": "…" }` — once per local day; credits `reward` (₹50) to the wallet as an `incentive` transaction. Error: `ALREADY_DONE`.
+
+### POST /driver/welcome-bonus/seen → `DriverProfile`
+
+Marks the intro sheet as shown. The bonus itself is credited automatically (`bonus` transaction) when `completedTrips` reaches `targetTrips` before `expiresAt`.
+
+---
+
+## 6. Availability & location
+
+### PUT /driver/status → `DriverProfile`
+
+`{ "isOnline": true }`. Going online opens an online session (used for "online time") and makes the driver eligible for dispatch. Going offline withdraws any pending offer.
+Errors: `SETUP_INCOMPLETE` (409) when `canGoOnline` is false; `ACTIVE_JOB` (409) when going offline mid-trip.
+
+### POST /driver/location
+
+Sent every ~15 s while online (`src/hooks/use-location-reporter.ts`, `expo-location` foreground watch).
+
+```json
+// request
+{ "latitude": 28.6304, "longitude": 77.2177, "heading": 182, "speedKmph": 23, "recordedAt": "2026-09-26T12:31:05.000Z" }
+// data
+{ "receivedAt": "2026-09-26T12:31:05.210Z" }
+```
+
+The server uses the latest fix for dispatch (`pickupDistanceKm`) and pushes it to the customer's `order:<id>` channel as `driver.location`.
+
+---
+
+## 7. Offers
+
+An offer is one customer order proposed to this driver. It expires at `expiresAt` (30 s) and then goes to the next driver.
+
+### GET /driver/offers → `JobOffer[]`
+
+```json
+[
+  {
+    "id": "ofr_…",
+    "orderId": "ord_…",
+    "orderNumber": "RYDFUWN",
+    "createdAt": "2026-09-26T12:34:02.000Z",
+    "expiresAt": "2026-09-26T12:34:32.000Z",
+    "vehicle": { "id": "mini-truck", "name": "Mini Truck", "imageKey": "mini-truck" },
+    "pickup": {
+      "label": "Select Citywalk, Saket District Centre, New Delhi",
+      "location": { "latitude": 28.5287, "longitude": 77.2193 },
+      "houseNumber": "House 56, Block C",
+      "contact": { "name": "Rohit Mehra", "phone": "+919811245678" }
     },
-    {
-      "vehicleId": "large-truck",
-      "name": "Large Truck",
-      "description": "Up to 2,500 kg · House shifting, heavy loads",
-      "imageKey": "large-truck",
-      "etaMinutes": 25,
-      "fare": 639,
-      "coupon": { "valid": false, "reason": "Not valid for this vehicle" }
-    }
-  ]
-}
-```
-
-Pricing (prototype): `baseFare + perKmRate × roadKm`, where road km is
-straight-line distance × 1.3 (min 1 km). The quote is for display; the order
-endpoint recomputes the price.
-
-### POST /coupons/validate
-
-```json
-{ "code": "truck150" }
-```
-
-Codes are case-insensitive. Response `data`:
-
-```json
-{
-  "code": "TRUCK150",
-  "title": "Flat ₹150 off on trucks",
-  "description": "Valid on Mini Truck, Pickup Truck and Large Truck. Min order ₹300."
-}
-```
-
-Errors: `404 INVALID_COUPON` ("Invalid coupon code"). Vehicle and minimum-order
-eligibility is reported per option by `/rides/quote`.
-
-### GET /offers/banners — _Public_
-
-Promotional banner images for home. The coupon code is printed on the image;
-banners are not tappable.
-
-```json
-[
-  {
-    "id": "banner-first-delivery",
-    "imageKey": "first-delivery",
-    "altText": "50% off your first delivery, up to ₹100. Use code RYNO50."
+    "drop": {
+      "label": "Cyber Hub, DLF Cyber City, Gurugram",
+      "location": { "latitude": 28.4955, "longitude": 77.0891 },
+      "houseNumber": "Plot 88, Service road",
+      "contact": { "name": "Arjun Kapoor", "phone": "+919958842210" }
+    },
+    "tripDistanceKm": 17.2,
+    "pickupDistanceKm": 6.4,
+    "estimatedMinutes": 57,
+    "fare": 577,
+    "driverEarning": 462,
+    "paymentMode": "cash",
+    "paymentTiming": "on-pickup"
   }
 ]
 ```
+
+`pickup`/`drop` are the customer's `OrderStop`s unchanged. `fare` is what the customer pays; `driverEarning = fare − 20 % commission`. Offers normally arrive over the socket (`offer.new`); this endpoint is the fallback/poll (every 20 s).
+
+### POST /driver/offers/:id/accept → `DriverJob`
+
+Errors: `OFFER_NOT_FOUND` (404), `OFFER_EXPIRED` (410 — expired or taken), `ACTIVE_JOB` (409).
+
+### POST /driver/offers/:id/reject
+
+`{ "reason": "Too far from me" }` → `null`. Reasons feed dispatch quality.
 
 ---
 
-## 6. Places & saved addresses
+## 8. Jobs (the trip state machine)
 
-### GET /places/search?q=
+A job is the driver-side view of the customer's order; `DriverJob.id` **is** the `orderId`, and `status` uses the shared `OrderStatus`.
 
-Known places matching the text (name or address). Returns `[]` for an empty query.
-
-```json
-[
-  {
-    "id": "place-cp",
-    "name": "Connaught Place",
-    "address": "Rajiv Chowk, New Delhi",
-    "location": { "latitude": 28.6315, "longitude": 77.2167 }
-  }
-]
+```
+heading_to_pickup ──arrive-pickup──▶ arrived_at_pickup ──verify-pickup──▶ pickup_complete
+        │                                   │                                   │
+        └──────────── cancel ───────────────┘                          arrive-drop
+                                                                                ▼
+                               delivered ◀──verify-drop── arrived_at_drop
 ```
 
-Free text that no place matches is resolved on the device (phone geocoder) in
-the prototype; production should proxy a places API (e.g. Ola Maps) here.
-
-### GET /me/addresses
-
-The user's addresses, most recently used first (max 12).
-
-```json
-[
-  {
-    "id": "addr_…",
-    "name": "Connaught Place",
-    "address": "Rajiv Chowk, New Delhi",
-    "label": "recent",
-    "isFavorite": false,
-    "location": { "latitude": 28.6315, "longitude": 77.2167 },
-    "contact": { "name": "Ravi", "phone": "9876543210", "houseNumber": "" },
-    "lastUsedAt": "2026-09-23T10:00:00.000Z"
-  }
-]
-```
-
-`label` is `recent | home | work | other`. `contact` is the sender/receiver last
-used at this address, so the next booking pre-fills it.
-
-### POST /me/addresses
-
-Saves an address, or — if one with the same name and address exists — marks it
-as just used. Called whenever the user picks an address.
-
-```json
-{
-  "name": "Connaught Place",
-  "address": "Rajiv Chowk, New Delhi",
-  "location": { "latitude": 28.6315, "longitude": 77.2167 }
-}
-```
-
-Returns the `SavedAddress` (`201` when created).
-
-### PATCH /me/addresses/:id
-
-Edit name, address, location or label. Any subset of:
-
-```json
-{
-  "name": "Office",
-  "address": "Tower B, Cyber City",
-  "location": { "latitude": 28.49, "longitude": 77.08 },
-  "label": "work"
-}
-```
-
-### PUT /me/addresses/:id/contact
-
-```json
-{ "name": "Ravi", "phone": "9876543210", "houseNumber": "A-42" }
-```
-
-### POST /me/addresses/:id/favorite
-
-Toggles `isFavorite`. Returns the address.
-
-### DELETE /me/addresses/:id
-
-Returns `data: null`.
-
----
-
-## 7. Orders
-
-### The Order model
+### `DriverJob`
 
 ```json
 {
   "id": "ord_…",
-  "number": "RY4F2K9",
-  "createdAt": "2026-09-23T10:00:00.000Z",
-  "status": "heading_to_pickup",
-  "pickup": {
-    "label": "Hans Bhawan Wing-1, IP Estate, New Delhi",
-    "location": { "latitude": 28.628, "longitude": 77.2405 },
-    "houseNumber": "",
-    "contact": { "name": "Akash", "phone": "9876543210" }
-  },
-  "drop": {
-    "label": "Connaught Place",
-    "location": { "latitude": 28.6315, "longitude": 77.2167 },
-    "houseNumber": "A-42",
-    "contact": { "name": "Ravi", "phone": "9123456780" }
-  },
-  "vehicle": { "id": "bike", "name": "Bike", "imageKey": "bike" },
-  "pricing": {
-    "fare": 80,
-    "discount": 40,
-    "payable": 40,
-    "couponCode": "RYNO50",
-    "distanceKm": 3.1
-  },
-  "payment": { "methodLabel": "Cash", "timing": "on-delivery" },
-  "etaMinutes": 8,
-  "driverAssignAt": "2026-09-23T10:00:14.000Z",
-  "driver": {
-    "id": "drv-3",
-    "name": "Suresh Yadav",
-    "rating": 4.7,
-    "phone": "+919845010003",
-    "vehicleLabel": "Bike",
-    "vehiclePlate": "HR 26 BK 5521"
-  },
-  "pickupOtp": "4821",
-  "deliveryOtp": "7390",
-  "route": [
-    { "latitude": 28.628, "longitude": 77.2405 },
-    { "latitude": 28.6315, "longitude": 77.2167 }
-  ],
-  "rating": null,
-  "cancelledAt": null
-}
-```
-
-| `status`            | Meaning                     | Moves on when                      |
-| ------------------- | --------------------------- | ---------------------------------- |
-| `searching`         | Looking for a driver        | A driver accepts                   |
-| `heading_to_pickup` | Driver on the way to pickup | Driver enters the **pickup OTP**   |
-| `pickup_complete`   | Package on the way to drop  | Driver enters the **delivery OTP** |
-| `delivered`         | Done                        | —                                  |
-| `cancelled`         | Cancelled by the customer   | —                                  |
-
-`driver` is `null` until assigned. `driverAssignAt` is the (estimated)
-assignment time, used for the "~N min" countdown.
-
-### POST /orders
-
-```json
-{
+  "number": "RYDAHKW",
+  "status": "arrived_at_pickup",
+  "acceptedAt": "…",
+  "vehicle": { "id": "mini-truck", "name": "Mini Truck", "imageKey": "mini-truck" },
   "pickup": {
     "label": "…",
     "location": { "latitude": 28.628, "longitude": 77.2405 },
-    "houseNumber": "",
-    "contact": { "name": "Akash", "phone": "9876543210" }
+    "houseNumber": "Gate 3, Warehouse 7",
+    "contact": { "name": "Sunita Rao", "phone": "+919876011223" }
   },
   "drop": {
     "label": "…",
-    "location": { "latitude": 28.6315, "longitude": 77.2167 },
-    "houseNumber": "A-42",
-    "contact": { "name": "Ravi", "phone": "9123456780" }
+    "location": { "latitude": 28.5677, "longitude": 77.2433 },
+    "houseNumber": "House 56, Block C",
+    "contact": { "name": "Ananya Gupta", "phone": "+919899104532" }
   },
-  "vehicleId": "bike",
-  "couponCode": "RYNO50",
-  "paymentMethodId": "cash",
-  "paymentTiming": "on-delivery"
-}
-```
-
-The server recomputes fare and discount (an ineligible coupon is ignored),
-generates both OTPs, and returns the `Order` with `201`.
-Errors: `422 INVALID_STOP | INVALID_VEHICLE | INVALID_PAYMENT_METHOD`.
-
-### GET /orders
-
-The user's orders, newest first. The app polls every 15 s only while an order
-is active, and pull-to-refresh on the Orders tab.
-
-### GET /orders/:id
-
-One order. `404 ORDER_NOT_FOUND` if it isn't the caller's.
-
-### POST /orders/:id/cancel
-
-Allowed while `searching` or `heading_to_pickup`. Returns the cancelled order.
-Errors: `409 CANNOT_CANCEL`.
-
-### POST /orders/:id/rating
-
-```json
-{ "rating": 5 }
-```
-
-Only after `delivered`. Errors: `409 NOT_DELIVERED`, `422 INVALID_RATING`.
-
-### POST /orders/:id/share
-
-Creates a receiver tracking link valid for 24 hours.
-
-```json
-{
-  "token": "mfx2k9ab3",
-  "url": "https://ryno.app/track/mfx2k9ab3",
-  "expiresAt": "2026-09-24T10:00:00.000Z"
-}
-```
-
-### GET /tracking/:token — _Public_
-
-What the receiver sees. Contains no sender phone, pickup OTP, pricing or
-payment details.
-
-```json
-{
-  "orderNumber": "RY4F2K9",
-  "status": "pickup_complete",
-  "senderName": "Akash",
-  "pickupLabel": "Hans Bhawan Wing-1, IP Estate, New Delhi",
-  "dropLabel": "Connaught Place",
-  "vehicleName": "Bike",
-  "vehicleImageKey": "bike",
-  "etaMinutes": 8,
-  "driverAssignAt": "2026-09-23T10:00:14.000Z",
-  "driver": {
-    "name": "Suresh Yadav",
-    "rating": 4.7,
-    "phone": "+919845010003",
-    "vehicleLabel": "Bike",
-    "vehiclePlate": "HR 26 BK 5521"
-  },
-  "deliveryOtp": "7390",
+  "sender": { "name": "Sunita Rao", "phone": "+919876011223" },
   "route": [
     { "latitude": 28.628, "longitude": 77.2405 },
-    { "latitude": 28.6315, "longitude": 77.2167 }
-  ]
-}
-```
-
-Errors: `404 LINK_NOT_FOUND`, `410 LINK_EXPIRED`. Live updates: subscribe to
-`tracking:<token>` on the [tracking socket](#8-realtime-tracking-websocket).
-
----
-
-## 8. Realtime tracking (WebSocket)
-
-**URL:** `wss://api.ryno.app/v1/ws?token=<accessToken>` (`EXPO_PUBLIC_WS_URL`).
-The token is optional: without it only `tracking:<token>` channels (shared
-links) can be joined.
-
-One connection per app; the client subscribes to channels while a tracking
-screen is open and unsubscribes when it closes. After a disconnect it
-reconnects with exponential backoff (1 s → 30 s) and resubscribes.
-
-### Client → server
-
-```json
-{ "type": "subscribe", "channel": "order:ord_123" }
-{ "type": "unsubscribe", "channel": "order:ord_123" }
-```
-
-| Channel                 | Who      | Auth                              |
-| ----------------------- | -------- | --------------------------------- |
-| `order:<orderId>`       | Sender   | Bearer token of the order's owner |
-| `tracking:<shareToken>` | Receiver | The share token itself            |
-
-### Server → client
-
-Every message is `{ "channel": "…", "event": { … } }`.
-
-On subscribe, the server sends the current `order.status` immediately, then:
-
-#### order.status
-
-Sent when the status or driver changes. The app refetches `GET /orders/:id`
-(or `GET /tracking/:token`) on receipt.
-
-```json
-{
-  "channel": "order:ord_123",
-  "event": {
-    "type": "order.status",
-    "status": "heading_to_pickup",
-    "driver": {
-      "id": "drv-3",
-      "name": "Suresh Yadav",
-      "rating": 4.7,
-      "phone": "+919845010003",
-      "vehicleLabel": "Bike",
-      "vehiclePlate": "HR 26 BK 5521"
-    },
-    "at": "2026-09-23T10:00:14.000Z"
-  }
-}
-```
-
-#### driver.location
-
-Every 2–5 s while the driver is moving (`heading_to_pickup`,
-`pickup_complete`). `path` is the remaining route of the current leg.
-
-```json
-{
-  "channel": "order:ord_123",
-  "event": {
-    "type": "driver.location",
-    "location": { "latitude": 28.6301, "longitude": 77.2352 },
-    "leg": "to_pickup",
-    "path": [
-      { "latitude": 28.6301, "longitude": 77.2352 },
-      { "latitude": 28.628, "longitude": 77.2405 }
-    ],
-    "updatedAt": "2026-09-23T10:03:00.000Z"
-  }
-}
-```
-
-Location is not persisted in the app cache — it's only drawn on the map.
-
-### Background
-
-The socket is only open while a tracking screen is visible. Status changes
-while the app is backgrounded should be delivered as push notifications
-(`expo-notifications`) with `{ "orderId": "…" }` so tapping opens tracking.
-
----
-
-## 9. Wallet & payment methods
-
-### GET /me/wallet
-
-```json
-{
-  "balance": 500,
-  "defaultPaymentMethodId": "cash",
-  "paymentMethods": [
-    { "id": "cash", "type": "cash", "label": "Cash", "subtitle": "Pay the driver directly" },
-    { "id": "upi_…", "type": "upi", "label": "akash@okaxis", "subtitle": "UPI" }
+    { "latitude": 28.5677, "longitude": 77.2433 }
   ],
+  "tripDistanceKm": 8.7,
+  "estimatedMinutes": 34,
+  "fare": 390,
+  "driverEarning": 312,
+  "commission": 78,
+  "payment": {
+    "mode": "prepaid",
+    "timing": "on-delivery",
+    "amount": 390,
+    "methodLabel": "Card",
+    "status": "collected",
+    "collectedVia": "online",
+    "collectedAt": "…"
+  },
+  "pickupPhotoUrl": null,
+  "dropPhotoUrl": null,
+  "arrivedAtPickupAt": "…",
+  "pickedUpAt": null,
+  "arrivedAtDropAt": null,
+  "deliveredAt": null,
+  "cancelledAt": null,
+  "cancelReason": null,
+  "unreadMessages": 1
+}
+```
+
+The OTPs are **never** sent to the driver app — the driver must get them from the sender/receiver.
+
+| Endpoint                              | Body                                     | From → to                                           | Errors                                             |
+| ------------------------------------- | ---------------------------------------- | --------------------------------------------------- | -------------------------------------------------- |
+| `GET /driver/jobs/active`             | —                                        | returns the in-progress job or `null`               | —                                                  |
+| `GET /driver/jobs/:id`                | —                                        | any job of this driver (trip summary)               | `JOB_NOT_FOUND`                                    |
+| `POST /driver/jobs/:id/arrive-pickup` | —                                        | `heading_to_pickup → arrived_at_pickup`             | `INVALID_STATE`, `ORDER_CANCELLED`                 |
+| `POST /driver/jobs/:id/verify-pickup` | `{ "otp": "3124", "photoUrl": "…" }`     | `arrived_at_pickup → pickup_complete`               | `INVALID_OTP`, `PHOTO_REQUIRED`, `PAYMENT_PENDING` |
+| `POST /driver/jobs/:id/arrive-drop`   | —                                        | `pickup_complete → arrived_at_drop`                 | `INVALID_STATE`                                    |
+| `POST /driver/jobs/:id/verify-drop`   | `{ "otp": "5270", "photoUrl": "…" }`     | `arrived_at_drop → delivered`                       | `INVALID_OTP`, `PHOTO_REQUIRED`, `PAYMENT_PENDING` |
+| `POST /driver/jobs/:id/cancel`        | `{ "reason": "Customer not reachable" }` | `heading_to_pickup / arrived_at_pickup → cancelled` | `REASON_REQUIRED`, `INVALID_STATE`                 |
+
+Every call returns the updated `DriverJob`. On `delivered` the server writes the ledger (§11), records the customer rating and schedules the next offer.
+
+---
+
+## 9. Payment collection
+
+Only for `payment.mode === "cash"`. The stop that matches `payment.timing` (`on-pickup` → pickup, `on-delivery` → drop) cannot be verified until `payment.status === "collected"` (`PAYMENT_PENDING`).
+
+### POST /driver/jobs/:id/payment/qr → `PaymentQr`
+
+```json
+{
+  "upiUri": "upi://pay?pa=rynologistics@icici&pn=RYNO%20Logistics&am=577.00&cu=INR&tr=RYDFUWN&tn=RYNO%20order%20RYDFUWN",
+  "payeeVpa": "rynologistics@icici",
+  "payeeName": "RYNO Logistics",
+  "amount": 577,
+  "reference": "RYDFUWN",
+  "expiresAt": "2026-09-26T12:45:00.000Z"
+}
+```
+
+The app renders `upiUri` as a QR (`react-native-qrcode-svg`) — any UPI app can scan it. Calling again returns the same open QR. When the payment gateway's webhook confirms the payment, the server marks it `collectedVia: "upi"` and pushes `payment.received` + `job.updated`. Error: `NOTHING_TO_COLLECT`.
+
+### POST /driver/jobs/:id/payment/cash → `DriverJob`
+
+Driver confirms the cash is in hand. Sets `collectedVia: "cash"`.
+
+---
+
+## 10. Chat
+
+Masked chat between the driver and the sender, per order.
+
+| Endpoint                              | Body                                      | Returns         |
+| ------------------------------------- | ----------------------------------------- | --------------- |
+| `GET /driver/jobs/:id/messages`       | —                                         | `ChatMessage[]` |
+| `POST /driver/jobs/:id/messages`      | `{ "text": "5 mins away" }` (≤ 500 chars) | `ChatMessage`   |
+| `POST /driver/jobs/:id/messages/read` | —                                         | `null`          |
+
+```json
+{
+  "id": "msg_…",
+  "orderId": "ord_…",
+  "sender": "customer",
+  "text": "Okay, no problem. I will be ready.",
+  "createdAt": "…",
+  "readAt": null
+}
+```
+
+New customer messages arrive as `chat.message` over the socket. Sending is only allowed while the job is active.
+
+---
+
+## 11. Earnings, wallet & trips
+
+### Wallet accounting (ledger)
+
+| Event                           | Transaction `kind` | Amount                                |
+| ------------------------------- | ------------------ | ------------------------------------- |
+| Delivered, paid online / UPI QR | `trip_earning`     | `+driverEarning`                      |
+| Delivered, paid in cash         | `cash_commission`  | `−commission` (driver keeps the cash) |
+| Daily vehicle check             | `incentive`        | `+50`                                 |
+| Welcome bonus unlocked          | `bonus`            | `+1000`                               |
+| Withdrawal to bank              | `payout`           | `−amount`                             |
+
+Balance = sum of the ledger (can go negative after cash trips).
+
+### GET /driver/wallet → `DriverWallet`
+
+```json
+{
+  "balance": 362,
+  "minPayout": 100,
+  "bankLabel": "ICICI Bank •• 5849",
   "transactions": [
     {
       "id": "txn_…",
-      "title": "Wallet Top Up",
-      "createdAt": "2026-09-10T10:00:00.000Z",
-      "amount": 500,
-      "kind": "credit"
+      "kind": "trip_earning",
+      "title": "Trip RYDAHKW",
+      "amount": 312,
+      "createdAt": "…",
+      "orderNumber": "RYDAHKW"
+    },
+    {
+      "id": "txn_…",
+      "kind": "incentive",
+      "title": "Daily vehicle check",
+      "amount": 50,
+      "createdAt": "…",
+      "orderNumber": null
     }
   ]
 }
 ```
 
-`defaultPaymentMethodId` is the method used for new bookings.
+### POST /driver/wallet/payouts → `DriverWallet`
 
-### POST /me/wallet/topups
+`{ "amount": 362 }`. Errors: `BANK_NOT_VERIFIED`, `BELOW_MINIMUM`, `INSUFFICIENT_BALANCE`.
 
-```json
-{ "amount": 500 }
-```
-
-Returns the updated wallet (`201`). Production: create a payment intent with
-the gateway first and credit the wallet from the gateway's webhook.
-Errors: `422 INVALID_AMOUNT`.
-
-### POST /me/payment-methods
-
-One of:
+### GET /driver/earnings?period=today|week|month → `EarningsSummary`
 
 ```json
-{ "type": "upi", "upiId": "akash@okaxis" }
-{ "type": "card", "cardNumber": "4111111111111111" }
-{ "type": "paytm" }
+{
+  "period": "week",
+  "from": "…", "to": "…",
+  "trips": 1,
+  "totalEarnings": 362,
+  "tripEarnings": 312,
+  "incentives": 50,
+  "cashCollected": 0,
+  "onlineMinutes": 14,
+  "buckets": [{ "label": "Sun", "amount": 0 }, …, { "label": "Sat", "amount": 362 }]
+}
 ```
 
-The new method becomes the default. Returns the updated wallet (`201`).
-Production: never send raw card numbers — tokenize with the payment gateway's
-SDK and send the token. Errors: `422 INVALID_UPI | INVALID_CARD`.
+`buckets` are the last 7 days for `today`/`week`, one per week for `month`.
 
-### PUT /me/payment-methods/default
+### GET /driver/trips → `TripSummary[]`
+
+Delivered and cancelled jobs, newest first:
 
 ```json
-{ "paymentMethodId": "upi_…" }
+[{ "id": "ord_…", "number": "RYDAHKW", "status": "delivered", "pickupLabel": "…", "dropLabel": "…", "vehicle": { … }, "tripDistanceKm": 8.7, "fare": 390, "driverEarning": 312, "paymentMode": "prepaid", "endedAt": "…" }]
 ```
 
-Returns the updated wallet. Errors: `404 METHOD_NOT_FOUND`.
+### GET /driver/support → `SupportInfo`
+
+`{ "phone": "+911800120120", "email": "partners@ryno.in", "faqs": [{ "id": "…", "question": "…", "answer": "…" }] }`
 
 ---
 
-## 10. Content
+## 12. Uploads
 
-### GET /me/account-summary
+### POST /uploads → `UploadedFile`
 
-```json
-{
-  "rating": 4.93,
-  "promoItems": [
-    {
-      "id": "safety",
-      "title": "Safety check-up",
-      "subtitle": "Learn ways to make rides safer",
-      "icon": "checkmark.shield.fill"
-    }
-  ],
-  "menuLinks": [{ "id": "refer", "label": "Refer & Earn" }]
-}
-```
-
-`icon` is an SF Symbol name the app maps to a native icon.
-
-### GET /support — _Public_
+Real backend: `multipart/form-data` with `kind` and `file` (JPEG). `kind` ∈ `pickup_photo | drop_photo | daily_check | vehicle_rc | vehicle_front | kyc_dl | kyc_aadhaar | bank_cheque`.
 
 ```json
-{
-  "phone": "+911800000000",
-  "email": "support@ryno.in",
-  "faqs": [{ "id": "faq-otp", "question": "Why do I need to share the pickup OTP?", "answer": "…" }]
-}
+{ "id": "upl_…", "url": "https://cdn.ryno.app/u/…", "kind": "pickup_photo", "createdAt": "…" }
 ```
+
+The JSON APIs take the returned `url`. In mock mode the photo is copied into the app's document directory and that `file://` URI is registered instead (`src/lib/api/uploads.ts`). Recommended production variant: pre-signed S3 URLs (see `../Architecture.md`).
 
 ---
 
-## 11. Driver App API & lifecycle
+## 13. Realtime channel
 
-The Driver App runs against the in-app mock server (`src/mocks/handlers/driver.ts`) backed by persistent tables in local storage (`kvStorage` via `src/mocks/db.ts`). When connecting to a production environment, the client endpoints in `src/lib/api/driver.ts` seamlessly target the corresponding REST backend.
-
-### 11.1 Driver job lifecycle state machine
-
-```mermaid
-stateDiagram-v2
-  [*] --> Offline
-  Offline --> Online : PUT /driver/status { isOnline: true }
-  Online --> IncomingRequest : Server push / Polling
-  IncomingRequest --> Online : POST /driver/requests/:id/decline
-  IncomingRequest --> Accepted : POST /driver/requests/:id/accept
-  Accepted --> ArrivedPickup : PUT /driver/active-job/status { status: "arrived_pickup" }
-  ArrivedPickup --> ParcelPicked : POST /driver/active-job/pickup-photo + PUT status: "parcel_picked"
-  ParcelPicked --> OutForDelivery : PUT /driver/active-job/status { status: "out_for_delivery" }
-  OutForDelivery --> ArrivedDrop : PUT /driver/active-job/status { status: "arrived_drop" }
-  ArrivedDrop --> PaymentCollection : COD Order (pending)
-  ArrivedDrop --> Delivered : Prepaid Order
-  PaymentCollection --> Delivered : POST /driver/active-job/collect-payment
-  Delivered --> Completed : POST /driver/active-job/complete
-  Completed --> Online : Earnings credited to driver wallet
-  Online --> Offline : PUT /driver/status { isOnline: false }
-```
-
-### 11.2 Endpoints index
-
-| Method | Endpoint                             | Description                                                              |
-| ------ | ------------------------------------ | ------------------------------------------------------------------------ |
-| `GET`  | `/driver/profile`                    | Get driver profile, ratings, vehicle info, earnings summary              |
-| `PUT`  | `/driver/status`                     | Toggle driver duty status (`isOnline: boolean`)                          |
-| `GET`  | `/driver/requests`                   | Fetch queued / incoming delivery dispatch requests                       |
-| `POST` | `/driver/requests/:id/accept`        | Accept a dispatched delivery request; creates active job                 |
-| `POST` | `/driver/requests/:id/decline`       | Decline a dispatched request                                             |
-| `GET`  | `/driver/active-job`                 | Fetch the currently assigned active delivery job                         |
-| `PUT`  | `/driver/active-job/status`          | Update delivery progression milestone                                    |
-| `POST` | `/driver/active-job/pickup-photo`    | Attach verified parcel photo at pickup                                   |
-| `POST` | `/driver/active-job/collect-payment` | Mark cash/UPI payment collected for COD shipments                        |
-| `POST` | `/driver/active-job/complete`        | Complete job, credit earnings to driver wallet, archive to past trips    |
-| `POST` | `/driver/active-job/messages`        | Send driver-to-customer chat message                                     |
-| `POST` | `/driver/vehicle`                    | Save driver vehicle registration, RC, and model details                  |
-| `POST` | `/driver/kyc`                        | Submit driving licence, Aadhaar, and PAN documentation                   |
-| `POST` | `/driver/bank`                       | Submit bank account & UPI payout details                                 |
-| `POST` | `/driver/daily-check`                | Submit daily vehicle inspection checklist (tires, brakes, battery, fuel) |
-| `GET`  | `/driver/past-trips`                 | Fetch historical completed deliveries and earnings                       |
-| `POST` | `/driver/wallet/withdraw`            | Request payout transfer to linked bank/UPI account                       |
-
-### 11.3 Request & response schemas
-
-#### GET /driver/profile
-
-Returns the current authenticated driver profile.
+Connect `wss://api.ryno.app/v1/ws?token=<accessToken>`, then:
 
 ```json
-{
-  "id": "driver_001",
-  "name": "Rajesh Kumar",
-  "phone": "+91 98765 43210",
-  "rating": 4.9,
-  "totalTrips": 482,
-  "isOnline": true,
-  "todayEarnings": 1420,
-  "walletBalance": 3850,
-  "vehicle": {
-    "type": "2-Wheeler (EV Bike)",
-    "vehicleNumber": "KA 01 EK 4920",
-    "model": "Ather 450X"
-  }
-}
+{ "type": "subscribe", "channel": "driver:drv_123" }
 ```
 
-#### PUT /driver/status
-
-Update online/offline duty status.
-
-Request:
-
-```json
-{
-  "isOnline": true
-}
-```
-
-Response:
-
-```json
-{
-  "isOnline": true
-}
-```
-
-#### GET /driver/requests
-
-Fetch pending delivery dispatch offers.
-
-Response:
-
-```json
-[
-  {
-    "id": "req_101",
-    "pickup": {
-      "name": "Sony World Signal, Koramangala 4th Block",
-      "address": "100 Feet Rd, Koramangala, Bengaluru, Karnataka 560034",
-      "contactName": "Aarav Sharma",
-      "contactPhone": "+91 98111 22334"
-    },
-    "drop": {
-      "name": "Indiranagar 100ft Road",
-      "address": "12th Main Rd, HAL 2nd Stage, Indiranagar, Bengaluru, Karnataka 560038",
-      "contactName": "Pooja Reddy",
-      "contactPhone": "+91 98777 66554"
-    },
-    "distanceKm": 4.2,
-    "estimatedEarnings": 145,
-    "packageWeight": "3.5 kg",
-    "packageType": "Electronics & Documents",
-    "expiresInSeconds": 45
-  }
-]
-```
-
-#### POST /driver/requests/:id/accept
-
-Converts a dispatched request into an assigned active job.
-
-Response:
-
-```json
-{
-  "id": "job_101",
-  "customerName": "Aarav Sharma",
-  "customerPhone": "+91 98111 22334",
-  "pickup": {
-    "name": "Sony World Signal, Koramangala 4th Block",
-    "address": "100 Feet Rd, Koramangala, Bengaluru, Karnataka 560034"
-  },
-  "drop": {
-    "name": "Indiranagar 100ft Road",
-    "address": "12th Main Rd, HAL 2nd Stage, Indiranagar, Bengaluru, Karnataka 560038"
-  },
-  "earnings": 145,
-  "status": "accepted",
-  "paymentMethod": "Cash on Delivery",
-  "paymentCollected": false,
-  "otp": "4829"
-}
-```
-
-#### PUT /driver/active-job/status
-
-Advance the active delivery milestone. Valid transitions:
-`accepted` $\rightarrow$ `arrived_pickup` $\rightarrow$ `parcel_picked` $\rightarrow$ `out_for_delivery` $\rightarrow$ `arrived_drop` $\rightarrow$ `delivered`.
-
-Request:
-
-```json
-{
-  "status": "arrived_pickup"
-}
-```
-
-Response:
-
-```json
-{
-  "status": "arrived_pickup"
-}
-```
-
-#### POST /driver/active-job/collect-payment
-
-Mark COD payment collected from the recipient.
-
-Response:
-
-```json
-{
-  "paymentCollected": true
-}
-```
-
-#### POST /driver/active-job/complete
-
-Complete the trip. Adds `earnings` to `driverProfile.todayEarnings` and `walletBalance`, creates a record in `driverPastTrips`, and clears `driverActiveJob`.
-
-Response:
-
-```json
-{
-  "completed": true,
-  "earned": 145,
-  "totalEarnings": 1565
-}
-```
-
-#### POST /driver/wallet/withdraw
-
-Request balance payout.
-
-Request:
-
-```json
-{
-  "amount": 1000
-}
-```
-
-Response:
-
-```json
-{
-  "success": true,
-  "amount": 1000,
-  "newBalance": 2850
-}
-```
-
-#### POST /driver/active-job/pickup-photo
-
-Upload and attach parcel verification photo at pickup.
-
-Request:
-
-```json
-{
-  "pickupPhoto": "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80"
-}
-```
-
-Response:
-
-```json
-{
-  "success": true,
-  "pickupPhoto": "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80"
-}
-```
-
-#### POST /driver/active-job/messages
-
-Send an in-app driver-to-customer chat message for the active trip.
-
-Request:
-
-```json
-{
-  "text": "I have arrived at the main gate."
-}
-```
-
-Response (`201`):
-
-```json
-{
-  "id": "msg_904",
-  "sender": "driver",
-  "text": "I have arrived at the main gate.",
-  "time": "4:42 PM",
-  "status": "Delivered"
-}
-```
-
-#### POST /driver/vehicle
-
-Submit vehicle model, registration number, and fuel/RC details.
-
-Request:
-
-```json
-{
-  "vehicleType": "Mini Truck",
-  "vehicleNumber": "KA 03 MX 2814",
-  "model": "Tata Ace Gold",
-  "fuelType": "Diesel / CNG",
-  "rcNumber": "RC-KA03-2023-8841"
-}
-```
-
-Response (`200`):
-
-```json
-{
-  "success": true,
-  "vehicle": {
-    "vehicleType": "Mini Truck",
-    "vehicleNumber": "KA 03 MX 2814",
-    "model": "Tata Ace Gold"
-  }
-}
-```
-
-#### POST /driver/kyc
-
-Submit driver identity verification documents (Driving Licence, Aadhaar, PAN).
-
-Request:
-
-```json
-{
-  "dlNumber": "DL-0420110098421",
-  "aadhaarNumber": "XXXX-XXXX-4912",
-  "panNumber": "ABCDE1234F"
-}
-```
-
-Response (`200`):
-
-```json
-{
-  "success": true,
-  "kycStatus": "verified"
-}
-```
-
-#### POST /driver/bank
-
-Link bank account and UPI VPA for automated daily driver payouts.
-
-Request:
-
-```json
-{
-  "accountHolder": "Arun Kumar",
-  "accountNumber": "501002394821",
-  "ifscCode": "HDFC0000128",
-  "bankName": "HDFC Bank",
-  "upiId": "arun.kumar@okhdfcbank"
-}
-```
-
-Response (`200`):
-
-```json
-{
-  "success": true,
-  "bankStatus": "verified",
-  "last4": "4821"
-}
-```
-
-#### POST /driver/daily-check
-
-Submit the daily shift safety and vehicle condition inspection checklist.
-
-Request:
-
-```json
-{
-  "selfieUri": "file:///path/to/selfie.jpg",
-  "tiresChecked": true,
-  "brakesChecked": true,
-  "lightsChecked": true,
-  "fuelBatteryOk": true
-}
-```
-
-Response (`200`):
-
-```json
-{
-  "success": true,
-  "bonusCredited": 50,
-  "newWalletBalance": 8713
-}
-```
-
-#### GET /driver/past-trips
-
-Fetch completed trips history with fares, timestamps, and route stops.
-
-Response:
-
-```json
-[
-  {
-    "id": "RY2048-4821",
-    "pickup": "Hans Bhawan Wing-1",
-    "drop": "DLF Cyber City",
-    "dateStr": "Today, 4:40 PM",
-    "status": "Completed",
-    "fare": 524,
-    "distanceKm": 18.4,
-    "vehicleIconKey": "mini-truck"
-  },
-  {
-    "id": "RY2841",
-    "pickup": "Indiranagar",
-    "drop": "Whitefield",
-    "dateStr": "21 Sep, 6:42 PM",
-    "status": "Completed",
-    "fare": 620,
-    "distanceKm": 14.2,
-    "vehicleIconKey": "mini-truck"
-  }
-]
-```
+Frames are `{ "channel": "driver:drv_123", "event": { … } }`. Events (`src/lib/realtime/driver-events.ts`):
+
+| `event.type`       | Payload                                       | App reaction                                          |
+| ------------------ | --------------------------------------------- | ----------------------------------------------------- |
+| `offer.new`        | `{ offer: JobOffer }`                         | Adds to offers cache; home opens the request screen   |
+| `offer.expired`    | `{ offerId }`                                 | Removes the offer                                     |
+| `job.updated`      | `{ job: DriverJob }`                          | Replaces the job in cache (e.g. customer cancelled)   |
+| `chat.message`     | `{ message: ChatMessage }`                    | Appends to the chat                                   |
+| `payment.received` | `{ orderId, amount, via: "upi" \| "online" }` | Refetches the job; QR screen shows "Payment received" |
+| `profile.updated`  | `{}`                                          | Refetches profile + wallet (verification done, bonus) |
+
+The client reconnects with exponential backoff (1 s → 30 s) and resubscribes (`src/lib/realtime/driver-socket.ts`). REST polling remains the fallback.
 
 ---
 
-### 11.4 Local storage persistence schema (`kvStorage`)
+## 14. Error codes
 
-The in-app mock server saves table records via `src/mocks/db.ts` into key-value storage:
+| Code                                                                                                                                              | HTTP    | Meaning                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------- |
+| `UNAUTHORIZED`                                                                                                                                    | 401     | Missing/expired token — app signs out    |
+| `SETUP_INCOMPLETE`                                                                                                                                | 409     | Vehicle/KYC/bank not verified            |
+| `ACTIVE_JOB`                                                                                                                                      | 409     | Action needs no job in progress          |
+| `ONLINE`                                                                                                                                          | 409     | Go offline before changing the vehicle   |
+| `OFFER_NOT_FOUND`                                                                                                                                 | 404     | Unknown offer                            |
+| `OFFER_EXPIRED`                                                                                                                                   | 410     | Offer expired or taken by another driver |
+| `JOB_NOT_FOUND`                                                                                                                                   | 404     | Not this driver's job                    |
+| `INVALID_STATE`                                                                                                                                   | 409     | Step already done / out of order         |
+| `ORDER_CANCELLED`                                                                                                                                 | 409     | Customer cancelled                       |
+| `INVALID_OTP`                                                                                                                                     | 422     | Wrong or malformed OTP                   |
+| `PHOTO_REQUIRED`                                                                                                                                  | 422     | Proof photo missing                      |
+| `PAYMENT_PENDING`                                                                                                                                 | 409     | Cash not collected for this stop         |
+| `NOTHING_TO_COLLECT`                                                                                                                              | 409     | Order already paid                       |
+| `REASON_REQUIRED`                                                                                                                                 | 422     | Cancel without a reason                  |
+| `INVALID_PLATE` / `INVALID_PAN` / `INVALID_DL` / `INVALID_IFSC` / `INVALID_ACCOUNT` / `INVALID_HOLDER` / `INVALID_MODEL` / `INVALID_VEHICLE_TYPE` | 422     | Onboarding validation                    |
+| `ALREADY_DONE`                                                                                                                                    | 409     | Daily check already submitted today      |
+| `BANK_NOT_VERIFIED` / `BELOW_MINIMUM` / `INSUFFICIENT_BALANCE`                                                                                    | 409/422 | Payout rules                             |
 
-| Storage Key                 | Type                           | Description                                                  |
-| --------------------------- | ------------------------------ | ------------------------------------------------------------ |
-| `mock_db_driver_profile`    | `Table<DriverProfileModel>`    | Driver credentials, ratings, duty switch, and wallet balance |
-| `mock_db_driver_requests`   | `Table<DriverJobRequestModel>` | Dispatched available delivery pool                           |
-| `mock_db_driver_active_job` | `Table<DriverActiveJobModel>`  | Currently accepted delivery and milestone state              |
-| `mock_db_driver_past_trips` | `Table<DriverPastTripModel>`   | Historical delivery records and payout logs                  |
-| `driver_app_state_v1`       | `DriverStoreState`             | Zustand offline persistence mirror for instant warm startup  |
+---
 
-### 11.5 Error codes
+## 15. Mock mode
 
-| Status | Code                  | Description                                                         |
-| ------ | --------------------- | ------------------------------------------------------------------- |
-| `400`  | `INVALID_JOB_STATUS`  | Milestone progression not allowed from current job status           |
-| `404`  | `JOB_NOT_FOUND`       | Dispatched delivery request or active job ID does not exist         |
-| `422`  | `INVALID_OTP`         | Provided pickup or delivery verification OTP does not match         |
-| `422`  | `INSUFFICIENT_FUNDS`  | Requested payout withdrawal amount exceeds available wallet balance |
-| `422`  | `PAYMENT_UNCOLLECTED` | Cannot complete COD delivery without payment confirmation           |
+With `EXPO_PUBLIC_API_URL` unset, `src/lib/api/client.ts` uses the axios mock adapter (`src/mocks/adapter.ts`, 250–650 ms latency) and `src/lib/realtime/driver-socket.ts` uses `src/mocks/realtime.ts`. Data persists in MMKV under `mock_driver_db_v1:*`.
+
+The mock plays the roles the real backend and the customer app would:
+
+- **Back office**: submitted documents move `under_review → verified` after ~12 s.
+- **Dispatch**: while online and idle, a new offer arrives 5–20 s after the last one, built from real Delhi NCR places near the driver's GPS and priced with the customer app's rate card (`src/mocks/seed.ts`, `src/mocks/pricing.ts`).
+- **Customer**: the sender greets the driver after acceptance and replies to messages; rates the trip after delivery.
+- **Payment gateway**: a UPI QR is "paid" 12–18 s after it is shown.
+
+Only one mock-only endpoint exists — `GET /dev/jobs/:id/otps` — used for the "Demo mode · sender's code is …" hint on the verification screens, because no second app is connected to read the OTP from. It is disabled when a real API URL is set and is not part of the real API.

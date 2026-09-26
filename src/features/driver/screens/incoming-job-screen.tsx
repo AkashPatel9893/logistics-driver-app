@@ -1,5 +1,6 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect } from 'react';
+import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -10,59 +11,78 @@ import {
   Button,
   FocusAwareStatusBar,
   Icon,
-  OlaMapCamera,
-  OlaMapMarker,
-  OlaMapView,
 } from '@/components/ui';
+import { useCountdown } from '@/hooks/use-countdown';
+import { useAcceptOffer, useOffers, useRejectOffer } from '@/hooks/use-jobs';
+import { getErrorMessage } from '@/lib/api/api-error';
+import type { JobOffer } from '@/lib/api/models';
+import { formatDistance, formatMinutes, formatRupees } from '@/lib/format';
 
-import { useDriverStore } from '@/stores/driver-store';
+import { RouteMap } from '../components/route-map';
 
-export function IncomingJobScreen() {
+const DECLINE_REASONS = ['Too far from me', 'Low fare', 'Vehicle not suitable', 'Taking a break'];
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <AppView className="flex-1 items-center">
+      <AppText className="text-[16px] font-black text-foreground">{value}</AppText>
+      <AppText className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+        {label}
+      </AppText>
+    </AppView>
+  );
+}
+
+function StopRow({ tone, title, subtitle }: { tone: string; title: string; subtitle: string }) {
+  return (
+    <AppView row className="items-start gap-3">
+      <AppView className={`mt-1.5 h-3 w-3 rounded-full ${tone}`} />
+      <AppView className="flex-1">
+        <AppText className="text-[15px] font-bold text-foreground" numberOfLines={2}>
+          {title}
+        </AppText>
+        <AppText className="mt-0.5 text-[12px] text-muted" numberOfLines={1}>
+          {subtitle}
+        </AppText>
+      </AppView>
+    </AppView>
+  );
+}
+
+function OfferDetails({ offer }: { offer: JobOffer }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const secondsLeft = useCountdown(offer.expiresAt);
+  const accept = useAcceptOffer();
+  const reject = useRejectOffer();
 
-  const availableRequests = useDriverStore((s) => s.availableRequests);
-  const acceptJob = useDriverStore((s) => s.acceptJob);
-  const declineJob = useDriverStore((s) => s.declineJob);
-
-  const currentJob = availableRequests[0];
-  const [countdown, setCountdown] = useState(15);
-
+  // The offer goes to the next driver when time runs out.
   useEffect(() => {
-    if (countdown <= 0) {
-      if (currentJob) declineJob(currentJob.id);
-      router.back();
-      return;
-    }
-    const timer = setInterval(() => setCountdown((c) => c - 1), 1000);
-    return () => clearInterval(timer);
-  }, [countdown, currentJob, declineJob, router]);
+    if (secondsLeft === 0 && !accept.isPending) router.back();
+  }, [secondsLeft, accept.isPending, router]);
 
-  if (!currentJob) {
-    return (
-      <AppView className="flex-1 items-center justify-center bg-background p-6">
-        <Icon name="box.truck" size={48} tone="icon-subtle" />
-        <AppText className="mt-3 text-[18px] font-bold text-foreground">
-          No Pending Job Requests
-        </AppText>
-        <Button
-          label="Back to Dashboard"
-          onPress={() => router.replace('/home')}
-          className="mt-6"
-        />
-      </AppView>
-    );
-  }
+  const handleAccept = () =>
+    accept.mutate(offer.id, {
+      onSuccess: () => router.replace('/active-delivery'),
+      onError: (error) => {
+        Alert.alert('Request unavailable', getErrorMessage(error));
+        router.back();
+      },
+    });
 
-  const handleAccept = () => {
-    acceptJob(currentJob);
-    router.replace('/active-delivery');
-  };
+  const handleDecline = () =>
+    Alert.alert('Why are you declining?', undefined, [
+      ...DECLINE_REASONS.map((reason) => ({
+        text: reason,
+        onPress: () => {
+          reject.mutate({ offerId: offer.id, reason });
+          router.back();
+        },
+      })),
+      { text: 'Keep request', style: 'cancel' as const },
+    ]);
 
-  const handleDecline = () => {
-    declineJob(currentJob.id);
-    router.back();
-  };
+  const isCash = offer.paymentMode === 'cash';
 
   return (
     <AppView className="flex-1 bg-[#FBFBFC] dark:bg-background">
@@ -70,177 +90,146 @@ export function IncomingJobScreen() {
 
       <AppView
         style={{ paddingTop: Math.max(insets.top, 12) + 8 }}
-        className="bg-brand px-6 pb-6 rounded-b-[36px] shadow-md"
+        className="rounded-b-[36px] bg-brand px-6 pb-6 shadow-md"
       >
         <AppView row className="items-center justify-between">
-          <AppText className="text-[24px] font-black tracking-tight text-white">
-            New delivery request
-          </AppText>
-          <AppView className="h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
-            <AppText className="text-[20px] font-black text-brand">{countdown}</AppText>
+          <AppView>
+            <AppText className="text-[24px] font-black tracking-tight text-white">
+              New delivery request
+            </AppText>
+            <AppText className="text-[13px] font-semibold text-white/85">
+              {offer.vehicle.name} · Order #{offer.orderNumber}
+            </AppText>
+          </AppView>
+          <AppView
+            accessibilityLabel={`${secondsLeft} seconds left to accept`}
+            className="h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm"
+          >
+            <AppText className="text-[22px] font-black text-brand">{secondsLeft}</AppText>
           </AppView>
         </AppView>
       </AppView>
 
       <AppScrollView
-        contentContainerClassName="px-5 pb-12 pt-4 gap-5"
+        contentContainerClassName="px-5 pb-12 pt-4 gap-4"
         showsVerticalScrollIndicator={false}
       >
-        <AppView className="overflow-hidden rounded-[28px] border border-border/80 bg-card p-4 shadow-sm">
-          <AppView className="mb-4 h-44 w-full overflow-hidden rounded-2xl border border-border/50">
-            <OlaMapView style={{ flex: 1 }}>
-              <OlaMapCamera
-                centerCoordinate={{
-                  latitude:
-                    (currentJob.pickupLocation.latitude + currentJob.dropLocation.latitude) / 2,
-                  longitude:
-                    (currentJob.pickupLocation.longitude + currentJob.dropLocation.longitude) / 2,
-                }}
-                zoomLevel={12}
+        <AppView className="overflow-hidden rounded-[28px] border border-border/80 bg-card shadow-sm">
+          <RouteMap
+            pickup={offer.pickup.location}
+            drop={offer.drop.location}
+            className="h-48 w-full"
+          />
+
+          <AppView className="p-4">
+            <AppView row className="items-end justify-between border-b border-border/40 pb-3">
+              <AppView>
+                <AppText className="text-[12px] font-semibold uppercase tracking-wider text-muted">
+                  You earn
+                </AppText>
+                <AppText className="text-[32px] font-black leading-tight text-foreground">
+                  {formatRupees(offer.driverEarning)}
+                </AppText>
+              </AppView>
+              <AppView className="items-end">
+                <AppView
+                  className={`rounded-full px-3 py-1 ${isCash ? 'bg-amber-500/15' : 'bg-emerald-500/15'}`}
+                >
+                  <AppText
+                    className={`text-[12px] font-bold ${
+                      isCash
+                        ? 'text-amber-700 dark:text-amber-400'
+                        : 'text-emerald-700 dark:text-emerald-400'
+                    }`}
+                  >
+                    {isCash ? 'Cash' : 'Paid online'}
+                  </AppText>
+                </AppView>
+                <AppText className="mt-1 text-[12px] text-muted">
+                  Fare {formatRupees(offer.fare)}
+                </AppText>
+              </AppView>
+            </AppView>
+
+            <AppView className="my-4 gap-3">
+              <StopRow
+                tone="bg-emerald-500"
+                title={offer.pickup.label}
+                subtitle={`Pickup · ${offer.pickup.houseNumber}`}
               />
-              <OlaMapMarker coordinate={currentJob.pickupLocation}>
-                <AppView className="h-4 w-4 rounded-full border-2 border-white bg-black shadow-sm" />
-              </OlaMapMarker>
-              <OlaMapMarker coordinate={currentJob.dropLocation}>
-                <AppView className="h-4 w-4 rounded-full border-2 border-white bg-brand shadow-sm" />
-              </OlaMapMarker>
-            </OlaMapView>
-          </AppView>
-
-          <AppView row className="items-center justify-between pb-2 border-b border-border/40">
-            <AppText className="text-[16px] font-extrabold text-foreground">
-              {currentJob.vehicleType} · Delivery
-            </AppText>
-            <AppText className="text-[24px] font-black text-foreground">₹{currentJob.fare}</AppText>
-          </AppView>
-
-          <AppView className="my-3 gap-2.5">
-            <AppView row className="items-center gap-2.5">
-              <AppView className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-              <AppText className="flex-1 text-[14px] font-bold text-foreground" numberOfLines={1}>
-                {currentJob.pickupName}, {currentJob.pickupAddress}
-              </AppText>
+              <StopRow
+                tone="bg-brand"
+                title={offer.drop.label}
+                subtitle={`Drop · ${offer.drop.houseNumber}`}
+              />
             </AppView>
 
-            <AppView row className="items-center gap-2.5">
-              <AppView className="h-2.5 w-2.5 rounded-full bg-brand" />
-              <AppText className="flex-1 text-[14px] font-bold text-foreground" numberOfLines={1}>
-                {currentJob.dropName}, {currentJob.dropAddress}
-              </AppText>
+            <AppView row className="rounded-2xl bg-surface-muted py-3">
+              <Stat
+                label="To pickup"
+                value={
+                  offer.pickupDistanceKm !== null ? formatDistance(offer.pickupDistanceKm) : '—'
+                }
+              />
+              <Stat label="Trip" value={formatDistance(offer.tripDistanceKm)} />
+              <Stat label="Est. time" value={formatMinutes(offer.estimatedMinutes)} />
             </AppView>
-          </AppView>
 
-          <AppView row className="items-center justify-between pb-4 pt-1">
-            <AppText className="text-[13px] font-medium text-muted">
-              {currentJob.distanceKm} km
-            </AppText>
-            <AppText className="text-[13px] font-medium text-muted">
-              {currentJob.durationMin} min
-            </AppText>
-            <AppText className="text-[13px] font-medium text-muted">
-              {currentJob.paymentMode === 'Cash' ? 'Cash' : 'Prepaid'}
-            </AppText>
-          </AppView>
-
-          <AppView row className="gap-3">
-            <AppPressable
-              onPress={handleDecline}
-              pressScale={0.96}
-              className="flex-1 items-center justify-center rounded-full border border-border bg-card py-3.5 active:bg-neutral-100"
-            >
-              <AppText className="text-[15px] font-bold text-foreground">Decline</AppText>
-            </AppPressable>
-
-            <AppPressable
-              onPress={handleAccept}
-              pressScale={0.96}
-              className="flex-1 items-center justify-center rounded-full bg-brand py-3.5 shadow-md shadow-brand/25 active:bg-brand/90"
-            >
-              <AppText className="text-[15px] font-bold text-white">Accept job</AppText>
-            </AppPressable>
+            {isCash ? (
+              <AppView row className="mt-3 items-center gap-2 rounded-2xl bg-amber-500/10 p-3">
+                <Icon name="banknote" size={16} color="#d97706" />
+                <AppText className="flex-1 text-[12px] font-medium text-amber-800 dark:text-amber-300">
+                  Collect {formatRupees(offer.fare)}{' '}
+                  {offer.paymentTiming === 'on-pickup'
+                    ? 'from the sender at pickup'
+                    : 'from the receiver at drop'}
+                </AppText>
+              </AppView>
+            ) : null}
           </AppView>
         </AppView>
 
-        {/* Other Nearby Jobs Section */}
-        {availableRequests.length > 1 ? (
-          <AppView className="gap-3 pt-2">
-            <AppText className="text-[20px] font-black tracking-tight text-foreground">
-              Other nearby jobs
-            </AppText>
-            {availableRequests.slice(1).map((job) => (
-              <AppView
-                key={job.id}
-                className="rounded-[28px] border border-border/80 bg-card p-4 shadow-sm"
-              >
-                <AppView
-                  row
-                  className="items-center justify-between pb-2 border-b border-border/40"
-                >
-                  <AppText className="text-[16px] font-extrabold text-foreground">
-                    {job.vehicleType} · Delivery
-                  </AppText>
-                  <AppText className="text-[24px] font-black text-foreground">₹{job.fare}</AppText>
-                </AppView>
-
-                <AppView className="my-3 gap-2.5">
-                  <AppView row className="items-center gap-2.5">
-                    <AppView className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                    <AppText
-                      className="flex-1 text-[14px] font-bold text-foreground"
-                      numberOfLines={1}
-                    >
-                      {job.pickupName}, {job.pickupAddress}
-                    </AppText>
-                  </AppView>
-
-                  <AppView row className="items-center gap-2.5">
-                    <AppView className="h-2.5 w-2.5 rounded-full bg-brand" />
-                    <AppText
-                      className="flex-1 text-[14px] font-bold text-foreground"
-                      numberOfLines={1}
-                    >
-                      {job.dropName}, {job.dropAddress}
-                    </AppText>
-                  </AppView>
-                </AppView>
-
-                <AppView row className="items-center justify-between pb-4 pt-1">
-                  <AppText className="text-[13px] font-medium text-muted">
-                    {job.distanceKm} km
-                  </AppText>
-                  <AppText className="text-[13px] font-medium text-muted">
-                    {job.durationMin} min
-                  </AppText>
-                  <AppText className="text-[13px] font-medium text-muted">
-                    {job.paymentMode === 'Cash' ? 'Cash' : 'Prepaid'}
-                  </AppText>
-                </AppView>
-
-                <AppView row className="gap-3">
-                  <AppPressable
-                    onPress={() => declineJob(job.id)}
-                    pressScale={0.96}
-                    className="flex-1 items-center justify-center rounded-full border border-border bg-card py-3.5 active:bg-neutral-100"
-                  >
-                    <AppText className="text-[15px] font-bold text-foreground">Decline</AppText>
-                  </AppPressable>
-
-                  <AppPressable
-                    onPress={() => {
-                      acceptJob(job);
-                      router.replace('/active-delivery');
-                    }}
-                    pressScale={0.96}
-                    className="flex-1 items-center justify-center rounded-full bg-brand py-3.5 shadow-md shadow-brand/25 active:bg-brand/90"
-                  >
-                    <AppText className="text-[15px] font-bold text-white">Accept job</AppText>
-                  </AppPressable>
-                </AppView>
-              </AppView>
-            ))}
-          </AppView>
-        ) : null}
+        <AppView row className="gap-3 pt-1">
+          <AppPressable
+            onPress={handleDecline}
+            disabled={accept.isPending}
+            pressScale={0.96}
+            className="flex-1 items-center justify-center rounded-full border border-border bg-card py-4 active:bg-neutral-100"
+          >
+            <AppText className="text-[15px] font-bold text-foreground">Decline</AppText>
+          </AppPressable>
+          <Button
+            label="Accept trip"
+            variant="brand"
+            size="lg"
+            loading={accept.isPending}
+            onPress={handleAccept}
+            className="flex-1"
+            textClassName="font-extrabold text-[15px]"
+          />
+        </AppView>
       </AppScrollView>
     </AppView>
   );
+}
+
+export function IncomingJobScreen() {
+  const router = useRouter();
+  const { offerId } = useLocalSearchParams<{ offerId?: string }>();
+  const offersQuery = useOffers(true);
+  const offer = offersQuery.data?.find((o) => o.id === offerId) ?? offersQuery.data?.[0];
+
+  if (!offer) {
+    return (
+      <AppView className="flex-1 items-center justify-center bg-background p-6">
+        <Icon name="box.truck" size={48} tone="icon-subtle" />
+        <AppText className="mt-3 text-[18px] font-bold text-foreground">
+          {offersQuery.isLoading ? 'Loading request…' : 'This request is no longer available'}
+        </AppText>
+        <Button label="Back to home" onPress={() => router.back()} className="mt-6" />
+      </AppView>
+    );
+  }
+
+  return <OfferDetails key={offer.id} offer={offer} />;
 }

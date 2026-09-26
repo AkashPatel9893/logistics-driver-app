@@ -1,4 +1,4 @@
-import type { AuthSession, OtpChallenge, UsageType, User } from '@/lib/api/models';
+import type { AuthSession, OtpChallenge, UpdateProfileInput, User } from '@/lib/api/models';
 
 import { db } from '../db';
 import { body, HttpError, ok, randomId, requireUser } from '../http';
@@ -6,6 +6,7 @@ import { DEMO_OTP, LANGUAGES, OTP_LENGTH, OTP_RESEND_SECONDS } from '../seed';
 import type { Route } from './types';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_PATTERN = /^\+?[0-9\s-]{10,15}$/;
 
 function normalizeEmail(email: unknown): string {
   const value = typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -21,11 +22,12 @@ function findOrCreateUser(email: string): User {
   if (existing) return existing;
 
   const user: User = {
-    id: randomId('usr'),
+    id: randomId('drv'),
     email,
     name: '',
     phone: null,
-    usageType: 'personal',
+    dob: null,
+    city: null,
     isOnboarded: false,
   };
   db.users.set(user.id, user);
@@ -89,19 +91,27 @@ export const authRoutes: Route[] = [
     path: '/me',
     handler: (req) => {
       const userId = requireUser(req);
-      const input = body<{ name?: string; phone?: string; usageType?: UsageType }>(req);
+      const input = body<UpdateProfileInput>(req);
       const name = input.name?.trim();
       if (name !== undefined && name.length < 2) {
         throw new HttpError(422, 'INVALID_NAME', 'Full name must be at least 2 characters.');
+      }
+      const phone = input.phone?.trim();
+      if (phone !== undefined && !PHONE_PATTERN.test(phone)) {
+        throw new HttpError(422, 'INVALID_PHONE', 'Enter a valid 10-digit mobile number.');
       }
       const updated = db.users.update(userId, (user) => {
         const next: User = {
           ...user,
           name: name ?? user.name,
-          phone: input.phone?.trim() || user.phone,
-          usageType: input.usageType ?? user.usageType,
+          phone: phone || user.phone,
+          dob: input.dob?.trim() || user.dob,
+          city: input.city?.trim() || user.city,
         };
-        return { ...next, isOnboarded: next.name.length >= 2 && Boolean(next.phone) };
+        return {
+          ...next,
+          isOnboarded: next.name.length >= 2 && Boolean(next.phone) && Boolean(next.city),
+        };
       });
       if (!updated) throw new HttpError(404, 'USER_NOT_FOUND', 'Account not found.');
       return ok(updated, 'Profile updated');

@@ -1,160 +1,139 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   AppKeyboardAvoidingView,
   AppScrollView,
   AppText,
-  AppView,
   Button,
-  FocusAwareStatusBar,
   Icon,
-  LiquidGlassBackButton,
   TextField,
 } from '@/components/ui';
-import { useDriverStore } from '@/stores/driver-store';
+import { useDriverProfile, useSaveBank } from '@/hooks/use-driver';
+import { getErrorMessage } from '@/lib/api/api-error';
 
 import { PhotoUploadBox } from '../components/photo-upload-box';
+import { SetupScreenLayout } from '../components/setup-screen-layout';
+import { usePhotoUpload } from '../hooks/use-photo-upload';
 
 export function SetupBankScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const { data: profile } = useDriverProfile();
+  const saveBank = useSaveBank();
+  const current = profile?.bank ?? null;
 
-  const bank = useDriverStore((s) => s.bank);
-  const saveBankDetails = useDriverStore((s) => s.saveBankDetails);
-
-  const [holderName, setHolderName] = useState(bank.holderName || 'Rajesh Kumar');
-  const [accountNumber, setAccountNumber] = useState(bank.rawAccountNumber || '50100482915849');
-  const [confirmAcc, setConfirmAcc] = useState(bank.rawAccountNumber || '50100482915849');
-  const [ifscCode, setIfscCode] = useState(bank.ifscCode || 'HDFC0001234');
-  const [chequePhoto, setChequePhoto] = useState<string | null>(
-    bank.chequeUploaded
-      ? 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=600&q=80'
-      : null,
-  );
+  const [holderName, setHolderName] = useState(current?.holderName ?? profile?.name ?? '');
+  // The full account number is never sent back to the app; re-enter to change it.
+  const [accountNumber, setAccountNumber] = useState('');
+  const [confirmAccount, setConfirmAccount] = useState('');
+  const [ifscCode, setIfscCode] = useState(current?.ifscCode ?? '');
+  const cheque = usePhotoUpload('bank_cheque', current?.chequePhotoUrl ?? null, 'document');
+  const [error, setError] = useState<string>();
 
   const handleSave = () => {
-    if (!holderName.trim() || !accountNumber.trim() || !ifscCode.trim()) {
-      Alert.alert('Required Fields', 'Please fill in all bank details.');
-      return;
-    }
-    if (accountNumber !== confirmAcc) {
-      Alert.alert('Mismatch', 'Account number and confirm account number do not match.');
-      return;
-    }
-
-    saveBankDetails({
-      holderName,
-      rawAccountNumber: accountNumber,
-      accountNumber: `HDFC Bank • •••• ${accountNumber.slice(-4)}`,
-      ifscCode: ifscCode.toUpperCase(),
-      chequeUploaded: Boolean(chequePhoto),
-      verified: true,
-    });
-
-    Alert.alert('Bank Account Saved! 🏦', 'Your bank details have been saved for direct payouts.', [
-      { text: 'Done', onPress: () => router.back() },
-    ]);
+    if (accountNumber !== confirmAccount) return setError('Account numbers do not match.');
+    if (!cheque.url) return setError('Add a photo of a cancelled cheque or passbook.');
+    setError(undefined);
+    saveBank.mutate(
+      { holderName, accountNumber, ifscCode, chequePhotoUrl: cheque.url },
+      {
+        onSuccess: (updated) =>
+          Alert.alert(
+            'Bank account submitted',
+            `${updated.bank?.bankName ?? 'Your bank'} •• ${updated.bank?.accountLast4 ?? ''} will be verified shortly.`,
+            [{ text: 'OK', onPress: () => router.back() }],
+          ),
+        onError: (e) => setError(getErrorMessage(e)),
+      },
+    );
   };
 
   return (
-    <AppView className="flex-1 bg-background">
-      <FocusAwareStatusBar />
-
-      {/* Top Header */}
-      <AppView
-        style={{ paddingTop: Math.max(insets.top, 12) + 4 }}
-        className="border-b border-border/80 bg-card px-5 pb-3.5 shadow-sm"
-      >
-        <AppView row className="items-center gap-3">
-          <LiquidGlassBackButton onPress={() => router.back()} />
-          <AppView>
-            <AppText className="text-[20px] font-black text-foreground">Add Bank Details</AppText>
-            <AppText className="text-[12px] text-muted">
-              Fast automatic & instant weekly settlements
-            </AppText>
-          </AppView>
-        </AppView>
-      </AppView>
-
+    <SetupScreenLayout title="Bank details" subtitle="Wallet payouts go to this account">
       <AppKeyboardAvoidingView>
         <AppScrollView
-          contentContainerClassName="px-5 pb-16 pt-4 gap-5"
+          contentContainerClassName="gap-5 px-5 pb-16 pt-4"
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* Account Holder */}
+          {current ? (
+            <AppText className="text-[13px] text-muted">
+              Current: {current.bankName} •• {current.accountLast4}. Enter the account again to
+              change it.
+            </AppText>
+          ) : null}
+
           <TextField
             variant="outlined"
-            label="Account Holder Name"
+            label="Account holder name"
             required
             value={holderName}
             onChangeText={setHolderName}
-            placeholder="As per bank passbook"
+            placeholder="As printed on your passbook"
             autoCapitalize="words"
             leading={<Icon name="person" size={18} tone="icon-subtle" />}
           />
 
-          {/* Account Number */}
           <TextField
             variant="outlined"
-            label="Bank Account Number"
+            label="Account number"
             required
             value={accountNumber}
-            onChangeText={setAccountNumber}
-            placeholder="Enter account number"
+            onChangeText={(t) => setAccountNumber(t.replace(/\D/g, ''))}
+            placeholder="9–18 digits"
             keyboardType="number-pad"
+            maxLength={18}
+            secureTextEntry
             leading={<Icon name="banknote" size={18} tone="icon-subtle" />}
           />
 
-          {/* Confirm Account Number */}
           <TextField
             variant="outlined"
-            label="Re-enter Account Number"
+            label="Confirm account number"
             required
-            value={confirmAcc}
-            onChangeText={setConfirmAcc}
-            placeholder="Confirm account number"
+            value={confirmAccount}
+            onChangeText={(t) => setConfirmAccount(t.replace(/\D/g, ''))}
+            placeholder="Re-enter account number"
             keyboardType="number-pad"
+            maxLength={18}
             leading={<Icon name="checkmark" size={18} tone="icon-subtle" />}
           />
 
-          {/* IFSC Code */}
           <TextField
             variant="outlined"
-            label="IFSC Code"
+            label="IFSC code"
             required
             value={ifscCode}
-            onChangeText={setIfscCode}
-            placeholder="e.g. HDFC0001234"
+            onChangeText={(t) => setIfscCode(t.toUpperCase())}
+            placeholder="HDFC0001234"
             autoCapitalize="characters"
+            maxLength={11}
             leading={<Icon name="tag.fill" size={18} tone="icon-subtle" />}
           />
 
-          {/* Passbook / Cheque Photo */}
           <PhotoUploadBox
-            label="Cancelled Cheque or Passbook"
-            hint="Upload clear copy showing account number and IFSC"
-            photoUri={chequePhoto}
-            onSelectPhoto={() =>
-              setChequePhoto(
-                'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=600&q=80',
-              )
-            }
+            label="Cancelled cheque or passbook"
+            title="Add cheque photo"
+            hint="Account number and IFSC must be visible"
+            photoUri={cheque.previewUri}
+            uploading={cheque.uploading}
+            error={cheque.error}
+            onSelectPhoto={cheque.pick}
           />
 
-          {/* Save Button */}
-          <AppView className="pt-2">
-            <Button
-              label="Save Bank Account"
-              onPress={handleSave}
-              size="lg"
-              textClassName="font-extrabold text-base"
-            />
-          </AppView>
+          {error ? <AppText className="text-[13px] font-medium text-error">{error}</AppText> : null}
+
+          <Button
+            label={current ? 'Update bank account' : 'Submit bank account'}
+            onPress={handleSave}
+            loading={saveBank.isPending}
+            disabled={cheque.uploading}
+            size="lg"
+            textClassName="font-extrabold text-base"
+          />
         </AppScrollView>
       </AppKeyboardAvoidingView>
-    </AppView>
+    </SetupScreenLayout>
   );
 }

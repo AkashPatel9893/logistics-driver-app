@@ -1,4 +1,4 @@
-import { AppImage, AppPressable, AppText, AppView, Icon } from '@/components/ui';
+import { AppImage, AppPressable, AppSpinner, AppText, AppView, Icon } from '@/components/ui';
 
 export interface PhotoUploadBoxProps {
   label?: string;
@@ -6,6 +6,9 @@ export interface PhotoUploadBoxProps {
   hint?: string;
   photoUri?: string | null;
   onSelectPhoto?: () => void;
+  /** Shows a spinner while the photo uploads. */
+  uploading?: boolean;
+  error?: string;
   className?: string;
   variant?: 'dashed' | 'compact';
 }
@@ -13,9 +16,11 @@ export interface PhotoUploadBoxProps {
 export function PhotoUploadBox({
   label,
   title,
-  hint = 'Tap to upload or take photo',
+  hint = 'Tap to take a photo',
   photoUri,
   onSelectPhoto,
+  uploading = false,
+  error,
   className = '',
   variant = 'dashed',
 }: PhotoUploadBoxProps) {
@@ -30,6 +35,8 @@ export function PhotoUploadBox({
       {photoUri ? (
         <AppPressable
           onPress={onSelectPhoto}
+          disabled={uploading}
+          accessibilityLabel={`${label ?? title ?? 'Photo'} added. Retake photo`}
           className="relative h-44 w-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
         >
           <AppImage source={{ uri: photoUri }} contentFit="cover" className="h-full w-full" />
@@ -38,23 +45,35 @@ export function PhotoUploadBox({
               row
               className="items-center gap-2 rounded-full bg-white/95 px-4 py-2 shadow-sm"
             >
-              <Icon name="camera" size={16} tone="brand" />
-              <AppText className="text-[13px] font-bold text-foreground">Change Photo</AppText>
+              {uploading ? (
+                <AppSpinner size="small" />
+              ) : (
+                <Icon name="camera" size={16} tone="brand" />
+              )}
+              <AppText className="text-[13px] font-bold text-neutral-900">
+                {uploading ? 'Uploading…' : 'Retake photo'}
+              </AppText>
             </AppView>
           </AppView>
         </AppPressable>
       ) : isCompact ? (
         <AppPressable
           onPress={onSelectPhoto}
+          disabled={uploading}
           pressScale={0.97}
+          accessibilityLabel={title ?? 'Take photo'}
           className="flex-row items-center gap-3.5 rounded-2xl border border-border/70 bg-[#F9F9FB] dark:bg-card/60 p-3.5"
         >
           <AppView className="h-12 w-12 items-center justify-center rounded-xl border border-border/50 bg-white dark:bg-card shadow-xs">
-            <Icon name="camera" size={20} tone="brand" />
+            {uploading ? (
+              <AppSpinner size="small" />
+            ) : (
+              <Icon name="camera" size={20} tone="brand" />
+            )}
           </AppView>
           <AppView className="flex-1">
             <AppText className="text-[15px] font-bold text-foreground">
-              {title || 'Take photo and upload'}
+              {title || 'Take photo'}
             </AppText>
             <AppText className="mt-0.5 text-[12px] leading-4 text-muted">{hint}</AppText>
           </AppView>
@@ -62,17 +81,28 @@ export function PhotoUploadBox({
       ) : (
         <AppPressable
           onPress={onSelectPhoto}
+          disabled={uploading}
+          accessibilityLabel={label ?? title ?? 'Add photo'}
           className="h-40 w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border bg-card/60 active:bg-neutral-100 dark:active:bg-neutral-800"
         >
           <AppView className="items-center p-4">
             <AppView className="mb-2.5 h-12 w-12 items-center justify-center rounded-full bg-brand/10">
-              <Icon name="camera" size={24} tone="brand" />
+              {uploading ? (
+                <AppSpinner size="small" />
+              ) : (
+                <Icon name="camera" size={24} tone="brand" />
+              )}
             </AppView>
-            <AppText className="text-[14px] font-bold text-foreground">Upload Document</AppText>
+            <AppText className="text-[14px] font-bold text-foreground">
+              {title || 'Add photo'}
+            </AppText>
             <AppText className="mt-1 text-center text-[12px] text-muted">{hint}</AppText>
           </AppView>
         </AppPressable>
       )}
+      {error ? (
+        <AppText className="mt-1.5 text-[12px] font-medium text-error">{error}</AppText>
+      ) : null}
     </AppView>
   );
 }

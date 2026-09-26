@@ -76,6 +76,11 @@ const ANDROID_ICON_REGISTRY = {
   document: { set: 'ionicons', name: 'document-text-outline' },
   'arrow.left': { set: 'ionicons', name: 'arrow-back' },
   plus: { set: 'ionicons', name: 'add' },
+  'location.north.fill': { set: 'ionicons', name: 'navigate' },
+  'arrow.down.left': { set: 'ionicons', name: 'arrow-down' },
+  'arrow.up.right': { set: 'ionicons', name: 'arrow-up' },
+  'exclamationmark.triangle.fill': { set: 'ionicons', name: 'warning' },
+  'photo.on.rectangle': { set: 'ionicons', name: 'images-outline' },
 } as const satisfies Record<string, AndroidGlyph>;
 
 export type IconName = keyof typeof ANDROID_ICON_REGISTRY;

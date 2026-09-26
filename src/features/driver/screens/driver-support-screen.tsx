@@ -1,203 +1,109 @@
-import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Alert, Linking } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import {
-  AppPressable,
-  AppScrollView,
-  AppText,
-  AppView,
-  FocusAwareStatusBar,
-  Icon,
-  LiquidGlassBackButton,
-} from '@/components/ui';
+import { AppPressable, AppScrollView, AppSpinner, AppText, AppView, Icon } from '@/components/ui';
+import { useSupportInfo } from '@/hooks/use-content';
 
-interface HelpTopic {
-  title: string;
-  desc: string;
-  icon: any;
-}
+import { SetupScreenLayout } from '../components/setup-screen-layout';
 
-const TOPICS: HelpTopic[] = [
-  {
-    title: 'Trip & Route Issues',
-    desc: 'Wrong pickup/drop location, customer unavailable, cancelled trip',
-    icon: 'box.truck.fill',
-  },
-  {
-    title: 'Earnings & Payouts',
-    desc: 'Fare discrepancies, delayed bank transfer, daily bonus claims',
-    icon: 'banknote',
-  },
-  {
-    title: 'Vehicle & Documents',
-    desc: 'Update vehicle RC, renew insurance, driving license verification',
-    icon: 'document',
-  },
-  {
-    title: 'App & GPS Issues',
-    desc: 'Location tracking issues, app crashes, account settings',
-    icon: 'crosshair',
-  },
-  {
-    title: 'Safety & Emergency',
-    desc: 'Accident support, roadside breakdown, medical emergency assistance',
-    icon: 'checkmark.shield.fill',
-  },
-  {
-    title: 'Bonus & Tier Perks',
-    desc: 'Weekly milestone rewards, surge pricing explanations',
-    icon: 'gift.fill',
-  },
-];
+/** India's national emergency number. */
+const EMERGENCY_NUMBER = '112';
 
 export function DriverSupportScreen() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-
-  const handleCall = () => {
-    Linking.openURL('tel:18001234567');
-  };
-
-  const handleChat = () => {
-    Alert.alert('Driver Care Chat', 'Connecting you to an agent... Estimated wait: 1 minute.', [
-      { text: 'OK' },
-    ]);
-  };
-
-  const handleTopicPress = (topic: HelpTopic) => {
-    Alert.alert(
-      topic.title,
-      `Support article & quick resolutions for ${topic.title.toLowerCase()} are available. Would you like to call support or chat?`,
-      [
-        { text: 'Chat Now', onPress: handleChat },
-        { text: 'Call Support', onPress: handleCall },
-        { text: 'Cancel', style: 'cancel' },
-      ],
-    );
-  };
+  const { data: support, isLoading } = useSupportInfo();
+  const [openFaq, setOpenFaq] = useState<string | null>(null);
 
   return (
-    <AppView className="flex-1 bg-background">
-      <FocusAwareStatusBar />
-
-      {/* Top Header */}
-      <AppView
-        style={{ paddingTop: Math.max(insets.top, 12) + 4 }}
-        className="border-b border-border/80 bg-card px-5 pb-3.5 shadow-sm"
-      >
-        <AppView row className="items-center gap-3">
-          <LiquidGlassBackButton onPress={() => router.back()} />
-          <AppView>
-            <AppText className="text-[20px] font-black text-foreground">Help & Support</AppText>
-            <AppText className="text-[12px] text-muted">24/7 dedicated partner assistance</AppText>
-          </AppView>
-        </AppView>
-      </AppView>
-
+    <SetupScreenLayout title="Help & support" subtitle="Partner care and common questions">
       <AppScrollView
-        contentContainerClassName="px-5 pb-16 pt-4 gap-5"
+        contentContainerClassName="gap-5 px-5 pb-16 pt-4"
         showsVerticalScrollIndicator={false}
       >
-        {/* Support Desk Status Card */}
         <AppView className="rounded-3xl border border-brand/20 bg-card p-5 shadow-sm">
-          <AppView row className="items-center justify-between">
-            <AppView row className="items-center gap-3">
-              <AppView className="h-12 w-12 items-center justify-center rounded-2xl bg-brand/10">
-                <Icon name="phone.fill" size={22} tone="brand" />
-              </AppView>
-              <AppView>
-                <AppText className="text-[16px] font-extrabold text-foreground">
-                  Partner Care Team
-                </AppText>
-                <AppView row className="items-center gap-1.5 mt-0.5">
-                  <AppView className="h-2 w-2 rounded-full bg-emerald-500" />
-                  <AppText className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
-                    Online • ~2 min response time
-                  </AppText>
-                </AppView>
-              </AppView>
-            </AppView>
-          </AppView>
-
+          <AppText className="text-[16px] font-extrabold text-foreground">Partner care</AppText>
+          <AppText className="mt-0.5 text-[12px] text-muted">
+            {support ? `${support.phone} · ${support.email}` : 'Loading contact details…'}
+          </AppText>
           <AppView row className="mt-4 gap-3">
             <AppPressable
-              onPress={handleCall}
+              onPress={() => support && Linking.openURL(`tel:${support.phone}`)}
+              disabled={!support}
               pressScale={0.96}
               className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-brand py-3 shadow-md active:bg-brand/90"
             >
               <Icon name="phone.fill" size={16} color="#ffffff" />
-              <AppText className="text-[14px] font-bold text-white">Call Care</AppText>
+              <AppText className="text-[14px] font-bold text-white">Call</AppText>
             </AppPressable>
-
             <AppPressable
-              onPress={handleChat}
+              onPress={() => support && Linking.openURL(`mailto:${support.email}`)}
+              disabled={!support}
               pressScale={0.96}
-              className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-border bg-surface-muted py-3 active:bg-neutral-200 dark:active:bg-neutral-800"
+              className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-border bg-surface-muted py-3"
             >
-              <Icon name="message.fill" size={16} tone="brand" />
-              <AppText className="text-[14px] font-bold text-foreground">Live Chat</AppText>
+              <Icon name="envelope.fill" size={16} tone="brand" />
+              <AppText className="text-[14px] font-bold text-foreground">Email</AppText>
             </AppPressable>
           </AppView>
         </AppView>
 
-        {/* Topics List */}
         <AppView className="gap-2.5">
-          <AppText className="text-[15px] font-extrabold text-foreground px-1">
-            Browse by Topic
+          <AppText className="px-1 text-[15px] font-extrabold text-foreground">
+            Frequently asked
           </AppText>
-
-          {TOPICS.map((topic) => (
-            <AppPressable
-              key={topic.title}
-              onPress={() => handleTopicPress(topic)}
-              pressScale={0.98}
-              className="flex-row items-center justify-between rounded-2xl border border-border bg-card p-4 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
-            >
-              <AppView row className="flex-1 items-center gap-3.5">
-                <AppView className="h-10 w-10 items-center justify-center rounded-xl bg-surface-muted">
-                  <Icon name={topic.icon} size={18} tone="brand" />
-                </AppView>
-                <AppView className="flex-1 pr-2">
-                  <AppText className="text-[14px] font-bold text-foreground">{topic.title}</AppText>
-                  <AppText className="text-[12px] text-muted" numberOfLines={1}>
-                    {topic.desc}
+          {isLoading ? <AppSpinner /> : null}
+          {support?.faqs.map((faq) => {
+            const isOpen = openFaq === faq.id;
+            return (
+              <AppPressable
+                key={faq.id}
+                onPress={() => setOpenFaq(isOpen ? null : faq.id)}
+                accessibilityState={{ expanded: isOpen }}
+                className="rounded-2xl border border-border bg-card p-4 shadow-sm"
+              >
+                <AppView row className="items-center justify-between gap-3">
+                  <AppText className="flex-1 text-[14px] font-bold text-foreground">
+                    {faq.question}
                   </AppText>
+                  <Icon
+                    name={isOpen ? 'chevron.up' : 'chevron.down'}
+                    size={16}
+                    tone="icon-subtle"
+                  />
                 </AppView>
-              </AppView>
-
-              <Icon name="chevron.right" size={16} tone="icon-subtle" />
-            </AppPressable>
-          ))}
+                {isOpen ? (
+                  <AppText className="mt-2 text-[13px] leading-5 text-muted">{faq.answer}</AppText>
+                ) : null}
+              </AppPressable>
+            );
+          })}
         </AppView>
 
-        {/* Emergency SOS Banner */}
         <AppPressable
           onPress={() =>
-            Alert.alert(
-              'Emergency SOS',
-              'Do you need immediate roadside or safety assistance? This will connect you to our emergency safety desk and share your live GPS location.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Call Emergency Support', style: 'destructive', onPress: handleCall },
-              ],
-            )
+            Alert.alert('Emergency', `Call ${EMERGENCY_NUMBER} for police, ambulance or fire?`, [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: `Call ${EMERGENCY_NUMBER}`,
+                style: 'destructive',
+                onPress: () => Linking.openURL(`tel:${EMERGENCY_NUMBER}`),
+              },
+            ])
           }
           className="flex-row items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4"
         >
           <AppView className="h-10 w-10 items-center justify-center rounded-full bg-red-500/20">
-            <Icon name="checkmark.shield.fill" size={20} color="#ef4444" />
+            <Icon name="exclamationmark.triangle.fill" size={20} color="#ef4444" />
           </AppView>
           <AppView className="flex-1">
             <AppText className="text-[14px] font-bold text-red-600 dark:text-red-400">
-              Emergency & Safety Assistance
+              Emergency SOS
             </AppText>
             <AppText className="text-[12px] text-red-600/80 dark:text-red-400/80">
-              Tap for immediate SOS protocol during an active trip
+              Accident or safety issue — call {EMERGENCY_NUMBER}
             </AppText>
           </AppView>
         </AppPressable>
       </AppScrollView>
-    </AppView>
+    </SetupScreenLayout>
   );
 }

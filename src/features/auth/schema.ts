@@ -21,7 +21,9 @@ export const otpVerificationSchema = z.object({
 
 export type OtpVerificationInput = z.infer<typeof otpVerificationSchema>;
 
-export const profileCreationSchema = z.object({
+const DOB_PATTERN = /^(0[1-9]|[12][0-9]|3[01]) \/ (0[1-9]|1[0-2]) \/ (19|20)[0-9]{2}$/;
+
+export const driverProfileSchema = z.object({
   name: z
     .string()
     .trim()
@@ -30,9 +32,10 @@ export const profileCreationSchema = z.object({
   phone: z
     .string()
     .trim()
-    .min(10, 'Please enter a valid 10-digit phone number')
-    .regex(/^[0-9+\s-]{10,15}$/, 'Please enter a valid phone number'),
-  usageType: z.enum(['personal', 'business']).default('personal'),
+    .regex(/^[6-9][0-9]{9}$/, 'Enter your 10-digit mobile number')
+    .transform((digits) => `+91${digits}`),
+  dob: z.string().trim().regex(DOB_PATTERN, 'Enter your date of birth as DD / MM / YYYY'),
+  city: z.string().trim().min(2, 'Select your city'),
 });
 
-export type ProfileCreationInput = z.infer<typeof profileCreationSchema>;
+export type DriverProfileInput = z.infer<typeof driverProfileSchema>;

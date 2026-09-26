@@ -1,6 +1,9 @@
 /**
  * Domain models exchanged with the RYNO backend (see docs/API.md). Shared by the
  * endpoint functions and the in-app mock server so both sides agree on shape.
+ *
+ * The order primitives (OrderStatus, OrderStop, …) are the same contract the
+ * customer app uses — see ../../GlobalApi.md. Keep them in sync.
  */
 
 export interface GeoPoint {
@@ -8,17 +11,24 @@ export interface GeoPoint {
   longitude: number;
 }
 
-// ─── Auth & profile ─────────────────────────────────────────────────────────
-
-export type UsageType = 'personal' | 'business';
+// ─── Auth & account ─────────────────────────────────────────────────────────
 
 export interface User {
   id: string;
   email: string;
   name: string;
   phone: string | null;
-  usageType: UsageType;
+  /** DD/MM/YYYY as entered during onboarding. */
+  dob: string | null;
+  city: string | null;
   isOnboarded: boolean;
+}
+
+export interface UpdateProfileInput {
+  name?: string;
+  phone?: string;
+  dob?: string;
+  city?: string;
 }
 
 export interface LanguageOption {
@@ -39,75 +49,20 @@ export interface AuthSession {
   user: User;
 }
 
-// ─── Catalogue & pricing ────────────────────────────────────────────────────
+// ─── Shared order primitives (same as the customer app) ─────────────────────
 
-export interface VehicleType {
-  id: string;
-  name: string;
-  description: string | null;
-  capacityKg: number;
-  imageKey: string;
-}
-
-export interface VehicleCatalog {
-  featured: VehicleType[];
-  standard: VehicleType[];
-}
-
-export type CouponCheck = { valid: true; discount: number } | { valid: false; reason: string };
-
-export interface RideQuoteOption {
-  vehicleId: string;
-  name: string;
-  description: string;
-  imageKey: string;
-  /** Minutes for a driver to reach the pickup point. */
-  etaMinutes: number;
-  fare: number;
-  /** Result of the requested coupon for this vehicle, when a coupon was sent. */
-  coupon: CouponCheck | null;
-}
-
-export interface RideQuote {
-  /** Road distance estimate; null when either end has no coordinates. */
-  distanceKm: number | null;
-  couponCode: string | null;
-  options: RideQuoteOption[];
-}
-
-export interface CouponSummary {
-  code: string;
-  title: string;
-  description: string;
-}
-
-// ─── Places & addresses ─────────────────────────────────────────────────────
-
-export interface Place {
-  id: string;
-  name: string;
-  address: string;
-  location: GeoPoint | null;
-}
-
-export type AddressLabel = 'recent' | 'home' | 'work' | 'other';
-
-export interface SavedAddress {
-  id: string;
-  name: string;
-  address: string;
-  label: AddressLabel;
-  isFavorite: boolean;
-  location: GeoPoint | null;
-  /** Contact last used at this address, to pre-fill the next booking. */
-  contact: { name: string; phone: string; houseNumber: string } | null;
-  lastUsedAt: string;
-}
-
-// ─── Orders & tracking ──────────────────────────────────────────────────────
-
+/**
+ * Order lifecycle. The driver app moves an order forward; the customer app
+ * shows the same states.
+ */
 export type OrderStatus =
-  'searching' | 'heading_to_pickup' | 'pickup_complete' | 'delivered' | 'cancelled';
+  | 'searching'
+  | 'heading_to_pickup'
+  | 'arrived_at_pickup'
+  | 'pickup_complete'
+  | 'arrived_at_drop'
+  | 'delivered'
+  | 'cancelled';
 
 export type PaymentTiming = 'on-pickup' | 'on-delivery';
 
@@ -123,252 +78,268 @@ export interface OrderStop {
   contact: OrderContact | null;
 }
 
-export interface Driver {
+export interface VehicleRef {
   id: string;
   name: string;
-  rating: number;
-  phone: string;
-  vehicleLabel: string;
-  vehiclePlate: string;
+  imageKey: string;
 }
 
-export interface Order {
+// ─── Driver onboarding ──────────────────────────────────────────────────────
+
+export type VerificationStatus = 'under_review' | 'verified' | 'rejected';
+
+export interface VehicleTypeOption {
   id: string;
-  /** Short human-facing reference, e.g. "RY4F2K9". */
-  number: string;
-  createdAt: string;
-  status: OrderStatus;
-  pickup: OrderStop;
-  drop: OrderStop;
-  vehicle: { id: string; name: string; imageKey: string };
-  pricing: {
-    fare: number;
-    discount: number;
-    payable: number;
-    couponCode: string | null;
-    distanceKm: number | null;
-  };
-  payment: { methodLabel: string; timing: PaymentTiming };
-  /** Minutes from driver assignment to pickup. */
-  etaMinutes: number;
-  /** When a driver is (or will be) assigned — drives the "finding driver" countdown. */
-  driverAssignAt: string;
-  driver: Driver | null;
-  /** Sender shares this with the driver at pickup. */
-  pickupOtp: string;
-  /** Receiver shares this with the driver at drop. */
-  deliveryOtp: string;
-  /** Planned pickup → drop route. */
-  route: GeoPoint[];
-  rating: number | null;
-  cancelledAt: string | null;
+  name: string;
+  capacityKg: number;
+  imageKey: string;
 }
 
-export interface CreateOrderInput {
+export interface VehicleDetails {
+  vehicleTypeId: string;
+  vehicleTypeName: string;
+  model: string;
+  plateNumber: string;
+  rcPhotoUrl: string;
+  frontPhotoUrl: string;
+  status: VerificationStatus;
+  submittedAt: string;
+}
+
+export interface VehicleInput {
+  vehicleTypeId: string;
+  model: string;
+  plateNumber: string;
+  rcPhotoUrl: string;
+  frontPhotoUrl: string;
+}
+
+export interface KycDetails {
+  panNumber: string;
+  dlNumber: string;
+  dlPhotoUrl: string;
+  aadhaarPhotoUrl: string;
+  status: VerificationStatus;
+  submittedAt: string;
+}
+
+export interface KycInput {
+  panNumber: string;
+  dlNumber: string;
+  dlPhotoUrl: string;
+  aadhaarPhotoUrl: string;
+}
+
+export interface BankDetails {
+  holderName: string;
+  /** Never the full number — the server keeps that. */
+  accountLast4: string;
+  ifscCode: string;
+  bankName: string;
+  chequePhotoUrl: string;
+  status: VerificationStatus;
+  submittedAt: string;
+}
+
+export interface BankInput {
+  holderName: string;
+  accountNumber: string;
+  ifscCode: string;
+  chequePhotoUrl: string;
+}
+
+export type SetupStep = 'vehicle' | 'kyc' | 'bank';
+
+export interface DailyCheck {
+  /** True once today's vehicle selfie is in. Resets at local midnight. */
+  completedToday: boolean;
+  photoUrl: string | null;
+  reward: number;
+}
+
+export interface WelcomeBonus {
+  amount: number;
+  targetTrips: number;
+  completedTrips: number;
+  expiresAt: string;
+  status: 'active' | 'earned' | 'expired';
+  /** The intro sheet was shown once already. */
+  seen: boolean;
+}
+
+export interface DriverProfile {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string;
+  city: string | null;
+  dob: string | null;
+  joinedAt: string;
+  /** Null until the first customer rating. */
+  rating: number | null;
+  ratingCount: number;
+  isOnline: boolean;
+  onlineSince: string | null;
+  vehicle: VehicleDetails | null;
+  kyc: KycDetails | null;
+  bank: BankDetails | null;
+  /** Steps still missing or not yet verified; empty when the driver can go online. */
+  pendingSteps: SetupStep[];
+  canGoOnline: boolean;
+  dailyCheck: DailyCheck;
+  welcomeBonus: WelcomeBonus;
+  walletBalance: number;
+  lifetimeTrips: number;
+}
+
+// ─── Jobs ───────────────────────────────────────────────────────────────────
+
+/** How the customer pays: cash to the driver, or already paid online. */
+export type PaymentMode = 'cash' | 'prepaid';
+
+/** A delivery offered to this driver; accept before `expiresAt`. */
+export interface JobOffer {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  createdAt: string;
+  expiresAt: string;
+  vehicle: VehicleRef;
   pickup: OrderStop;
   drop: OrderStop;
-  vehicleId: string;
-  couponCode: string | null;
-  paymentMethodId: string;
+  /** Pickup → drop road distance. */
+  tripDistanceKm: number;
+  /** Driver → pickup, from the driver's last reported location. */
+  pickupDistanceKm: number | null;
+  estimatedMinutes: number;
+  /** What the customer pays. */
+  fare: number;
+  /** What the driver keeps after platform commission. */
+  driverEarning: number;
+  paymentMode: PaymentMode;
   paymentTiming: PaymentTiming;
 }
 
-/** Live position pushed over the tracking socket. */
-export interface DriverLocation {
-  location: GeoPoint;
-  /** Which leg the driver is on. */
-  leg: 'to_pickup' | 'to_drop';
-  /** Remaining path for the current leg (for drawing the route). */
-  path: GeoPoint[];
-  updatedAt: string;
+export interface JobPayment {
+  mode: PaymentMode;
+  timing: PaymentTiming;
+  amount: number;
+  methodLabel: string;
+  status: 'pending' | 'collected';
+  collectedVia: 'cash' | 'upi' | 'online' | null;
+  collectedAt: string | null;
 }
 
-export interface TrackingShare {
-  token: string;
-  url: string;
+/** An order this driver accepted — the driver-side view of the customer's Order. */
+export interface DriverJob {
+  id: string;
+  number: string;
+  status: OrderStatus;
+  acceptedAt: string;
+  vehicle: VehicleRef;
+  pickup: OrderStop;
+  drop: OrderStop;
+  /** Who booked the order. */
+  sender: OrderContact;
+  route: GeoPoint[];
+  tripDistanceKm: number;
+  estimatedMinutes: number;
+  fare: number;
+  driverEarning: number;
+  commission: number;
+  payment: JobPayment;
+  pickupPhotoUrl: string | null;
+  dropPhotoUrl: string | null;
+  arrivedAtPickupAt: string | null;
+  pickedUpAt: string | null;
+  arrivedAtDropAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  unreadMessages: number;
+}
+
+export interface VerifyStopInput {
+  otp: string;
+  photoUrl: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  orderId: string;
+  sender: 'driver' | 'customer';
+  text: string;
+  createdAt: string;
+  readAt: string | null;
+}
+
+/** A UPI collect QR for one order. `upiUri` is what the QR encodes. */
+export interface PaymentQr {
+  upiUri: string;
+  payeeVpa: string;
+  payeeName: string;
+  amount: number;
+  reference: string;
   expiresAt: string;
 }
 
-/** Receiver-safe view of an order, opened from a shared link without login. */
-export interface SharedTracking {
-  orderNumber: string;
-  status: OrderStatus;
-  senderName: string;
+// ─── Earnings & wallet ──────────────────────────────────────────────────────
+
+export type DriverTransactionKind =
+  'trip_earning' | 'cash_commission' | 'incentive' | 'bonus' | 'payout';
+
+export interface DriverTransaction {
+  id: string;
+  kind: DriverTransactionKind;
+  title: string;
+  /** Positive = credited to the wallet, negative = debited. */
+  amount: number;
+  createdAt: string;
+  orderNumber: string | null;
+}
+
+export interface DriverWallet {
+  balance: number;
+  minPayout: number;
+  bankLabel: string | null;
+  transactions: DriverTransaction[];
+}
+
+export type EarningsPeriod = 'today' | 'week' | 'month';
+
+export interface EarningsSummary {
+  period: EarningsPeriod;
+  from: string;
+  to: string;
+  trips: number;
+  /** Trip earnings + incentives + bonuses. */
+  totalEarnings: number;
+  tripEarnings: number;
+  incentives: number;
+  cashCollected: number;
+  onlineMinutes: number;
+  /** Chart bars: the last 7 days for "today"/"week", one per week for "month". */
+  buckets: { label: string; amount: number }[];
+}
+
+export interface TripSummary {
+  id: string;
+  number: string;
+  status: 'delivered' | 'cancelled';
   pickupLabel: string;
   dropLabel: string;
-  vehicleName: string;
-  vehicleImageKey: string;
-  etaMinutes: number;
-  driverAssignAt: string;
-  driver: Pick<Driver, 'name' | 'rating' | 'phone' | 'vehicleLabel' | 'vehiclePlate'> | null;
-  deliveryOtp: string;
-  route: GeoPoint[];
+  vehicle: VehicleRef;
+  tripDistanceKm: number;
+  fare: number;
+  driverEarning: number;
+  paymentMode: PaymentMode;
+  endedAt: string;
 }
-
-// ─── Wallet ─────────────────────────────────────────────────────────────────
-
-export type PaymentMethodType = 'cash' | 'upi' | 'card' | 'paytm';
-
-export interface PaymentMethod {
-  id: string;
-  type: PaymentMethodType;
-  label: string;
-  subtitle: string;
-}
-
-export interface WalletTransaction {
-  id: string;
-  title: string;
-  createdAt: string;
-  amount: number;
-  kind: 'debit' | 'credit';
-}
-
-export interface Wallet {
-  balance: number;
-  paymentMethods: PaymentMethod[];
-  defaultPaymentMethodId: string;
-  transactions: WalletTransaction[];
-}
-
-export type AddPaymentMethodInput =
-  { type: 'upi'; upiId: string } | { type: 'card'; cardNumber: string } | { type: 'paytm' };
 
 // ─── Content ────────────────────────────────────────────────────────────────
-
-export interface OfferBanner {
-  id: string;
-  imageKey: string;
-  altText: string;
-}
-
-export interface AccountSummary {
-  rating: number;
-  promoItems: { id: string; title: string; subtitle: string; icon: string }[];
-  menuLinks: { id: string; label: string }[];
-}
 
 export interface SupportInfo {
   phone: string;
   email: string;
   faqs: { id: string; question: string; answer: string }[];
-}
-
-// ─── Driver Domain Models ───────────────────────────────────────────────────
-
-export interface DriverVehicleModel {
-  type: string;
-  model: string;
-  plateNumber: string;
-  capacity: string;
-  rcUploaded: boolean;
-  photoUploaded: boolean;
-}
-
-export interface DriverKycModel {
-  panNumber: string;
-  dlNumber: string;
-  aadhaarUploaded: boolean;
-  dlUploaded: boolean;
-  selfieUploaded: boolean;
-  verified: boolean;
-}
-
-export interface DriverBankModel {
-  holderName: string;
-  accountNumber: string;
-  rawAccountNumber: string;
-  ifscCode: string;
-  chequeUploaded: boolean;
-  verified: boolean;
-}
-
-export interface DailyCheckModel {
-  completed: boolean;
-  photoUri: string | null;
-  rewardEarned: number;
-}
-
-export interface DriverProfileModel {
-  id: string;
-  name: string;
-  phone: string;
-  rating: number;
-  partnerSince: string;
-  dob: string;
-  city: string;
-  isOnline: boolean;
-  vehicle: DriverVehicleModel;
-  kyc: DriverKycModel;
-  bank: DriverBankModel;
-  dailyCheck: DailyCheckModel;
-  setupStatus: {
-    vehicle: boolean;
-    kyc: boolean;
-    bank: boolean;
-  };
-  welcomeBonusDismissed: boolean;
-  walletBalance: number;
-  totalEarnings: number;
-  tripsCount: number;
-  onlineHours: string;
-  incentives: number;
-}
-
-export interface DriverJobRequestModel {
-  id: string;
-  vehicleType: string;
-  pickupName: string;
-  pickupAddress: string;
-  customerName: string;
-  customerPhone: string;
-  pickupLocation: GeoPoint;
-  dropName: string;
-  dropAddress: string;
-  recipientName: string;
-  recipientPhone: string;
-  dropLocation: GeoPoint;
-  distanceKm: number;
-  durationMin: number;
-  fare: number;
-  driverEarning: number;
-  paymentMode: 'Cash' | 'Prepaid';
-  pickupOtp: string;
-  dropOtp: string;
-}
-
-export interface DriverChatMessageModel {
-  id: string;
-  sender: 'driver' | 'customer';
-  text: string;
-  time: string;
-  status?: 'Delivered' | 'Read';
-}
-
-export interface DriverActiveJobModel extends DriverJobRequestModel {
-  status:
-    | 'idle'
-    | 'incoming'
-    | 'accepted'
-    | 'arrived_pickup'
-    | 'pickup_verified'
-    | 'in_transit'
-    | 'arrived_drop'
-    | 'drop_verified'
-    | 'completed';
-  pickupPhoto: string | null;
-  dropPhoto: string | null;
-  paymentCollected: boolean;
-  chatMessages: DriverChatMessageModel[];
-}
-
-export interface DriverPastTripModel {
-  id: string;
-  pickup: string;
-  drop: string;
-  dateStr: string;
-  status: 'Completed' | 'Cancelled';
-  fare: number;
-  distanceKm: number;
-  vehicleIconKey?: string;
 }

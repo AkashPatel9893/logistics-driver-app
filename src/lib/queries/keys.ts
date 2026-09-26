@@ -1,4 +1,4 @@
-import type { QuoteInput } from '@/lib/api/catalog';
+import type { EarningsPeriod } from '@/lib/api/models';
 
 /**
  * Query key factory. Keys include every input that changes the result;
@@ -7,15 +7,15 @@ import type { QuoteInput } from '@/lib/api/catalog';
 export const queryKeys = {
   me: ['me'] as const,
   languages: ['config', 'languages'] as const,
-  vehicles: ['vehicles'] as const,
-  offerBanners: ['offers', 'banners'] as const,
-  quote: (input: QuoteInput) => ['rides', 'quote', input] as const,
-  placeSearch: (q: string) => ['places', 'search', q] as const,
-  addresses: ['me', 'addresses'] as const,
-  orders: ['orders'] as const,
-  order: (id: string) => ['orders', id] as const,
-  sharedTracking: (token: string) => ['tracking', token] as const,
-  wallet: ['me', 'wallet'] as const,
-  accountSummary: ['me', 'account-summary'] as const,
   support: ['support'] as const,
+  profile: ['driver', 'profile'] as const,
+  vehicleTypes: ['driver', 'vehicle-types'] as const,
+  offers: ['driver', 'offers'] as const,
+  activeJob: ['driver', 'jobs', 'active'] as const,
+  job: (id: string) => ['driver', 'jobs', id] as const,
+  messages: (jobId: string) => ['driver', 'jobs', jobId, 'messages'] as const,
+  demoOtps: (jobId: string) => ['dev', 'jobs', jobId, 'otps'] as const,
+  earnings: (period: EarningsPeriod) => ['driver', 'earnings', period] as const,
+  wallet: ['driver', 'wallet'] as const,
+  trips: ['driver', 'trips'] as const,
 };

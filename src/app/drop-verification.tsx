@@ -1,3 +1,3 @@
-import { DropVerificationScreen } from '@/features/driver/screens/drop-verification-screen';
+import { DropVerificationScreen } from '@/features/driver/screens/stop-verification-screen';
 
 export default DropVerificationScreen;

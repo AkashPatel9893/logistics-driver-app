@@ -1,21 +1,21 @@
 /**
- * Live tracking transport. The server pushes order status and driver location
- * over a WebSocket (see docs/API.md). In mock mode the
- * in-app mock server emits the same events without a network.
+ * Driver realtime transport. The server pushes offers, job changes, chat and
+ * payment events on `driver:<userId>` over a WebSocket (see docs/API.md). In
+ * mock mode the in-app mock server emits the same events without a network.
  */
 import { IS_MOCK_API, WS_URL } from '@/lib/api/config';
 import { getToken } from '@/lib/auth/utils';
-import { subscribeMockChannel } from '@/mocks/realtime';
+import { subscribeMockDriverChannel } from '@/mocks/realtime';
 
-import type { TrackingEvent } from './events';
+import type { DriverEvent } from './driver-events';
 
-type Listener = (event: TrackingEvent) => void;
+type Listener = (event: DriverEvent) => void;
 
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 
 /** One shared socket; channels are (re)subscribed after every reconnect. */
-class TrackingSocket {
+class DriverSocket {
   private socket: WebSocket | null = null;
   private listeners = new Map<string, Set<Listener>>();
   private retries = 0;
@@ -53,7 +53,7 @@ class TrackingSocket {
       try {
         const { channel, event } = JSON.parse(String(message.data)) as {
           channel: string;
-          event: TrackingEvent;
+          event: DriverEvent;
         };
         this.listeners.get(channel)?.forEach((listener) => listener(event));
       } catch {
@@ -88,14 +88,13 @@ class TrackingSocket {
   }
 }
 
-const socket = new TrackingSocket();
+const socket = new DriverSocket();
 
-/** Subscribes to a tracking channel; returns an unsubscribe function. */
-export function subscribeToTracking(channel: string, listener: Listener): () => void {
+export const driverChannel = (userId: string) => `driver:${userId}`;
+
+/** Subscribes to the driver's channel; returns an unsubscribe function. */
+export function subscribeToDriverChannel(channel: string, listener: Listener): () => void {
   return IS_MOCK_API
-    ? subscribeMockChannel(channel, listener)
+    ? subscribeMockDriverChannel(channel, listener)
     : socket.subscribe(channel, listener);
 }
-
-export const orderChannel = (orderId: string) => `order:${orderId}`;
-export const sharedTrackingChannel = (token: string) => `tracking:${token}`;

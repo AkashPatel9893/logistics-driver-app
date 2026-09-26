@@ -1,76 +1,60 @@
 import { useRouter } from 'expo-router';
 
 import { AppPressable, AppText, AppView } from '@/components/ui';
+import { formatRupees } from '@/lib/format';
 
 export interface DriverStatsRowProps {
-  tripsCount: number;
-  todayEarnings: number;
+  tripsToday: number;
+  earningsToday: number;
   walletBalance: number;
   className?: string;
 }
 
 export function DriverStatsRow({
-  tripsCount,
-  todayEarnings,
+  tripsToday,
+  earningsToday,
   walletBalance,
   className = '',
 }: DriverStatsRowProps) {
   const router = useRouter();
 
+  const stats = [
+    { label: 'TRIPS', value: String(tripsToday), note: 'Today', route: '/(tabs)/orders' as const },
+    {
+      label: 'EARNED',
+      value: formatRupees(earningsToday),
+      note: 'Today',
+      route: '/earnings' as const,
+    },
+    {
+      label: 'BALANCE',
+      value: formatRupees(walletBalance),
+      note: 'Wallet',
+      route: '/wallet' as const,
+    },
+  ];
+
   return (
     <AppView row className={`gap-2.5 ${className}`}>
-      {/* Trips Card */}
-      <AppPressable
-        onPress={() => router.push('/(tabs)/orders')}
-        pressScale={0.96}
-        className="flex-1 rounded-[22px] border border-border/80 bg-card p-4 shadow-sm"
-      >
-        <AppText className="text-[11px] font-bold uppercase tracking-wider text-muted">
-          TRIPS
-        </AppText>
-        <AppText className="mt-1.5 text-[22px] font-black text-foreground">{tripsCount}</AppText>
-        {tripsCount > 0 ? (
-          <AppText className="mt-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-            +2 today
+      {stats.map((stat) => (
+        <AppPressable
+          key={stat.label}
+          onPress={() => router.push(stat.route)}
+          pressScale={0.96}
+          accessibilityLabel={`${stat.label} ${stat.value}, ${stat.note}`}
+          className="flex-1 rounded-[22px] border border-border/80 bg-card p-4 shadow-sm"
+        >
+          <AppText className="text-[11px] font-bold uppercase tracking-wider text-muted">
+            {stat.label}
           </AppText>
-        ) : null}
-      </AppPressable>
-
-      {/* Earnings Card */}
-      <AppPressable
-        onPress={() => router.push('/earnings')}
-        pressScale={0.96}
-        className="flex-1 rounded-[22px] border border-border/80 bg-card p-4 shadow-sm"
-      >
-        <AppText className="text-[11px] font-bold uppercase tracking-wider text-muted">
-          EARNINGS
-        </AppText>
-        <AppText className="mt-1.5 text-[22px] font-black text-foreground">
-          ₹{todayEarnings.toLocaleString('en-IN')}
-        </AppText>
-        {todayEarnings > 0 ? (
-          <AppText className="mt-0.5 text-[11px] font-medium text-brand">Today</AppText>
-        ) : null}
-      </AppPressable>
-
-      {/* Balance Card */}
-      <AppPressable
-        onPress={() => router.push('/wallet')}
-        pressScale={0.96}
-        className="flex-1 rounded-[22px] border border-border/80 bg-card p-4 shadow-sm"
-      >
-        <AppText className="text-[11px] font-bold uppercase tracking-wider text-muted">
-          BALANCE
-        </AppText>
-        <AppText className="mt-1.5 text-[22px] font-black text-foreground">
-          ₹{walletBalance.toLocaleString('en-IN')}
-        </AppText>
-        {walletBalance > 0 ? (
+          <AppText className="mt-1.5 text-[20px] font-black text-foreground" numberOfLines={1}>
+            {stat.value}
+          </AppText>
           <AppText className="mt-0.5 text-[11px] font-medium text-foreground-secondary">
-            Available
+            {stat.note}
           </AppText>
-        ) : null}
-      </AppPressable>
+        </AppPressable>
+      ))}
     </AppView>
   );
 }

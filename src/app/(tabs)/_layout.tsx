@@ -3,6 +3,17 @@ import { Redirect, Tabs, useRouter, useSegments } from 'expo-router';
 import { FloatingTabBar, FloatingTabBarSpacer, type TabName } from '@/components/floating-tab-bar';
 import { AppView } from '@/components/ui';
 import { useAuthStore } from '@/features/auth/use-auth-store';
+import { useDriverProfile } from '@/hooks/use-driver';
+import { useDriverRealtime } from '@/hooks/use-driver-realtime';
+import { useLocationReporter } from '@/hooks/use-location-reporter';
+
+/** Background work for a signed-in driver: server pushes and GPS reporting. */
+function DriverSession({ userId }: { userId: string }) {
+  const { data: profile } = useDriverProfile();
+  useDriverRealtime(userId);
+  useLocationReporter(profile?.isOnline ?? false);
+  return null;
+}
 
 const TAB_NAMES: readonly TabName[] = ['home', 'orders', 'account'];
 
@@ -15,6 +26,7 @@ export default function TabsLayout() {
   const segments = useSegments();
   const isSignedIn = useAuthStore((state) => state.status === 'signIn');
   const isOnboarded = useAuthStore((state) => state.user?.isOnboarded === true);
+  const userId = useAuthStore((state) => state.user?.id);
   const lastSegment = segments.at(-1);
   const activeTab: TabName = isTabName(lastSegment) ? lastSegment : 'home';
 
@@ -23,6 +35,7 @@ export default function TabsLayout() {
 
   return (
     <AppView className="flex-1">
+      {userId ? <DriverSession userId={userId} /> : null}
       <Tabs screenOptions={{ headerShown: false, tabBarStyle: { display: 'none' } }}>
         <Tabs.Screen name="home" />
         <Tabs.Screen name="orders" />

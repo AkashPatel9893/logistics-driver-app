@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,7 +13,8 @@ import {
   type IconName,
 } from '@/components/ui';
 import { signOut } from '@/features/auth/use-auth-store';
-import { useDriverStore } from '@/stores/driver-store';
+import { useDriverProfile, useSetOnline } from '@/hooks/use-driver';
+import { formatRupees } from '@/lib/format';
 
 interface MenuItem {
   icon: IconName;
@@ -26,12 +28,14 @@ export function DriverAccountScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const name = useDriverStore((s) => s.name);
-  const phone = useDriverStore((s) => s.phone);
-  const rating = useDriverStore((s) => s.rating);
-  const tripsCount = useDriverStore((s) => s.tripsCount);
-  const vehicle = useDriverStore((s) => s.vehicle);
-  const walletBalance = useDriverStore((s) => s.walletBalance);
+  const { data: profile } = useDriverProfile();
+  const setOnline = useSetOnline();
+  const name = profile?.name ?? '';
+  const vehicle = profile?.vehicle ?? null;
+  const ratingLabel =
+    profile?.rating != null
+      ? `${profile.rating.toFixed(1)} · ${profile.lifetimeTrips} trips`
+      : `New partner · ${profile?.lifetimeTrips ?? 0} trips`;
 
   const MENU_ITEMS: MenuItem[] = [
     {
@@ -43,32 +47,38 @@ export function DriverAccountScreen() {
     {
       icon: 'box.truck.fill',
       label: 'Vehicle Details',
-      sublabel: `${vehicle.model} • ${vehicle.plateNumber}`,
+      sublabel: vehicle ? `${vehicle.model} • ${vehicle.plateNumber}` : 'Add your vehicle',
       route: '/setup-vehicle',
     },
     {
       icon: 'checkmark.shield.fill',
       label: 'KYC Documents',
-      sublabel: 'DL, PAN & Aadhaar records',
+      sublabel: profile?.kyc ? `Licence ${profile.kyc.dlNumber}` : 'Driving licence, PAN & Aadhaar',
       route: '/setup-kyc',
     },
     {
       icon: 'banknote',
       label: 'Bank Details & Payouts',
-      sublabel: 'Bank account and settlement settings',
+      sublabel: profile?.bank
+        ? `${profile.bank.bankName} •• ${profile.bank.accountLast4}`
+        : 'Account for wallet payouts',
       route: '/setup-bank',
     },
     {
       icon: 'calendar',
-      label: 'Daily Shift Verification',
-      sublabel: 'Earn ₹50 bonus daily selfie check',
+      label: 'Daily Vehicle Check',
+      sublabel: profile?.dailyCheck.completedToday
+        ? 'Done for today'
+        : `Earn ${formatRupees(profile?.dailyCheck.reward ?? 0)} with a vehicle selfie`,
       route: '/daily-check',
-      badge: '+₹50',
+      badge: profile?.dailyCheck.completedToday
+        ? undefined
+        : `+${formatRupees(profile?.dailyCheck.reward ?? 0)}`,
     },
     {
       icon: 'questionmark.circle',
       label: 'Help & 24/7 Driver Support',
-      sublabel: 'Instant assistance and ticketing',
+      sublabel: 'FAQs, call or email partner care',
       route: '/support',
     },
   ];
@@ -79,7 +89,9 @@ export function DriverAccountScreen() {
       {
         text: 'Log Out',
         style: 'destructive',
-        onPress: () => {
+        onPress: async () => {
+          // Stop receiving offers before the session ends.
+          if (profile?.isOnline) await setOnline.mutateAsync(false).catch(() => undefined);
           signOut();
           router.replace('/');
         },
@@ -112,15 +124,15 @@ export function DriverAccountScreen() {
           <AppView row className="items-center gap-4">
             <AppView className="h-16 w-16 items-center justify-center rounded-full bg-brand/10 border-2 border-brand/30">
               <AppText className="text-[24px] font-black text-brand">
-                {name ? name.slice(0, 1).toUpperCase() : 'R'}
+                {name ? name.slice(0, 1).toUpperCase() : '?'}
               </AppText>
             </AppView>
 
             <AppView className="flex-1">
-              <AppText className="text-[18px] font-black text-foreground">
-                {name || 'Rajesh Kumar'}
+              <AppText className="text-[18px] font-black text-foreground">{name}</AppText>
+              <AppText className="text-[13px] text-muted">
+                {profile?.phone ?? profile?.email}
               </AppText>
-              <AppText className="text-[13px] text-muted">{phone || '+91 98765 43210'}</AppText>
 
               <AppView row className="mt-1.5 items-center gap-2">
                 <AppView
@@ -129,12 +141,14 @@ export function DriverAccountScreen() {
                 >
                   <Icon name="star.fill" size={12} color="#f59e0b" />
                   <AppText className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
-                    {rating} ({tripsCount} trips)
+                    {ratingLabel}
                   </AppText>
                 </AppView>
-                <AppText className="text-[12px] font-medium text-foreground-secondary">
-                  • {vehicle.model}
-                </AppText>
+                {vehicle ? (
+                  <AppText className="text-[12px] font-medium text-foreground-secondary">
+                    • {vehicle.model}
+                  </AppText>
+                ) : null}
               </AppView>
             </AppView>
 
@@ -155,7 +169,7 @@ export function DriverAccountScreen() {
             <AppText className="mt-2.5 text-[14px] font-bold text-foreground">
               Help & Support
             </AppText>
-            <AppText className="mt-0.5 text-[11px] text-muted">24/7 dedicated desk</AppText>
+            <AppText className="mt-0.5 text-[11px] text-muted">FAQs & partner care</AppText>
           </AppPressable>
 
           <AppPressable
@@ -168,7 +182,7 @@ export function DriverAccountScreen() {
             </AppView>
             <AppText className="mt-2.5 text-[14px] font-bold text-foreground">My Wallet</AppText>
             <AppText className="mt-0.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-              ₹{walletBalance.toLocaleString('en-IN')}
+              {formatRupees(profile?.walletBalance ?? 0)}
             </AppText>
           </AppPressable>
         </AppView>
@@ -223,7 +237,7 @@ export function DriverAccountScreen() {
         </AppPressable>
 
         <AppText className="text-center text-[11px] text-muted">
-          Logistics Driver App • Version 1.0.0 (Production)
+          RYNO Partner • Version {Constants.expoConfig?.version ?? '1.0.0'}
         </AppText>
       </AppScrollView>
     </AppView>

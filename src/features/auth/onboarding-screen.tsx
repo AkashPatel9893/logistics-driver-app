@@ -70,6 +70,24 @@ export function OnboardingScreen() {
               inputClassName="ml-2 text-[15px]"
             />
 
+            <TextField
+              variant="outlined"
+              label="Mobile number"
+              required
+              value={form.phone}
+              onChangeText={form.handlePhoneChange}
+              placeholder="98765 43210"
+              keyboardType="phone-pad"
+              autoComplete="tel"
+              maxLength={10}
+              error={form.validationErrors.phone}
+              hint="Customers call this number during a trip."
+              leading={
+                <AppText className="text-[15px] font-bold text-foreground-secondary">+91</AppText>
+              }
+              inputClassName="ml-2 text-[15px]"
+            />
+
             {/* Date of Birth */}
             <TextField
               variant="outlined"
@@ -135,6 +153,11 @@ export function OnboardingScreen() {
                     </AppPressable>
                   ))}
                 </AppView>
+              ) : null}
+              {form.validationErrors.city ? (
+                <AppText className="mt-1.5 text-[12px] font-medium text-error">
+                  {form.validationErrors.city}
+                </AppText>
               ) : null}
             </AppView>
           </AppView>

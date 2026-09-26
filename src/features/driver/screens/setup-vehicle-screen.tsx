@@ -1,190 +1,156 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  AppImage,
   AppKeyboardAvoidingView,
   AppPressable,
   AppScrollView,
   AppText,
   AppView,
   Button,
-  FocusAwareStatusBar,
   Icon,
-  LiquidGlassBackButton,
   TextField,
 } from '@/components/ui';
-import { useDriverStore } from '@/stores/driver-store';
+import { useDriverProfile, useSaveVehicle, useVehicleTypes } from '@/hooks/use-driver';
+import { getErrorMessage } from '@/lib/api/api-error';
 
 import { PhotoUploadBox } from '../components/photo-upload-box';
-
-const VEHICLE_TYPES = ['Tata Ace', '2 Wheeler', '3 Wheeler', 'Pickup 8ft', 'Canter 14ft'];
+import { SetupScreenLayout } from '../components/setup-screen-layout';
+import { usePhotoUpload } from '../hooks/use-photo-upload';
+import { VEHICLE_IMAGES } from '../vehicle-images';
 
 export function SetupVehicleScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const { data: profile } = useDriverProfile();
+  const { data: vehicleTypes = [] } = useVehicleTypes();
+  const saveVehicle = useSaveVehicle();
+  const current = profile?.vehicle ?? null;
 
-  const vehicle = useDriverStore((s) => s.vehicle);
-  const saveVehicleDetails = useDriverStore((s) => s.saveVehicleDetails);
-
-  const [type, setType] = useState(vehicle.type || 'Tata Ace');
-  const [model, setModel] = useState(vehicle.model || 'Tata Ace Gold');
-  const [plateNumber, setPlateNumber] = useState(vehicle.plateNumber || 'KA 03 MX 2814');
-  const [capacity, setCapacity] = useState(vehicle.capacity || '750 kg');
-  const [rcPhoto, setRcPhoto] = useState<string | null>(
-    vehicle.rcUploaded
-      ? 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=600&q=80'
-      : null,
-  );
-  const [vehiclePhoto, setVehiclePhoto] = useState<string | null>(
-    vehicle.photoUploaded
-      ? 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80'
-      : null,
-  );
+  const [typeId, setTypeId] = useState(current?.vehicleTypeId ?? '');
+  const [model, setModel] = useState(current?.model ?? '');
+  const [plateNumber, setPlateNumber] = useState(current?.plateNumber ?? '');
+  const rc = usePhotoUpload('vehicle_rc', current?.rcPhotoUrl ?? null, 'document');
+  const front = usePhotoUpload('vehicle_front', current?.frontPhotoUrl ?? null);
+  const [error, setError] = useState<string>();
 
   const handleSave = () => {
-    if (!model.trim() || !plateNumber.trim()) {
-      Alert.alert('Required Fields', 'Please enter your vehicle model and registration number.');
-      return;
-    }
-
-    saveVehicleDetails({
-      type,
-      model,
-      plateNumber: plateNumber.toUpperCase(),
-      capacity,
-      rcUploaded: Boolean(rcPhoto),
-      photoUploaded: Boolean(vehiclePhoto),
-    });
-
-    Alert.alert('Vehicle Saved! 🚚', 'Your vehicle details have been saved successfully.', [
-      { text: 'Done', onPress: () => router.back() },
-    ]);
+    if (!typeId) return setError('Choose your vehicle type.');
+    if (!rc.url || !front.url) return setError('Add both the RC and vehicle photos.');
+    setError(undefined);
+    saveVehicle.mutate(
+      { vehicleTypeId: typeId, model, plateNumber, rcPhotoUrl: rc.url, frontPhotoUrl: front.url },
+      {
+        onSuccess: () =>
+          Alert.alert('Vehicle submitted', 'We are verifying your RC. This takes a few minutes.', [
+            { text: 'OK', onPress: () => router.back() },
+          ]),
+        onError: (e) => setError(getErrorMessage(e)),
+      },
+    );
   };
 
   return (
-    <AppView className="flex-1 bg-background">
-      <FocusAwareStatusBar />
-
-      {/* Top Header */}
-      <AppView
-        style={{ paddingTop: Math.max(insets.top, 12) + 4 }}
-        className="border-b border-border/80 bg-card px-5 pb-3.5 shadow-sm"
-      >
-        <AppView row className="items-center gap-3">
-          <LiquidGlassBackButton onPress={() => router.back()} />
-          <AppView>
-            <AppText className="text-[20px] font-black text-foreground">Add Your Vehicle</AppText>
-            <AppText className="text-[12px] text-muted">Enter vehicle specs & documents</AppText>
-          </AppView>
-        </AppView>
-      </AppView>
-
+    <SetupScreenLayout title="Your vehicle" subtitle="Vehicle type, registration and photos">
       <AppKeyboardAvoidingView>
         <AppScrollView
-          contentContainerClassName="px-5 pb-16 pt-4 gap-5"
+          contentContainerClassName="gap-5 px-5 pb-16 pt-4"
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* Vehicle Type Selection */}
           <AppView>
             <AppText className="mb-2 text-[14px] font-semibold text-foreground">
-              Vehicle Category
+              Vehicle type
             </AppText>
-            <AppScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="gap-2"
-            >
-              {VEHICLE_TYPES.map((vType) => {
-                const isSelected = type === vType;
+            <AppView row className="flex-wrap gap-2">
+              {vehicleTypes.map((type) => {
+                const isSelected = typeId === type.id;
                 return (
                   <AppPressable
-                    key={vType}
-                    onPress={() => setType(vType)}
-                    className={`rounded-2xl border px-4 py-2.5 ${
+                    key={type.id}
+                    onPress={() => setTypeId(type.id)}
+                    accessibilityState={{ selected: isSelected }}
+                    className={`w-[31%] items-center rounded-2xl border px-2 py-3 ${
                       isSelected ? 'border-brand bg-brand/10' : 'border-border bg-card'
                     }`}
                   >
+                    {VEHICLE_IMAGES[type.imageKey] ? (
+                      <AppImage
+                        source={VEHICLE_IMAGES[type.imageKey]}
+                        contentFit="contain"
+                        className="h-10 w-16"
+                      />
+                    ) : null}
                     <AppText
-                      className={`text-[13px] ${
-                        isSelected ? 'font-bold text-brand' : 'font-medium text-foreground'
-                      }`}
+                      className={`mt-1 text-[12px] ${isSelected ? 'font-bold text-brand' : 'font-medium text-foreground'}`}
                     >
-                      {vType}
+                      {type.name}
+                    </AppText>
+                    <AppText className="text-[10px] text-muted">
+                      {type.capacityKg.toLocaleString('en-IN')} kg
                     </AppText>
                   </AppPressable>
                 );
               })}
-            </AppScrollView>
+            </AppView>
           </AppView>
 
-          {/* Model & Plate */}
           <TextField
             variant="outlined"
-            label="Vehicle Model"
+            label="Make & model"
             required
             value={model}
             onChangeText={setModel}
             placeholder="e.g. Tata Ace Gold"
+            autoCorrect={false}
             leading={<Icon name="box.truck" size={18} tone="icon-subtle" />}
           />
 
           <TextField
             variant="outlined"
-            label="Registration Number"
+            label="Registration number"
             required
             value={plateNumber}
-            onChangeText={setPlateNumber}
-            placeholder="e.g. KA 03 MX 2814"
+            onChangeText={(t) => setPlateNumber(t.toUpperCase())}
+            placeholder="e.g. DL 1L AB 1234"
             autoCapitalize="characters"
+            hint="Exactly as printed on your RC"
             leading={<Icon name="tag.fill" size={18} tone="icon-subtle" />}
           />
 
-          <TextField
-            variant="outlined"
-            label="Payload Capacity"
-            value={capacity}
-            onChangeText={setCapacity}
-            placeholder="e.g. 750 kg"
-            leading={<Icon name="shippingbox.fill" size={18} tone="icon-subtle" />}
-          />
-
-          {/* RC Document Photo */}
           <PhotoUploadBox
-            label="Vehicle RC (Registration Certificate)"
-            hint="Upload front copy of your vehicle RC card"
-            photoUri={rcPhoto}
-            onSelectPhoto={() =>
-              setRcPhoto(
-                'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=600&q=80',
-              )
-            }
+            label="Registration certificate (RC)"
+            title="Add RC photo"
+            hint="Front side, all text readable"
+            photoUri={rc.previewUri}
+            uploading={rc.uploading}
+            error={rc.error}
+            onSelectPhoto={rc.pick}
           />
 
-          {/* Vehicle Front Photo */}
           <PhotoUploadBox
-            label="Vehicle Front Photo"
-            hint="Ensure full front and number plate are clearly visible"
-            photoUri={vehiclePhoto}
-            onSelectPhoto={() =>
-              setVehiclePhoto(
-                'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80',
-              )
-            }
+            label="Vehicle front photo"
+            title="Take vehicle photo"
+            hint="Full front with the number plate visible"
+            photoUri={front.previewUri}
+            uploading={front.uploading}
+            error={front.error}
+            onSelectPhoto={front.pick}
           />
 
-          {/* Save Button */}
-          <AppView className="pt-2">
-            <Button
-              label="Save Vehicle Details"
-              onPress={handleSave}
-              size="lg"
-              textClassName="font-extrabold text-base"
-            />
-          </AppView>
+          {error ? <AppText className="text-[13px] font-medium text-error">{error}</AppText> : null}
+
+          <Button
+            label={current ? 'Update vehicle' : 'Submit vehicle'}
+            onPress={handleSave}
+            loading={saveVehicle.isPending}
+            disabled={rc.uploading || front.uploading}
+            size="lg"
+            textClassName="font-extrabold text-base"
+          />
         </AppScrollView>
       </AppKeyboardAvoidingView>
-    </AppView>
+    </SetupScreenLayout>
   );
 }

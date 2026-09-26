@@ -2,8 +2,8 @@ import type { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: 'Logistics-driver-app',
-  slug: 'logistics-app',
+  name: 'RYNO Partner',
+  slug: 'logistics-driver-app',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
@@ -34,7 +34,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'expo-location',
       {
         locationWhenInUsePermission:
-          'Allow Logistics App to access your location to set your address on the map.',
+          'RYNO Partner uses your location to show nearby delivery requests and share your live position with the customer during a trip.',
+      },
+    ],
+    [
+      'expo-image-picker',
+      {
+        cameraPermission:
+          'RYNO Partner uses the camera to photograph parcels at pickup and drop, your vehicle and your documents.',
+        photosPermission:
+          'RYNO Partner lets you choose document photos from your library during onboarding.',
+        microphonePermission: false,
       },
     ],
     '@maplibre/maplibre-react-native',

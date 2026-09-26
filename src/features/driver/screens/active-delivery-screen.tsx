@@ -1,150 +1,191 @@
 import { useRouter } from 'expo-router';
-import { Linking } from 'react-native';
+import { Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   AppPressable,
+  AppSpinner,
   AppText,
   AppView,
   Button,
   FocusAwareStatusBar,
   Icon,
   LiquidGlassBackButton,
-  OlaMapCamera,
-  OlaMapMarker,
-  OlaMapView,
 } from '@/components/ui';
-import { useDriverStore } from '@/stores/driver-store';
+import { useActiveJob, useArriveAtDrop, useArriveAtPickup, useCancelJob } from '@/hooks/use-jobs';
+import { getErrorMessage } from '@/lib/api/api-error';
+import type { DriverJob, GeoPoint } from '@/lib/api/models';
+import { formatDistance, formatMinutes, formatRupees } from '@/lib/format';
+import { distanceKm } from '@/lib/geo';
+import { useLocationStore } from '@/stores/location-store';
 
-export function ActiveDeliveryScreen() {
+import { RouteMap } from '../components/route-map';
+import { currentStop, JOB_STAGE_LABEL } from '../job-stage';
+
+// Road distance is ~1.3× straight-line in Indian cities; speed is a city average.
+const ROAD_FACTOR = 1.3;
+const CITY_SPEED_KMPH = 22;
+/** Beyond this, "I've arrived" asks for confirmation. */
+const ARRIVAL_RADIUS_KM = 0.5;
+const CANCEL_REASONS = [
+  'Customer not reachable',
+  'Parcel not ready',
+  'Parcel too large for my vehicle',
+  'Vehicle breakdown',
+];
+
+function openNavigation(target: GeoPoint) {
+  const destination = `${target.latitude},${target.longitude}`;
+  Linking.openURL(
+    `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`,
+  );
+}
+
+function useLeg(job: DriverJob) {
+  const current = useLocationStore((s) => s.current);
+  const stop = currentStop(job.status);
+  const target = stop === 'pickup' ? job.pickup : job.drop;
+  const straightKm = current && target.location ? distanceKm(current, target.location) : null;
+  const roadKm = straightKm !== null ? straightKm * ROAD_FACTOR : null;
+  return {
+    stop,
+    target,
+    driver: current,
+    straightKm,
+    roadKm,
+    etaMinutes: roadKm !== null ? (roadKm / CITY_SPEED_KMPH) * 60 : null,
+  };
+}
+
+function ActiveDelivery({ job }: { job: DriverJob }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const leg = useLeg(job);
+  const arriveAtPickup = useArriveAtPickup();
+  const arriveAtDrop = useArriveAtDrop();
+  const cancelJob = useCancelJob();
 
-  const activeJob = useDriverStore((s) => s.activeJob);
-  const updateJobStatus = useDriverStore((s) => s.updateJobStatus);
+  const isPickup = leg.stop === 'pickup';
+  const contact = isPickup ? job.sender : (job.drop.contact ?? job.sender);
+  const hasArrived = job.status === 'arrived_at_pickup' || job.status === 'arrived_at_drop';
+  const busy = arriveAtPickup.isPending || arriveAtDrop.isPending;
 
-  if (!activeJob) {
-    return (
-      <AppView className="flex-1 items-center justify-center bg-background p-6">
-        <Icon name="box.truck" size={48} tone="icon-subtle" />
-        <AppText className="mt-3 text-[18px] font-bold text-foreground">
-          No Active Delivery in Progress
-        </AppText>
-        <Button label="Go to Dashboard" onPress={() => router.replace('/home')} className="mt-6" />
-      </AppView>
-    );
-  }
-
-  const isHeadingPickup = activeJob.status === 'accepted' || activeJob.status === 'incoming';
-  const isAtPickup = activeJob.status === 'arrived_pickup';
-  const isPickupVerified = activeJob.status === 'pickup_verified';
-  const isInTransit = activeJob.status === 'in_transit';
-  const isAtDrop = activeJob.status === 'arrived_drop';
-
-  const isTargetPickup = isHeadingPickup || isAtPickup;
-  const currentTargetName = isTargetPickup ? activeJob.pickupName : activeJob.dropName;
-  const currentTargetAddress = isTargetPickup ? activeJob.pickupAddress : activeJob.dropAddress;
-  const contactName = isTargetPickup ? activeJob.customerName : activeJob.recipientName;
-  const contactPhone = isTargetPickup ? activeJob.customerPhone : activeJob.recipientPhone;
-
-  const handleCall = () => {
-    Linking.openURL(`tel:${contactPhone}`);
+  const markArrived = () => {
+    const mutation = isPickup ? arriveAtPickup : arriveAtDrop;
+    mutation.mutate(job.id, {
+      onSuccess: () => router.push(isPickup ? '/pickup-verification' : '/drop-verification'),
+      onError: (error) => Alert.alert('Could not update trip', getErrorMessage(error)),
+    });
   };
 
-  const handleChat = () => {
-    router.push('/customer-chat');
-  };
-
-  const handlePrimaryAction = () => {
-    if (isHeadingPickup) {
-      updateJobStatus('arrived_pickup');
-      router.push('/pickup-verification');
-    } else if (isAtPickup) {
-      router.push('/pickup-verification');
-    } else if (isPickupVerified) {
-      updateJobStatus('in_transit');
-    } else if (isInTransit) {
-      updateJobStatus('arrived_drop');
-      router.push('/drop-verification');
-    } else if (isAtDrop) {
-      router.push('/drop-verification');
+  const handlePrimary = () => {
+    if (hasArrived) {
+      router.push(isPickup ? '/pickup-verification' : '/drop-verification');
+      return;
     }
+    if (leg.straightKm !== null && leg.straightKm > ARRIVAL_RADIUS_KM) {
+      Alert.alert(
+        'Not at the location yet?',
+        `You are about ${formatDistance(leg.straightKm)} from the ${isPickup ? 'pickup' : 'drop'} point. Mark as arrived anyway?`,
+        [
+          { text: 'Keep driving', style: 'cancel' },
+          { text: "I've arrived", onPress: markArrived },
+        ],
+      );
+      return;
+    }
+    markArrived();
   };
 
-  let actionButtonLabel = "I've arrived";
-  if (isAtPickup) actionButtonLabel = 'Enter Pickup OTP & Photos';
-  else if (isPickupVerified) actionButtonLabel = 'Start Trip to Drop Location →';
-  else if (isInTransit) actionButtonLabel = "I've Arrived at Drop Location";
-  else if (isAtDrop) actionButtonLabel = 'Verify Drop & Collect Payment';
+  const handleCancel = () =>
+    Alert.alert(
+      'Cancel this trip?',
+      'Choose a reason. Frequent cancellations lower your priority.',
+      [
+        ...CANCEL_REASONS.map((reason) => ({
+          text: reason,
+          onPress: () =>
+            cancelJob.mutate(
+              { id: job.id, reason },
+              {
+                onSuccess: () => router.replace('/home'),
+                onError: (error) => Alert.alert('Could not cancel', getErrorMessage(error)),
+              },
+            ),
+        })),
+        { text: 'Keep trip', style: 'cancel' as const },
+      ],
+    );
+
+  const primaryLabel = hasArrived
+    ? isPickup
+      ? 'Verify pickup'
+      : 'Verify delivery'
+    : isPickup
+      ? "I've arrived at pickup"
+      : "I've arrived at drop";
+
+  const payment = job.payment;
+  const paymentNote =
+    payment.mode === 'prepaid'
+      ? `Paid online · ${payment.methodLabel}`
+      : payment.status === 'collected'
+        ? `Collected via ${payment.collectedVia === 'upi' ? 'UPI' : 'cash'}`
+        : `Collect cash ${payment.timing === 'on-pickup' ? 'at pickup' : 'at drop'}`;
 
   return (
     <AppView className="flex-1 bg-background">
       <FocusAwareStatusBar />
 
-      <AppView className="flex-1">
-        <OlaMapView style={{ flex: 1 }}>
-          <OlaMapCamera
-            centerCoordinate={isTargetPickup ? activeJob.pickupLocation : activeJob.dropLocation}
-            zoomLevel={14.5}
-          />
-          <OlaMapMarker coordinate={activeJob.pickupLocation}>
-            <AppView className="h-4 w-4 rounded-full border-2 border-white bg-emerald-500 shadow-sm" />
-          </OlaMapMarker>
-          <OlaMapMarker coordinate={activeJob.dropLocation}>
-            <AppView className="h-4 w-4 rounded-full border-2 border-white bg-brand shadow-sm" />
-          </OlaMapMarker>
-        </OlaMapView>
-      </AppView>
+      <RouteMap
+        pickup={job.pickup.location}
+        drop={job.drop.location}
+        driver={leg.driver}
+        focus={leg.stop}
+        padding={{ top: insets.top + 170, right: 60, bottom: 60, left: 60 }}
+      />
 
       <AppView
         style={{ top: insets.top + 8 }}
-        className="absolute left-4 right-4 z-20 overflow-hidden rounded-3xl border border-border bg-neutral-950/90 p-4 shadow-xl backdrop-blur-md"
+        className="absolute left-4 right-4 z-20 overflow-hidden rounded-3xl border border-border bg-neutral-950/90 p-4 shadow-xl"
       >
         <AppView row className="items-center justify-between">
           <LiquidGlassBackButton onPress={() => router.replace('/home')} />
           <AppView className="rounded-full bg-brand/20 px-3 py-1">
             <AppText className="text-[11px] font-black uppercase tracking-wider text-brand">
-              {isTargetPickup ? 'STAGE: PICKUP' : 'STAGE: DROP'}
+              {JOB_STAGE_LABEL[job.status]}
             </AppText>
           </AppView>
         </AppView>
 
         <AppView row className="mt-3 items-center gap-3.5">
-          <AppView className="h-12 w-12 items-center justify-center rounded-2xl bg-brand">
-            <Icon name="arrow.right" size={24} color="#ffffff" />
-          </AppView>
+          <AppPressable
+            onPress={() => leg.target.location && openNavigation(leg.target.location)}
+            disabled={!leg.target.location}
+            accessibilityLabel="Open navigation in Google Maps"
+            className="h-12 w-12 items-center justify-center rounded-2xl bg-brand"
+          >
+            <Icon name="location.north.fill" size={22} color="#ffffff" />
+          </AppPressable>
           <AppView className="flex-1">
             <AppText className="text-[17px] font-black text-white" numberOfLines={1}>
-              Turn left in 250m
+              {isPickup ? 'To pickup' : 'To drop'} · {leg.target.label.split(',')[0]}
             </AppText>
             <AppText className="text-[12px] font-medium text-neutral-300" numberOfLines={1}>
-              onto {currentTargetName}
+              {leg.roadKm === null ? 'Tap the arrow to navigate' : 'Tap the arrow for turn-by-turn'}
             </AppText>
           </AppView>
-          <AppView className="items-end">
-            <AppText className="text-[15px] font-black text-brand">8 mins</AppText>
-            <AppText className="text-[11px] text-neutral-400">2.4 km</AppText>
-          </AppView>
+          {leg.roadKm !== null && leg.etaMinutes !== null ? (
+            <AppView className="items-end">
+              <AppText className="text-[15px] font-black text-brand">
+                {formatMinutes(leg.etaMinutes)}
+              </AppText>
+              <AppText className="text-[11px] text-neutral-400">
+                {formatDistance(leg.roadKm)}
+              </AppText>
+            </AppView>
+          ) : null}
         </AppView>
-      </AppView>
-
-      <AppView style={{ bottom: 220 }} className="absolute right-4 z-20 gap-3">
-        <AppPressable
-          onPress={handleCall}
-          pressScale={0.92}
-          className="h-12 w-12 items-center justify-center rounded-full bg-white shadow-xl border border-border/30 active:bg-neutral-100"
-        >
-          <Icon name="phone.fill" size={20} tone="brand" />
-        </AppPressable>
-
-        <AppPressable
-          onPress={handleChat}
-          pressScale={0.92}
-          className="relative h-12 w-12 items-center justify-center rounded-full bg-white shadow-xl border border-border/30 active:bg-neutral-100"
-        >
-          <Icon name="message.fill" size={20} tone="brand" />
-          <AppView className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-emerald-500 border border-white" />
-        </AppPressable>
       </AppView>
 
       <AppView
@@ -152,50 +193,107 @@ export function ActiveDeliveryScreen() {
         className="rounded-t-3xl border-t border-border bg-card px-5 pt-5 shadow-2xl"
       >
         <AppView row className="items-center justify-between border-b border-border/60 pb-3">
-          <AppView row className="items-center gap-3">
+          <AppView row className="flex-1 items-center gap-3">
             <AppView className="h-10 w-10 items-center justify-center rounded-full bg-brand/10">
               <AppText className="text-[16px] font-black text-brand">
-                {contactName.slice(0, 1)}
+                {contact.name.slice(0, 1)}
               </AppText>
             </AppView>
-            <AppView>
-              <AppText className="text-[15px] font-extrabold text-foreground">
-                {contactName}
+            <AppView className="flex-1">
+              <AppText className="text-[15px] font-extrabold text-foreground" numberOfLines={1}>
+                {contact.name}
               </AppText>
               <AppText className="text-[12px] text-muted">
-                {isTargetPickup ? 'Sender' : 'Receiver'} • ★ 4.9
+                {isPickup ? 'Sender' : 'Receiver'} · #{job.number}
               </AppText>
             </AppView>
           </AppView>
 
-          <AppView className="items-end">
-            <AppText className="text-[18px] font-black text-brand">₹{activeJob.fare}</AppText>
-            <AppText className="text-[11px] font-semibold text-foreground-secondary">
-              {activeJob.paymentMode}
-            </AppText>
+          <AppView row className="gap-2">
+            <AppPressable
+              onPress={() => Linking.openURL(`tel:${contact.phone}`)}
+              accessibilityLabel={`Call ${contact.name}`}
+              pressScale={0.92}
+              className="h-11 w-11 items-center justify-center rounded-full border border-border bg-background"
+            >
+              <Icon name="phone.fill" size={18} tone="brand" />
+            </AppPressable>
+            <AppPressable
+              onPress={() => router.push('/customer-chat')}
+              accessibilityLabel={`Chat with ${job.sender.name}${job.unreadMessages ? `, ${job.unreadMessages} unread` : ''}`}
+              pressScale={0.92}
+              className="relative h-11 w-11 items-center justify-center rounded-full border border-border bg-background"
+            >
+              <Icon name="message.fill" size={18} tone="brand" />
+              {job.unreadMessages > 0 ? (
+                <AppView className="absolute -right-0.5 -top-0.5 h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1">
+                  <AppText className="text-[10px] font-black text-white">
+                    {job.unreadMessages}
+                  </AppText>
+                </AppView>
+              ) : null}
+            </AppPressable>
           </AppView>
         </AppView>
 
-        <AppView className="my-3.5">
+        <AppView className="my-3.5 gap-1">
           <AppText className="text-[11px] font-bold uppercase tracking-wider text-muted">
-            Destination Address
+            {isPickup ? 'Pickup address' : 'Drop address'}
           </AppText>
-          <AppText className="mt-0.5 text-[15px] font-bold text-foreground" numberOfLines={1}>
-            {currentTargetName}
+          <AppText className="text-[15px] font-bold text-foreground" numberOfLines={2}>
+            {leg.target.label}
           </AppText>
-          <AppText className="mt-0.5 text-[12px] text-muted" numberOfLines={2}>
-            {currentTargetAddress}
+          <AppText className="text-[12px] text-muted">{leg.target.houseNumber}</AppText>
+        </AppView>
+
+        <AppView row className="mb-4 items-center justify-between rounded-2xl bg-surface-muted p-3">
+          <AppText className="text-[13px] font-semibold text-foreground-secondary">
+            {paymentNote}
+          </AppText>
+          <AppText className="text-[16px] font-black text-foreground">
+            {formatRupees(job.driverEarning)}
           </AppText>
         </AppView>
 
         <Button
-          label={actionButtonLabel}
-          onPress={handlePrimaryAction}
+          label={primaryLabel}
+          onPress={handlePrimary}
+          loading={busy}
           variant="brand"
           size="lg"
           textClassName="font-extrabold text-base"
         />
+        {isPickup ? (
+          <AppPressable onPress={handleCancel} className="mt-3 items-center py-1 active:opacity-70">
+            <AppText className="text-[13px] font-semibold text-muted">Cancel trip</AppText>
+          </AppPressable>
+        ) : null}
       </AppView>
     </AppView>
   );
+}
+
+export function ActiveDeliveryScreen() {
+  const router = useRouter();
+  const { data: job, isLoading } = useActiveJob();
+
+  if (!job) {
+    return (
+      <AppView className="flex-1 items-center justify-center bg-background p-6">
+        {isLoading ? (
+          <AppSpinner size="large" />
+        ) : (
+          <>
+            <Icon name="box.truck" size={48} tone="icon-subtle" />
+            <AppText className="mt-3 text-[18px] font-bold text-foreground">
+              No trip in progress
+            </AppText>
+            <Button label="Go to home" onPress={() => router.replace('/home')} className="mt-6" />
+          </>
+        )}
+      </AppView>
+    );
+  }
+
+  return <ActiveDelivery job={job} />;
 }

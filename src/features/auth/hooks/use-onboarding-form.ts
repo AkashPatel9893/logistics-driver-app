@@ -5,41 +5,51 @@ import { Alert } from 'react-native';
 
 import { getErrorMessage } from '@/lib/api/api-error';
 import { authApi } from '@/lib/api/auth';
-import { useDriverStore } from '@/stores/driver-store';
 
-import { profileCreationSchema } from '../schema';
+import { driverProfileSchema } from '../schema';
 import { signOut, useAuthStore } from '../use-auth-store';
 
-type FieldErrors = { name?: string; dob?: string; city?: string };
+type FieldErrors = { name?: string; phone?: string; dob?: string; city?: string };
+
+/** Stored as +91XXXXXXXXXX; the field shows just the 10 digits. */
+function localDigits(phone: string | null | undefined): string {
+  return phone?.replace(/^\+91/, '').replace(/\D/g, '') ?? '';
+}
 
 export function useOnboardingForm() {
   const router = useRouter();
   const user = useAuthStore.use.user();
-  const driverState = useDriverStore.getState();
 
-  const [name, setName] = useState(user?.name || driverState.name || '');
-  const [dob, setDob] = useState(driverState.dob || '');
-  const [city, setCity] = useState(driverState.city || 'Delhi NCR');
+  const [name, setName] = useState(user?.name ?? '');
+  const [phone, setPhone] = useState(localDigits(user?.phone));
+  const [dob, setDob] = useState(user?.dob ?? '');
+  const [city, setCity] = useState(user?.city ?? '');
   const [validationErrors, setValidationErrors] = useState<FieldErrors>({});
 
   const updateProfile = useMutation({
     mutationFn: authApi.updateProfile,
     onSuccess: (updated) => {
       useAuthStore.getState().setUser(updated);
-      useDriverStore.getState().updateDriverDetails({ name, dob, city });
       router.replace('/home');
     },
     onError: (error) => Alert.alert('Could not save profile', getErrorMessage(error)),
   });
 
+  const clearError = (field: keyof FieldErrors) =>
+    setValidationErrors((prev) => ({ ...prev, [field]: undefined }));
+
   const handleNameChange = (text: string) => {
-    setValidationErrors((prev) => ({ ...prev, name: undefined }));
+    clearError('name');
     setName(text);
   };
 
+  const handlePhoneChange = (text: string) => {
+    clearError('phone');
+    setPhone(text.replace(/\D/g, '').slice(0, 10));
+  };
+
   const handleDobChange = (text: string) => {
-    setValidationErrors((prev) => ({ ...prev, dob: undefined }));
-    // Auto format DD / MM / YYYY
+    clearError('dob');
     const cleaned = text.replace(/[^0-9]/g, '');
     let formatted = cleaned;
     if (cleaned.length > 2 && cleaned.length <= 4) {
@@ -51,30 +61,22 @@ export function useOnboardingForm() {
   };
 
   const handleCitySelect = (selectedCity: string) => {
-    setValidationErrors((prev) => ({ ...prev, city: undefined }));
+    clearError('city');
     setCity(selectedCity);
   };
 
   const handleSubmit = () => {
     if (updateProfile.isPending) return;
-
-    if (!name.trim()) {
-      setValidationErrors((prev) => ({ ...prev, name: 'Please enter your full name' }));
-      return;
-    }
-
-    const phone = user?.phone || '+91 98765 43210';
-    const result = profileCreationSchema.safeParse({ name, phone, usageType: 'personal' });
+    const result = driverProfileSchema.safeParse({ name, phone, dob, city });
     if (!result.success) {
       const errors: FieldErrors = {};
       for (const issue of result.error.issues) {
-        if (issue.path[0] === 'name') errors.name = issue.message;
+        const field = issue.path[0] as keyof FieldErrors;
+        errors[field] ??= issue.message;
       }
       setValidationErrors(errors);
       return;
     }
-
-    useDriverStore.getState().updateDriverDetails({ name, dob, city });
     updateProfile.mutate(result.data);
   };
 
@@ -94,12 +96,14 @@ export function useOnboardingForm() {
 
   return {
     name,
+    phone,
     dob,
     city,
     isLoading: updateProfile.isPending,
-    isFormValid: name.trim().length >= 2,
+    isFormValid: name.trim().length >= 2 && phone.length === 10 && dob.length === 14 && !!city,
     validationErrors,
     handleNameChange,
+    handlePhoneChange,
     handleDobChange,
     handleCitySelect,
     handleSubmit,

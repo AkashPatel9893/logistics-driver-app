@@ -5,22 +5,22 @@
 import { db } from './db';
 import { errorBody, HttpError, type MockRequest, type MockResponse } from './http';
 import { authRoutes } from './handlers/auth';
-import { catalogRoutes } from './handlers/catalog';
 import { contentRoutes } from './handlers/content';
+import { devRoutes } from './handlers/dev';
 import { driverRoutes } from './handlers/driver';
-import { orderRoutes } from './handlers/orders';
-import { placeRoutes } from './handlers/places';
+import { earningsRoutes } from './handlers/earnings';
+import { jobRoutes } from './handlers/jobs';
 import type { Route } from './handlers/types';
-import { walletRoutes } from './handlers/wallet';
+import { uploadRoutes } from './handlers/uploads';
 
 const ROUTES: Route[] = [
   ...authRoutes,
-  ...catalogRoutes,
-  ...placeRoutes,
-  ...orderRoutes,
-  ...walletRoutes,
-  ...contentRoutes,
   ...driverRoutes,
+  ...jobRoutes,
+  ...earningsRoutes,
+  ...uploadRoutes,
+  ...contentRoutes,
+  ...devRoutes,
 ];
 
 function match(pattern: string, path: string): Record<string, string> | null {

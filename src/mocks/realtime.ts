@@ -1,48 +1,25 @@
 /**
- * In-process stand-in for the tracking WebSocket. Pushes the same events the
- * real server would (see docs/API.md) on a timer.
+ * In-process stand-in for the driver WebSocket channel. Runs the backend's
+ * time-based work every second and forwards the events it produces.
  */
-import type { TrackingEvent } from '@/lib/realtime/events';
+import type { DriverEvent } from '@/lib/realtime/driver-events';
 
-import { db } from './db';
-import { driverLocation, resolveStatus, toOrder } from './lifecycle';
+import { listen } from './driver/events';
+import { tick } from './driver/scheduler';
 
-const TICK_MS = 2_000;
+const TICK_MS = 1_000;
 
-function orderIdFor(channel: string): string | null {
-  if (channel.startsWith('order:')) return channel.slice('order:'.length);
-  if (channel.startsWith('tracking:')) {
-    return db.shares.get(channel.slice('tracking:'.length))?.orderId ?? null;
-  }
-  return null;
-}
-
-export function subscribeMockChannel(
+export function subscribeMockDriverChannel(
   channel: string,
-  onEvent: (event: TrackingEvent) => void,
+  onEvent: (event: DriverEvent) => void,
 ): () => void {
-  let lastStatus: string | null = null;
+  const userId = channel.startsWith('driver:') ? channel.slice('driver:'.length) : null;
+  if (!userId) return () => {};
 
-  const tick = () => {
-    const orderId = orderIdFor(channel);
-    const record = orderId ? db.orders.get(orderId) : undefined;
-    if (!record) return;
-
-    const status = resolveStatus(record);
-    if (status !== lastStatus) {
-      lastStatus = status;
-      const order = toOrder(record);
-      onEvent({ type: 'order.status', status, driver: order.driver, at: new Date().toISOString() });
-    }
-    const location = driverLocation(record);
-    if (location) onEvent({ type: 'driver.location', ...location });
-  };
-
-  // First event right away, like a socket's initial snapshot.
-  const first = setTimeout(tick, 0);
-  const interval = setInterval(tick, TICK_MS);
+  const unlisten = listen(userId, onEvent);
+  const interval = setInterval(() => tick(userId), TICK_MS);
   return () => {
-    clearTimeout(first);
     clearInterval(interval);
+    unlisten();
   };
 }
