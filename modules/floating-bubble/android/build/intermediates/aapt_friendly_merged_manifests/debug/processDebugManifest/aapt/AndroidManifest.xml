@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="expo.modules.floatingbubble" >
-
-    <uses-sdk android:minSdkVersion="24" />
-    <!-- Draws the RYNO bubble over other apps (e.g. Google Maps) while the driver is online. -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
-</manifest>

@@ -14,6 +14,8 @@ src/uniwind-types.d.ts
 
 # Native
 .kotlin/
+.gradle/
+**/build/
 *.orig.*
 *.jks
 *.p8
