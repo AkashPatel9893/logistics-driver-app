@@ -12,6 +12,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     bundleIdentifier: 'com.logisticsdriverapp',
     icon: './assets/expo.icon',
+    infoPlist: {
+      // Lets the app check which navigation apps are installed (src/lib/navigation-apps.ts).
+      LSApplicationQueriesSchemes: ['comgooglemaps', 'waze'],
+    },
   },
   android: {
     package: 'com.logisticsdriverapp',

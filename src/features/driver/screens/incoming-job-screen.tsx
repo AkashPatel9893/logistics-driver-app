@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,6 +11,7 @@ import {
   Button,
   FocusAwareStatusBar,
   Icon,
+  OptionSheet,
 } from '@/components/ui';
 import { useCountdown } from '@/hooks/use-countdown';
 import { useAcceptOffer, useOffers, useRejectOffer } from '@/hooks/use-jobs';
@@ -55,32 +56,28 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
   const secondsLeft = useCountdown(offer.expiresAt);
   const accept = useAcceptOffer();
   const reject = useRejectOffer();
+  const [declineSheetOpen, setDeclineSheetOpen] = useState(false);
 
   // The offer goes to the next driver when time runs out.
   useEffect(() => {
     if (secondsLeft === 0 && !accept.isPending) router.back();
   }, [secondsLeft, accept.isPending, router]);
 
-  const handleAccept = () =>
-    accept.mutate(offer.id, {
-      onSuccess: () => router.replace('/active-delivery'),
-      onError: (error) => {
-        Alert.alert('Request unavailable', getErrorMessage(error));
-        router.back();
-      },
-    });
+  // mutateAsync: accepting removes this offer from the cache and unmounts the view.
+  const handleAccept = async () => {
+    try {
+      await accept.mutateAsync(offer.id);
+      router.replace('/active-delivery');
+    } catch (error) {
+      Alert.alert('Request unavailable', getErrorMessage(error));
+      router.back();
+    }
+  };
 
-  const handleDecline = () =>
-    Alert.alert('Why are you declining?', undefined, [
-      ...DECLINE_REASONS.map((reason) => ({
-        text: reason,
-        onPress: () => {
-          reject.mutate({ offerId: offer.id, reason });
-          router.back();
-        },
-      })),
-      { text: 'Keep request', style: 'cancel' as const },
-    ]);
+  const declineWithReason = (reason: string) => {
+    reject.mutate({ offerId: offer.id, reason });
+    router.back();
+  };
 
   const isCash = offer.paymentMode === 'cash';
 
@@ -191,7 +188,7 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
 
         <AppView row className="gap-3 pt-1">
           <AppPressable
-            onPress={handleDecline}
+            onPress={() => setDeclineSheetOpen(true)}
             disabled={accept.isPending}
             pressScale={0.96}
             className="flex-1 items-center justify-center rounded-full border border-border bg-card py-4 active:bg-neutral-100"
@@ -209,6 +206,15 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
           />
         </AppView>
       </AppScrollView>
+
+      <OptionSheet
+        isPresented={declineSheetOpen}
+        title="Why are you declining?"
+        options={DECLINE_REASONS}
+        cancelLabel="Keep request"
+        onSelect={declineWithReason}
+        onDismiss={() => setDeclineSheetOpen(false)}
+      />
     </AppView>
   );
 }

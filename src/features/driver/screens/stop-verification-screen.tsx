@@ -74,20 +74,18 @@ function StopVerification({ job, stop }: { job: DriverJob; stop: Stop }) {
       setOtpError(`Enter the 4-digit code from the ${copy.who}.`);
       return;
     }
-    verify.mutate(
-      { id: job.id, otp, photoUrl: photo.url },
-      {
-        onSuccess: (updated) => {
-          if (stop === 'pickup') router.replace('/active-delivery');
-          else router.replace({ pathname: '/trip-complete', params: { id: updated.id } });
-        },
-        onError: (error) => {
-          const message = getErrorMessage(error);
-          if (message.toLowerCase().includes('code')) setOtpError(message);
-          else Alert.alert('Could not verify', message);
-        },
-      },
-    );
+    // mutateAsync: the updated job no longer matches this screen, which unmounts it.
+    verify
+      .mutateAsync({ id: job.id, otp, photoUrl: photo.url })
+      .then((updated) => {
+        if (stop === 'pickup') router.replace('/active-delivery');
+        else router.replace({ pathname: '/trip-complete', params: { id: updated.id } });
+      })
+      .catch((error: unknown) => {
+        const message = getErrorMessage(error);
+        if (message.toLowerCase().includes('code')) setOtpError(message);
+        else Alert.alert('Could not verify', message);
+      });
   };
 
   return (

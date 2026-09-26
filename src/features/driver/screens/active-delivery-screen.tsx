@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,12 +12,14 @@ import {
   FocusAwareStatusBar,
   Icon,
   LiquidGlassBackButton,
+  OptionSheet,
 } from '@/components/ui';
 import { useActiveJob, useArriveAtDrop, useArriveAtPickup, useCancelJob } from '@/hooks/use-jobs';
 import { getErrorMessage } from '@/lib/api/api-error';
-import type { DriverJob, GeoPoint } from '@/lib/api/models';
+import type { DriverJob } from '@/lib/api/models';
 import { formatDistance, formatMinutes, formatRupees } from '@/lib/format';
 import { distanceKm } from '@/lib/geo';
+import { openNavigationChooser } from '@/lib/navigation-apps';
 import { useLocationStore } from '@/stores/location-store';
 
 import { RouteMap } from '../components/route-map';
@@ -33,13 +36,6 @@ const CANCEL_REASONS = [
   'Parcel too large for my vehicle',
   'Vehicle breakdown',
 ];
-
-function openNavigation(target: GeoPoint) {
-  const destination = `${target.latitude},${target.longitude}`;
-  Linking.openURL(
-    `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`,
-  );
-}
 
 function useLeg(job: DriverJob) {
   const current = useLocationStore((s) => s.current);
@@ -64,6 +60,7 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
   const arriveAtPickup = useArriveAtPickup();
   const arriveAtDrop = useArriveAtDrop();
   const cancelJob = useCancelJob();
+  const [cancelSheetOpen, setCancelSheetOpen] = useState(false);
 
   const isPickup = leg.stop === 'pickup';
   const contact = isPickup ? job.sender : (job.drop.contact ?? job.sender);
@@ -97,25 +94,15 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
     markArrived();
   };
 
-  const handleCancel = () =>
-    Alert.alert(
-      'Cancel this trip?',
-      'Choose a reason. Frequent cancellations lower your priority.',
-      [
-        ...CANCEL_REASONS.map((reason) => ({
-          text: reason,
-          onPress: () =>
-            cancelJob.mutate(
-              { id: job.id, reason },
-              {
-                onSuccess: () => router.replace('/home'),
-                onError: (error) => Alert.alert('Could not cancel', getErrorMessage(error)),
-              },
-            ),
-        })),
-        { text: 'Keep trip', style: 'cancel' as const },
-      ],
-    );
+  // mutateAsync: the cache update unmounts this view, which would drop mutate() callbacks.
+  const cancelWithReason = async (reason: string) => {
+    try {
+      await cancelJob.mutateAsync({ id: job.id, reason });
+      router.replace('/home');
+    } catch (error) {
+      Alert.alert('Could not cancel', getErrorMessage(error));
+    }
+  };
 
   const primaryLabel = hasArrived
     ? isPickup
@@ -151,39 +138,41 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
       >
         <AppView row className="items-center justify-between">
           <LiquidGlassBackButton onPress={() => router.replace('/home')} />
-          <AppView className="rounded-full bg-brand/20 px-3 py-1">
-            <AppText className="text-[11px] font-black uppercase tracking-wider text-brand">
+          <AppView className="rounded-full bg-brand px-3 py-1">
+            <AppText className="text-[11px] font-black uppercase tracking-wider text-white">
               {JOB_STAGE_LABEL[job.status]}
             </AppText>
           </AppView>
         </AppView>
 
-        <AppView row className="mt-3 items-center gap-3.5">
-          <AppPressable
-            onPress={() => leg.target.location && openNavigation(leg.target.location)}
-            disabled={!leg.target.location}
-            accessibilityLabel="Open navigation in Google Maps"
-            className="h-12 w-12 items-center justify-center rounded-2xl bg-brand"
-          >
-            <Icon name="location.north.fill" size={22} color="#ffffff" />
-          </AppPressable>
+        <AppView row className="mt-3 items-center gap-3">
           <AppView className="flex-1">
-            <AppText className="text-[17px] font-black text-white" numberOfLines={1}>
-              {isPickup ? 'To pickup' : 'To drop'} · {leg.target.label.split(',')[0]}
+            <AppText className="text-[12px] font-bold uppercase tracking-wider text-neutral-400">
+              {hasArrived ? "You've arrived" : isPickup ? 'Next: pickup' : 'Next: drop'}
+            </AppText>
+            <AppText className="mt-0.5 text-[17px] font-black text-white" numberOfLines={1}>
+              {leg.target.label.split(',')[0]}
             </AppText>
             <AppText className="text-[12px] font-medium text-neutral-300" numberOfLines={1}>
-              {leg.roadKm === null ? 'Tap the arrow to navigate' : 'Tap the arrow for turn-by-turn'}
+              {hasArrived
+                ? `Waiting for ${contact.name.split(' ')[0]}`
+                : leg.roadKm !== null && leg.etaMinutes !== null
+                  ? `${formatDistance(leg.roadKm)} · about ${formatMinutes(leg.etaMinutes)}`
+                  : leg.target.houseNumber}
             </AppText>
           </AppView>
-          {leg.roadKm !== null && leg.etaMinutes !== null ? (
-            <AppView className="items-end">
-              <AppText className="text-[15px] font-black text-brand">
-                {formatMinutes(leg.etaMinutes)}
-              </AppText>
-              <AppText className="text-[11px] text-neutral-400">
-                {formatDistance(leg.roadKm)}
-              </AppText>
-            </AppView>
+          {!hasArrived && leg.target.location ? (
+            <AppPressable
+              onPress={() =>
+                leg.target.location && openNavigationChooser(leg.target.location, leg.target.label)
+              }
+              pressScale={0.95}
+              accessibilityLabel="Navigate with a maps app"
+              className="flex-row items-center gap-2 rounded-full bg-brand px-4 py-3"
+            >
+              <Icon name="location.north.fill" size={16} color="#ffffff" />
+              <AppText className="text-[14px] font-black text-white">Navigate</AppText>
+            </AppPressable>
           ) : null}
         </AppView>
       </AppView>
@@ -264,11 +253,25 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
           textClassName="font-extrabold text-base"
         />
         {isPickup ? (
-          <AppPressable onPress={handleCancel} className="mt-3 items-center py-1 active:opacity-70">
+          <AppPressable
+            onPress={() => setCancelSheetOpen(true)}
+            className="mt-3 items-center py-1 active:opacity-70"
+          >
             <AppText className="text-[13px] font-semibold text-muted">Cancel trip</AppText>
           </AppPressable>
         ) : null}
       </AppView>
+
+      <OptionSheet
+        isPresented={cancelSheetOpen}
+        title="Cancel this trip?"
+        message="Choose a reason. Frequent cancellations lower your priority."
+        options={CANCEL_REASONS}
+        cancelLabel="Keep trip"
+        destructive
+        onSelect={cancelWithReason}
+        onDismiss={() => setCancelSheetOpen(false)}
+      />
     </AppView>
   );
 }
