@@ -18,6 +18,7 @@ import { useEarnings } from '@/hooks/use-earnings';
 import { useActiveJob, useOffers } from '@/hooks/use-jobs';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { JobOffer, SetupStep } from '@/lib/api/models';
+import { canDrawOverlays, isBubbleSupported, openOverlaySettings } from '@/lib/driver-bubble';
 import { greetingFor } from '@/lib/format';
 
 import { ActiveDeliveryCard } from '../components/active-delivery-card';
@@ -27,6 +28,25 @@ import { DriverOnlineToggle } from '../components/driver-online-toggle';
 import { DriverSetupChecklist } from '../components/driver-setup-checklist';
 import { DriverStatsRow } from '../components/driver-stats-row';
 import { WelcomeBonusModal } from '../components/welcome-bonus-modal';
+
+let overlayPromptShown = false;
+
+/**
+ * Android: ask once per launch for "Display over other apps", which powers the
+ * floating bubble and lets new requests open over Google Maps.
+ */
+function askForOverlayPermission() {
+  if (overlayPromptShown || !isBubbleSupported || canDrawOverlays()) return;
+  overlayPromptShown = true;
+  Alert.alert(
+    "Don't miss requests while navigating",
+    'Allow RYNO Partner to display over other apps. You will see a floating RYNO bubble on top of Google Maps, and new requests will pop up instantly.',
+    [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Allow', onPress: openOverlaySettings },
+    ],
+  );
+}
 
 const STEP_LABEL: Record<SetupStep, string> = {
   vehicle: 'vehicle',
@@ -86,6 +106,9 @@ export function DriverHomeScreen() {
       return;
     }
     setOnline.mutate(next, {
+      onSuccess: (updated) => {
+        if (updated.isOnline) askForOverlayPermission();
+      },
       onError: (error) => Alert.alert('Could not update status', getErrorMessage(error)),
     });
   };

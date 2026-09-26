@@ -19,6 +19,7 @@ export function listen(userId: string, listener: Listener): () => void {
 }
 
 export function emit(userId: string, event: DriverEvent): void {
-  // Deliver after the current request finishes, like a socket frame would.
-  setTimeout(() => listeners.get(userId)?.forEach((listener) => listener(event)), 0);
+  // Deliver after the current request finishes, like a socket frame would. A
+  // microtask rather than setTimeout: Android pauses JS timers in the background.
+  void Promise.resolve().then(() => listeners.get(userId)?.forEach((listener) => listener(event)));
 }

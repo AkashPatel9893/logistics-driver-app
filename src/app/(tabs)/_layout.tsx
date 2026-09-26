@@ -3,15 +3,33 @@ import { Redirect, Tabs, useRouter, useSegments } from 'expo-router';
 import { FloatingTabBar, FloatingTabBarSpacer, type TabName } from '@/components/floating-tab-bar';
 import { AppView } from '@/components/ui';
 import { useAuthStore } from '@/features/auth/use-auth-store';
+import { useEffect } from 'react';
+
 import { useDriverProfile } from '@/hooks/use-driver';
+import { useActiveJob, useOffers } from '@/hooks/use-jobs';
+import {
+  setBubbleJob,
+  setBubbleOffers,
+  setBubbleOnline,
+  startBubbleTracking,
+} from '@/lib/driver-bubble';
 import { useDriverRealtime } from '@/hooks/use-driver-realtime';
 import { useLocationReporter } from '@/hooks/use-location-reporter';
 
 /** Background work for a signed-in driver: server pushes and GPS reporting. */
 function DriverSession({ userId }: { userId: string }) {
   const { data: profile } = useDriverProfile();
+  const isOnline = profile?.isOnline ?? false;
+  const { data: activeJob = null } = useActiveJob();
+  const { data: offers } = useOffers(isOnline && !activeJob);
   useDriverRealtime(userId);
-  useLocationReporter(profile?.isOnline ?? false);
+  useLocationReporter(isOnline);
+
+  // Floating bubble (Android): follows online state, the trip and new requests.
+  useEffect(() => startBubbleTracking(), []);
+  useEffect(() => setBubbleOnline(isOnline), [isOnline]);
+  useEffect(() => setBubbleJob(activeJob), [activeJob]);
+  useEffect(() => setBubbleOffers(offers ?? []), [offers]);
   return null;
 }
 

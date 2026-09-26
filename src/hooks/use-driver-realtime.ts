@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import type { ChatMessage, JobOffer } from '@/lib/api/models';
+import { addBubbleOffer, removeBubbleOffer, setBubbleJob } from '@/lib/driver-bubble';
 import { queryKeys } from '@/lib/queries/keys';
 import { driverChannel, subscribeToDriverChannel } from '@/lib/realtime/driver-socket';
 
@@ -20,18 +21,21 @@ export function useDriverRealtime(userId: string | undefined) {
     return subscribeToDriverChannel(driverChannel(userId), (event) => {
       switch (event.type) {
         case 'offer.new':
+          addBubbleOffer(event.offer);
           queryClient.setQueryData<JobOffer[]>(queryKeys.offers, (offers = []) => [
             ...offers.filter((o) => o.id !== event.offer.id),
             event.offer,
           ]);
           break;
         case 'offer.expired':
+          removeBubbleOffer(event.offerId);
           queryClient.setQueryData<JobOffer[]>(queryKeys.offers, (offers) =>
             offers?.filter((o) => o.id !== event.offerId),
           );
           break;
         case 'job.updated':
           cacheJob(event.job);
+          setBubbleJob(event.job);
           break;
         case 'chat.message':
           queryClient.setQueryData<ChatMessage[]>(

@@ -26,6 +26,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       monochromeImage: './assets/images/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: false,
+    // expo-task-manager persists the background location job across reboots;
+    // SYSTEM_ALERT_WINDOW powers the floating bubble overlay while driving.
+    permissions: [
+      'android.permission.RECEIVE_BOOT_COMPLETED',
+      'android.permission.SYSTEM_ALERT_WINDOW',
+    ],
   },
   web: {
     output: 'static',
@@ -39,6 +45,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       {
         locationWhenInUsePermission:
           'RYNO Partner uses your location to show nearby delivery requests and share your live position with the customer during a trip.',
+        // Keeps location running while you're online and in another app (e.g. Google Maps).
+        // iOS: background mode with the blue location pill. Android: a foreground
+        // service with a persistent notification, which needs no "all the time" permission.
+        isIosBackgroundLocationEnabled: true,
+        isAndroidForegroundServiceEnabled: true,
+        isAndroidBackgroundLocationEnabled: false,
       },
     ],
     [

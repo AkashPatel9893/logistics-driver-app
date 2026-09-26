@@ -1,4 +1,6 @@
 import '@/global.css';
+// Registers the background location task before anything else runs.
+import '@/lib/background-location';
 
 import { Stack, ThemeProvider } from 'expo-router';
 import type { ReactNode } from 'react';
