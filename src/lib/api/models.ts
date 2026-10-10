@@ -210,8 +210,8 @@ export interface JobOffer {
   estimatedMinutes: number;
   /** What the customer pays. */
   fare: number;
-  /** What the driver keeps after platform commission. */
-  driverEarning: number;
+  /** What the driver keeps after platform commission; null until the backend has computed it. */
+  driverEarning: number | null;
   paymentMode: PaymentMode;
   paymentTiming: PaymentTiming;
 }
@@ -241,8 +241,9 @@ export interface DriverJob {
   tripDistanceKm: number;
   estimatedMinutes: number;
   fare: number;
-  driverEarning: number;
-  commission: number;
+  /** Null until the backend has computed them — the app never estimates a commission. */
+  driverEarning: number | null;
+  commission: number | null;
   payment: JobPayment;
   pickupPhotoUrl: string | null;
   dropPhotoUrl: string | null;
@@ -257,7 +258,8 @@ export interface DriverJob {
 
 export interface VerifyStopInput {
   otp: string;
-  photoUrl: string;
+  /** Hosted proof photo, when one was actually uploaded. */
+  photoUrl?: string;
 }
 
 export interface ChatMessage {

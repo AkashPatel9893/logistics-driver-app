@@ -95,7 +95,7 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
               New delivery request
             </AppText>
             <AppText className="text-[13px] font-semibold text-white/85">
-              {offer.vehicle.name} · Order #{offer.orderNumber}
+              {[offer.vehicle.name, `Order #${offer.orderNumber}`].filter(Boolean).join(' · ')}
             </AppText>
           </AppView>
           <AppView
@@ -122,10 +122,10 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
             <AppView row className="items-end justify-between border-b border-border/40 pb-3">
               <AppView>
                 <AppText className="text-[12px] font-semibold uppercase tracking-wider text-muted">
-                  You earn
+                  {offer.driverEarning !== null ? 'You earn' : 'Trip fare'}
                 </AppText>
                 <AppText className="text-[32px] font-black leading-tight text-foreground">
-                  {formatRupees(offer.driverEarning)}
+                  {formatRupees(offer.driverEarning ?? offer.fare)}
                 </AppText>
               </AppView>
               <AppView className="items-end">

@@ -67,7 +67,7 @@ export function PaymentCollectCard({ job, onCollected }: PaymentCollectCardProps
       <AppPressable
         onPress={confirmCash}
         disabled={collectCash.isPending}
-        className="items-center py-1.5 active:opacity-75"
+        className="items-center py-1.5"
       >
         <AppText className="text-[13px] font-bold text-foreground-secondary">
           {collectCash.isPending ? 'Saving…' : 'Customer paid in cash'}

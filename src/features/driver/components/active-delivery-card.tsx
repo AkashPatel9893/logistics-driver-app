@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 
 import { AppPressable, AppText, AppView, Icon } from '@/components/ui';
 import type { DriverJob } from '@/lib/api/models';
-import { formatRupees, placeName } from '@/lib/format';
+import { formatEarning, placeName } from '@/lib/format';
 
 import { JOB_STAGE_LABEL } from '../job-stage';
 
@@ -30,7 +30,7 @@ export function ActiveDeliveryCard({ job, className = '' }: ActiveDeliveryCardPr
           {placeName(job.pickup.label)} → {placeName(job.drop.label)}
         </AppText>
         <AppText className="mt-0.5 text-[12px] font-medium text-muted" numberOfLines={1}>
-          {JOB_STAGE_LABEL[job.status]} · {formatRupees(job.driverEarning)}
+          {JOB_STAGE_LABEL[job.status]} · {formatEarning(job.driverEarning, job.fare)}
         </AppText>
       </AppView>
 

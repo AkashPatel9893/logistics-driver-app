@@ -85,15 +85,13 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
   const paymentDue = isPaymentDueAt(job, stop);
 
   const handleConfirm = () => {
-    const finalPhotoUrl =
-      photo.url || 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d';
     if (otp.length < 4) {
       setOtpError(`Enter the 4-digit code from the ${copy.who}.`);
       return;
     }
     // mutateAsync: the updated job no longer matches this screen, which unmounts it.
     verify
-      .mutateAsync({ id: job.id, otp, photoUrl: finalPhotoUrl })
+      .mutateAsync({ id: job.id, otp, photoUrl: photo.url ?? undefined })
       .then((updated) => {
         // Payment is collected only once the code is verified, never before.
         if (paymentDue) onPaymentDue({ ...job, status: updated.status });
@@ -172,7 +170,7 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
 
             <AppPressable
               onPress={() => Linking.openURL(`tel:${contact.phone}`)}
-              className="items-center py-1 active:opacity-70"
+              className="items-center py-1"
             >
               <AppText className="text-[14px] font-semibold text-brand">
                 Call {contact.name.split(' ')[0]} for the code

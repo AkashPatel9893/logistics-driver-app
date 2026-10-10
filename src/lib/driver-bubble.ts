@@ -13,7 +13,7 @@
 import { AppState } from 'react-native';
 
 import type { DriverJob, JobOffer } from '@/lib/api/models';
-import { formatDistance, formatMinutes, formatRupees, placeName } from '@/lib/format';
+import { formatEarning, formatDistance, formatMinutes, placeName } from '@/lib/format';
 
 import {
   canDrawOverlays,
@@ -71,7 +71,7 @@ function sync(): void {
     id: offer.id,
     orderNumber: offer.orderNumber,
     vehicleName: offer.vehicle.name,
-    earning: formatRupees(offer.driverEarning),
+    earning: formatEarning(offer.driverEarning, offer.fare),
     pickupAddress: placeName(offer.pickup.label),
     dropAddress: placeName(offer.drop.label),
     pickupDistance:
@@ -95,7 +95,7 @@ function sync(): void {
       stageTitle: STAGE[state.job.status] ?? 'On a trip',
       targetAddress: placeName(target.label),
       customerName: state.job.sender.name,
-      earning: formatRupees(state.job.driverEarning),
+      earning: formatEarning(state.job.driverEarning, state.job.fare),
       deepLink: `${SCHEME}active-delivery`,
     };
   }

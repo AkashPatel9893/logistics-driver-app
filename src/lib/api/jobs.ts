@@ -7,24 +7,26 @@ function mapJobOffer(o: any): JobOffer {
   const fare = Number(o.quoted_amount ?? o.fare ?? 0);
   const tripDist = o.estimated_distance_meters
     ? Number((o.estimated_distance_meters / 1000).toFixed(1))
-    : Number(o.tripDistanceKm ?? 5.0);
+    : Number(o.tripDistanceKm ?? 0);
   const pickupDist = o.pickup_distance_meters
     ? Number((o.pickup_distance_meters / 1000).toFixed(1))
-    : (o.pickupDistanceKm ?? 1.2);
+    : (o.pickupDistanceKm ?? 0);
   return {
     id: o.id,
     orderId: o.order_id ?? o.orderId ?? o.id,
     orderNumber: o.order_number ?? o.orderNumber ?? `RY-${String(o.id).slice(0, 6).toUpperCase()}`,
     createdAt: o.offered_at ?? o.createdAt ?? new Date().toISOString(),
     expiresAt: o.expires_at ?? o.expiresAt ?? new Date(Date.now() + 60000).toISOString(),
-    vehicle: o.vehicle ?? { id: 'truck', name: 'Mini Truck', imageKey: 'truck' },
+    vehicle: o.vehicle ?? { id: 'truck', name: o.vehicle_type_name ?? '', imageKey: 'truck' },
     pickup: o.pickup ?? { label: 'Pickup Point', location: null, houseNumber: '', contact: null },
     drop: o.drop ?? { label: 'Drop Point', location: null, houseNumber: '', contact: null },
     tripDistanceKm: tripDist,
     pickupDistanceKm: pickupDist,
-    estimatedMinutes: o.estimatedMinutes ?? Math.max(5, Math.round(tripDist * 3)),
+    estimatedMinutes:
+      o.estimatedMinutes ??
+      (o.estimated_duration_seconds ? Math.ceil(o.estimated_duration_seconds / 60) : 0),
     fare,
-    driverEarning: Number(o.driverEarning ?? Math.round(fare * 0.8)),
+    driverEarning: o.driver_earning ?? o.driverEarning ?? null,
     paymentMode: o.paymentMode ?? 'cash',
     paymentTiming: o.paymentTiming ?? 'on-delivery',
   };
@@ -56,13 +58,11 @@ function mapDriverJob(raw: any): DriverJob {
     },
     sender: raw.sender ?? { name: 'Customer', phone: '' },
     route: raw.route ?? [],
-    tripDistanceKm: Number(raw.trip_distance_km ?? raw.tripDistanceKm ?? 5.2),
-    estimatedMinutes: Number(raw.estimated_minutes ?? raw.estimatedMinutes ?? 15),
+    tripDistanceKm: Number(raw.trip_distance_km ?? raw.tripDistanceKm ?? 0),
+    estimatedMinutes: Number(raw.estimated_minutes ?? raw.estimatedMinutes ?? 0),
     fare: Number(raw.fare ?? 0),
-    driverEarning: Number(
-      raw.driver_earning ?? raw.driverEarning ?? Math.round(Number(raw.fare ?? 0) * 0.8),
-    ),
-    commission: Number(raw.commission ?? Math.round(Number(raw.fare ?? 0) * 0.2)),
+    driverEarning: raw.driver_earning ?? raw.driverEarning ?? null,
+    commission: raw.commission ?? null,
     payment: raw.payment
       ? {
           mode: raw.payment.mode ?? 'cash',
@@ -155,41 +155,9 @@ export const jobsApi = {
       await request<any>({ method: 'POST', url: `/driver/offers/${offerId}/accept` });
     }
     const active = await jobsApi.getActiveJob();
-    if (active) return active;
-    return {
-      id: offerId,
-      number: `RY-${offerId.slice(0, 6).toUpperCase()}`,
-      status: 'heading_to_pickup',
-      acceptedAt: new Date().toISOString(),
-      vehicle: { id: 'truck', name: 'Mini Truck', imageKey: 'truck' },
-      pickup: { label: 'Pickup', location: null, houseNumber: '', contact: null },
-      drop: { label: 'Drop', location: null, houseNumber: '', contact: null },
-      sender: { name: 'Customer', phone: '' },
-      route: [],
-      tripDistanceKm: 5.2,
-      estimatedMinutes: 15,
-      fare: 350,
-      driverEarning: 280,
-      commission: 70,
-      payment: {
-        mode: 'cash',
-        timing: 'on-delivery',
-        amount: 350,
-        methodLabel: 'Cash',
-        status: 'pending',
-        collectedVia: null,
-        collectedAt: null,
-      },
-      pickupPhotoUrl: null,
-      dropPhotoUrl: null,
-      arrivedAtPickupAt: null,
-      pickedUpAt: null,
-      arrivedAtDropAt: null,
-      deliveredAt: null,
-      cancelledAt: null,
-      cancelReason: null,
-      unreadMessages: 0,
-    };
+    // Never invent a trip: without the real job there is nothing safe to show.
+    if (!active) throw new Error('Trip accepted, but it could not be loaded. Pull to refresh.');
+    return active;
   },
 
   rejectOffer: async (offerId: string, reason: string): Promise<null> => {
@@ -216,14 +184,10 @@ export const jobsApi = {
   },
 
   getJob: async (id: string, signal?: AbortSignal): Promise<DriverJob> => {
-    try {
-      const active = await jobsApi.getActiveJob(signal);
-      if (active && (active.id === id || active.number === id)) return active;
-      const raw = await request<any>({ url: `/driver/jobs/${id}`, signal });
-      return mapDriverJob(raw);
-    } catch {
-      return mapDriverJob({ id, status: 'heading_to_pickup' });
-    }
+    const active = await jobsApi.getActiveJob(signal);
+    if (active && (active.id === id || active.number === id)) return active;
+    // Fails for finished jobs until the backend serves them; callers keep their cached copy.
+    return mapDriverJob(await request<any>({ url: `/driver/jobs/${id}`, signal }));
   },
 
   arriveAtPickup: async (id: string): Promise<DriverJob> => {
@@ -283,6 +247,7 @@ export const jobsApi = {
   },
 
   verifyDrop: async (id: string, input: VerifyStopInput): Promise<DriverJob> => {
+    const before = await jobsApi.getActiveJob().catch(() => null);
     const trip = await getActiveTripDetails();
     if (!trip?.tripId) throw new Error(TRIP_UNREACHABLE);
     // Not swallowed: a wrong code must fail here, never count as delivered.
@@ -296,7 +261,11 @@ export const jobsApi = {
       },
     });
     const active = await jobsApi.getActiveJob();
-    return active ?? mapDriverJob({ id, status: 'delivered' });
+    if (active) return active;
+    // Delivered jobs can't be re-fetched yet: keep the real job as it was, marked delivered.
+    return before
+      ? { ...before, status: 'delivered', deliveredAt: new Date().toISOString() }
+      : mapDriverJob({ id, status: 'delivered' });
   },
 
   cancel: async (id: string, reason: string): Promise<DriverJob> => {

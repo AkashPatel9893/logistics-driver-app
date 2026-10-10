@@ -30,11 +30,11 @@ export const driverApi = {
           name: fullName,
           phone: p.phone_masked ?? null,
           email: p.email ?? '',
-          city: 'Bangalore',
-          dob: p.date_of_birth ? String(p.date_of_birth) : '1990-01-01',
+          city: p.city ?? null,
+          dob: p.date_of_birth ? String(p.date_of_birth) : null,
           joinedAt: p.created_at ?? new Date().toISOString(),
-          rating: 4.9,
-          ratingCount: 120,
+          rating: p.rating ?? null,
+          ratingCount: p.rating_count ?? 0,
           isOnline: p.onboarding_status === 'APPROVED',
           onlineSince: null,
           vehicle: null,
@@ -43,55 +43,25 @@ export const driverApi = {
           pendingSteps: [],
           canGoOnline: true,
           dailyCheck: {
+            // No daily-check or bonus data from the backend: claim no reward.
             completedToday: true,
             photoUrl: null,
-            reward: 50,
+            reward: 0,
           },
           welcomeBonus: {
-            status: 'active',
+            status: 'expired',
             seen: true,
-            amount: 500,
-            targetTrips: 10,
-            completedTrips: 10,
+            amount: 0,
+            targetTrips: 0,
+            completedTrips: 0,
             expiresAt: new Date().toISOString(),
           },
           walletBalance: 0,
-          lifetimeTrips: 15,
+          lifetimeTrips: p.lifetime_trips ?? 0,
         };
-      } catch {
-        return {
-          id: 'drv-1',
-          name: 'Partner Driver',
-          phone: '+919876543210',
-          email: 'driver@ryno.app',
-          city: 'Bangalore',
-          dob: '1990-01-01',
-          joinedAt: new Date().toISOString(),
-          rating: 4.9,
-          ratingCount: 120,
-          isOnline: true,
-          onlineSince: null,
-          vehicle: null,
-          kyc: null,
-          bank: null,
-          pendingSteps: [],
-          canGoOnline: true,
-          dailyCheck: {
-            completedToday: true,
-            photoUrl: null,
-            reward: 50,
-          },
-          welcomeBonus: {
-            status: 'active',
-            seen: true,
-            amount: 500,
-            targetTrips: 10,
-            completedTrips: 10,
-            expiresAt: new Date().toISOString(),
-          },
-          walletBalance: 0,
-          lifetimeTrips: 15,
-        };
+      } catch (error) {
+        // No invented profile: the screen shows the failure and can retry.
+        throw error;
       }
     }
   },

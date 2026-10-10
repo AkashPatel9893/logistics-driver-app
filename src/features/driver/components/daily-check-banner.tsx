@@ -13,6 +13,8 @@ export function DailyCheckBanner({ check, className = '' }: DailyCheckBannerProp
   const router = useRouter();
 
   if (check.completedToday) {
+    // Nothing to announce unless a reward was actually credited.
+    if (check.reward <= 0) return null;
     return (
       <AppView
         className={`rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3.5 ${className}`}

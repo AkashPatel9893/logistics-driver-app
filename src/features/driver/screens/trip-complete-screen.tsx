@@ -20,7 +20,10 @@ function paymentLine(job: DriverJob): string {
   const { payment } = job;
   if (payment.mode === 'prepaid') return `Paid online by customer · ${payment.methodLabel}`;
   if (payment.collectedVia === 'upi') return `Collected ${formatRupees(payment.amount)} via UPI`;
-  return `Cash collected ${formatRupees(payment.amount)} · ${formatRupees(job.commission)} commission from wallet`;
+  const collected = `Cash collected ${formatRupees(payment.amount)}`;
+  return job.commission !== null
+    ? `${collected} · ${formatRupees(job.commission)} commission from wallet`
+    : collected;
 }
 
 export function TripCompleteScreen() {
@@ -121,7 +124,7 @@ export function TripCompleteScreen() {
           <AppView className="border-t border-border/60 pt-2">
             <AppText className="text-[14px] font-medium text-muted">Your earnings</AppText>
             <AppText className="text-[38px] font-black leading-tight text-brand">
-              {formatRupees(job.driverEarning)}
+              {job.driverEarning !== null ? formatRupees(job.driverEarning) : '—'}
             </AppText>
             <AppText className="mt-1 text-[14px] text-muted">{paymentLine(job)}</AppText>
           </AppView>
@@ -131,7 +134,7 @@ export function TripCompleteScreen() {
           <AppPressable
             onPress={() => router.replace('/home')}
             pressScale={0.97}
-            className="items-center justify-center rounded-full bg-[#18181B] py-4 shadow-md active:opacity-90 dark:bg-white"
+            className="items-center justify-center rounded-full bg-[#18181B] py-4 shadow-md dark:bg-white"
           >
             <AppText className="text-[16px] font-black text-white dark:text-black">
               Back to home

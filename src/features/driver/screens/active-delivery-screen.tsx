@@ -17,7 +17,7 @@ import {
 import { useActiveJob, useArriveAtDrop, useArriveAtPickup, useCancelJob } from '@/hooks/use-jobs';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverJob } from '@/lib/api/models';
-import { formatDistance, formatMinutes, formatRupees } from '@/lib/format';
+import { formatEarning, formatDistance, formatMinutes } from '@/lib/format';
 import { distanceKm } from '@/lib/geo';
 import { openNavigationChooser } from '@/lib/navigation-apps';
 import { useLocationStore } from '@/stores/location-store';
@@ -240,7 +240,7 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
             {paymentNote}
           </AppText>
           <AppText className="text-[16px] font-black text-foreground">
-            {formatRupees(job.driverEarning)}
+            {formatEarning(job.driverEarning, job.fare)}
           </AppText>
         </AppView>
 
@@ -253,10 +253,7 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
           textClassName="font-extrabold text-base"
         />
         {isPickup ? (
-          <AppPressable
-            onPress={() => setCancelSheetOpen(true)}
-            className="mt-3 items-center py-1 active:opacity-70"
-          >
+          <AppPressable onPress={() => setCancelSheetOpen(true)} className="mt-3 items-center py-1">
             <AppText className="text-[13px] font-semibold text-muted">Cancel trip</AppText>
           </AppPressable>
         ) : null}

@@ -21,6 +21,14 @@ export function formatRupees(amount: number): string {
   return `${sign}₹${RUPEES.format(Math.abs(amount))}`;
 }
 
+/**
+ * The driver's take when the backend has computed it; otherwise the trip fare,
+ * labelled as the fare so it is never mistaken for earnings.
+ */
+export function formatEarning(earning: number | null, fare: number): string {
+  return earning !== null ? formatRupees(earning) : `Fare ${formatRupees(fare)}`;
+}
+
 /** "1h 25m" / "12 min". */
 export function formatMinutes(minutes: number): string {
   if (minutes < 60) return `${Math.max(0, Math.round(minutes))} min`;

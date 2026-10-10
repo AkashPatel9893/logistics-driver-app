@@ -1,7 +1,7 @@
 import { AppPressable, AppText, AppView, Icon } from '@/components/ui';
 import { useCountdown } from '@/hooks/use-countdown';
 import type { JobOffer } from '@/lib/api/models';
-import { formatDistance, formatMinutes, formatRupees, placeName } from '@/lib/format';
+import { formatEarning, formatDistance, formatMinutes, placeName } from '@/lib/format';
 
 export interface DeliveryRequestCardProps {
   offer: JobOffer;
@@ -17,13 +17,13 @@ export function DeliveryRequestCard({ offer, onOpen, className = '' }: DeliveryR
     <AppPressable
       onPress={() => onOpen(offer)}
       pressScale={0.98}
-      accessibilityLabel={`New ${offer.vehicle.name} request, ${formatRupees(offer.driverEarning)}. Opens details`}
+      accessibilityLabel={`New ${offer.vehicle.name} request, ${formatEarning(offer.driverEarning, offer.fare)}. Opens details`}
       className={`overflow-hidden rounded-[26px] border border-brand/40 bg-card p-4.5 shadow-sm ${className}`}
     >
       <AppView row className="items-center justify-between border-b border-border/40 pb-3">
         <AppView>
           <AppText className="text-[16px] font-extrabold text-foreground">
-            {offer.vehicle.name} · Delivery
+            {[offer.vehicle.name, 'Delivery'].filter(Boolean).join(' · ')}
           </AppText>
           <AppText className="text-[12px] font-medium text-muted">
             Expires in {secondsLeft}s · #{offer.orderNumber}
@@ -31,7 +31,7 @@ export function DeliveryRequestCard({ offer, onOpen, className = '' }: DeliveryR
         </AppView>
         <AppView className="items-end">
           <AppText className="text-[22px] font-black text-foreground">
-            {formatRupees(offer.driverEarning)}
+            {formatEarning(offer.driverEarning, offer.fare)}
           </AppText>
           <AppText className="text-[11px] font-medium text-muted">your earning</AppText>
         </AppView>

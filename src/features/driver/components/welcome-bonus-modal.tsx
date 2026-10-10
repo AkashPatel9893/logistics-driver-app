@@ -62,7 +62,7 @@ export function WelcomeBonusModal({ bonus, visible, onDismiss }: WelcomeBonusMod
                 onDismiss();
                 router.push('/earnings');
               }}
-              className="items-center py-2.5 active:opacity-70"
+              className="items-center py-2.5"
             >
               <AppText className="text-[14px] font-semibold text-muted">View earnings</AppText>
             </AppPressable>
