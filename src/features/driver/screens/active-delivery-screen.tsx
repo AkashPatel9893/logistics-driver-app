@@ -193,7 +193,8 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
                 {contact.name}
               </AppText>
               <AppText className="text-[12px] text-muted">
-                {isPickup ? 'Sender' : 'Receiver'} · #{job.number}
+                {/* No receiver details for this stop yet: the contact shown is the sender. */}
+                {isPickup || !job.drop.contact ? 'Sender' : 'Receiver'} · #{job.number}
               </AppText>
             </AppView>
           </AppView>

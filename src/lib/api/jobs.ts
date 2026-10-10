@@ -65,7 +65,12 @@ function mapDriverJob(raw: any): DriverJob {
     commission: raw.commission ?? null,
     payment: raw.payment
       ? {
-          mode: raw.payment.mode ?? 'cash',
+          // The backend reports an unpaid pay-on-delivery order as "prepaid" until a payment
+          // exists; nothing has been paid, so the driver collects it.
+          mode:
+            raw.payment.status !== 'collected' && raw.payment.timing === 'on-delivery'
+              ? 'cash'
+              : (raw.payment.mode ?? 'cash'),
           timing: raw.payment.timing ?? 'on-delivery',
           amount: Number(raw.payment.amount ?? raw.fare ?? 0),
           methodLabel: raw.payment.method_label ?? raw.payment.methodLabel ?? 'Cash',
@@ -105,11 +110,22 @@ function devicePosition(): { latitude: number; longitude: number } {
   return { latitude: fix.latitude, longitude: fix.longitude };
 }
 
-async function getActiveTripDetails(): Promise<{
+interface ActiveTrip {
   tripId: string;
-  dropStopId: string;
   status: string;
-} | null> {
+  /** The delivery stop the driver must serve next (null once all are done). */
+  currentDrop: {
+    stopId: string;
+    /** 1-based position among the delivery stops. */
+    number: number;
+    location: { latitude: number; longitude: number };
+    isFinal: boolean;
+  } | null;
+  dropCount: number;
+}
+
+/** The driver's active trip and its next delivery stop, straight from the backend. */
+async function getActiveTripDetails(): Promise<ActiveTrip | null> {
   const now = new Date().toISOString();
   try {
     const locRes = await request<any>({
@@ -117,17 +133,28 @@ async function getActiveTripDetails(): Promise<{
       url: '/tracking/location',
       data: { ...devicePosition(), recorded_at: now },
     });
-    if (locRes?.trip_id) {
-      lastTripId = locRes.trip_id;
-      const tripRes = await request<any>({ url: `/trips/${locRes.trip_id}` });
-      const dropStop =
-        tripRes?.stops?.find((s: any) => s.stop_type === 'DROP') || tripRes?.stops?.[1];
-      return {
-        tripId: locRes.trip_id,
-        dropStopId: dropStop?.order_stop_id || dropStop?.id || '',
-        status: tripRes?.status || '',
-      };
-    }
+    if (!locRes?.trip_id) return null;
+    lastTripId = locRes.trip_id;
+    const tripRes = await request<any>({ url: `/trips/${locRes.trip_id}` });
+    const drops: any[] = ((tripRes?.stops ?? []) as any[])
+      .filter((stop) => stop.stop_type === 'DROP')
+      .sort((a, b) => a.sequence_number - b.sequence_number);
+    // Multi-stop: deliveries are served in order; the next one is the first not yet completed.
+    const index = drops.findIndex((stop) => stop.status !== 'COMPLETED');
+    const next = index >= 0 ? drops[index] : null;
+    return {
+      tripId: locRes.trip_id,
+      status: tripRes?.status || '',
+      dropCount: drops.length,
+      currentDrop: next
+        ? {
+            stopId: next.order_stop_id,
+            number: index + 1,
+            location: { latitude: Number(next.latitude), longitude: Number(next.longitude) },
+            isFinal: index === drops.length - 1,
+          }
+        : null,
+    };
   } catch {}
   return null;
 }
@@ -180,7 +207,28 @@ export const jobsApi = {
   getActiveJob: async (signal?: AbortSignal): Promise<DriverJob | null> => {
     const raw = await request<any>({ url: '/driver/jobs/active', signal });
     if (!raw) return null;
-    return mapDriverJob(raw);
+    const job = mapDriverJob(raw);
+    // The job only names the final drop. On a multi-stop trip, point the driver at the
+    // stop that is actually next; its address and contact aren't available yet.
+    const trip = job.pickedUpAt ? await getActiveTripDetails() : null;
+    const next = trip?.currentDrop;
+    if (next && !next.isFinal && trip) {
+      return {
+        ...job,
+        // The job contract reports arrival at a middle stop as still in transit.
+        status:
+          trip.status === 'ARRIVED_AT_STOP' || trip.status === 'STOP_SERVICE_IN_PROGRESS'
+            ? 'arrived_at_drop'
+            : job.status,
+        drop: {
+          label: `Stop ${next.number} of ${trip.dropCount}`,
+          location: next.location,
+          houseNumber: '',
+          contact: null,
+        },
+      };
+    }
+    return job;
   },
 
   getJob: async (id: string, signal?: AbortSignal): Promise<DriverJob> => {
@@ -229,17 +277,23 @@ export const jobsApi = {
 
   arriveAtDrop: async (id: string): Promise<DriverJob> => {
     const trip = await getActiveTripDetails();
-    if (!trip?.tripId || !trip.dropStopId) throw new Error(TRIP_UNREACHABLE);
+    if (!trip?.tripId || !trip.currentDrop) throw new Error(TRIP_UNREACHABLE);
+    // After a completed stop the backend wants the trip back in transit before the next arrival.
+    if (trip.status === 'STOP_COMPLETED' || trip.status === 'PICKED_UP') {
+      try {
+        await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/start` });
+      } catch {}
+    }
     // Not swallowed: the backend rejects an arrival away from the stop.
     await request<any>({
       method: 'POST',
-      url: `/trips/${trip.tripId}/stops/${trip.dropStopId}/arrive`,
+      url: `/trips/${trip.tripId}/stops/${trip.currentDrop.stopId}/arrive`,
       data: devicePosition(),
     });
     try {
       await request<any>({
         method: 'POST',
-        url: `/trips/${trip.tripId}/stops/${trip.dropStopId}/start-service`,
+        url: `/trips/${trip.tripId}/stops/${trip.currentDrop.stopId}/start-service`,
       });
     } catch {}
     const active = await jobsApi.getActiveJob();
@@ -269,12 +323,19 @@ export const jobsApi = {
   },
 
   cancel: async (id: string, reason: string): Promise<DriverJob> => {
-    const res = await request<any>({
-      method: 'POST',
-      url: `/driver/jobs/${id}/cancel`,
-      data: { reason },
-    });
-    return mapDriverJob(res);
+    const before = await jobsApi.getActiveJob();
+    const trip = await getActiveTripDetails();
+    if (!trip?.tripId) throw new Error(TRIP_UNREACHABLE);
+    await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/cancel`, data: { reason } });
+    // The cancelled job is no longer "active", so keep the real one as it was.
+    return before
+      ? {
+          ...before,
+          status: 'cancelled',
+          cancelledAt: new Date().toISOString(),
+          cancelReason: reason,
+        }
+      : mapDriverJob({ id, status: 'cancelled' });
   },
 
   createPaymentQr: async (id: string): Promise<PaymentQr> => {

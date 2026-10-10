@@ -7,6 +7,7 @@ import type {
   DriverProfile,
   GeoPoint,
   KycInput,
+  VehicleDetails,
   VehicleInput,
   VehicleTypeOption,
 } from './models';
@@ -17,6 +18,42 @@ export interface LocationUpdate extends GeoPoint {
   recordedAt: string;
 }
 
+/** The driver's registered vehicle from the backend, or null when there is none. */
+async function activeVehicle(signal?: AbortSignal): Promise<VehicleDetails | null> {
+  try {
+    const [vehicles, types] = await Promise.all([
+      request<any[]>({ url: '/partner/vehicles', signal }),
+      request<any[]>({ url: '/vehicle-types', signal }),
+    ]);
+    const v = vehicles?.[0];
+    if (!v) return null;
+    const type = (types ?? []).find((t) => t.code === v.vehicle_type_code);
+    return {
+      vehicleTypeId: type?.id ?? '',
+      vehicleTypeName: type?.display_name ?? v.vehicle_type_code,
+      model: [v.make, v.model].filter(Boolean).join(' '),
+      plateNumber: v.registration_number,
+      rcPhotoUrl: '',
+      frontPhotoUrl: '',
+      status: v.status === 'ACTIVE' || v.status === 'APPROVED' ? 'verified' : 'under_review',
+      submittedAt: '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Whether the backend currently has this driver online (anything but OFFLINE). */
+async function isAvailable(signal?: AbortSignal): Promise<boolean> {
+  try {
+    const res = await request<any>({ url: '/partner/availability', signal });
+    return Boolean(res?.status) && res.status !== 'OFFLINE';
+  } catch {
+    // Unknown is shown as offline: never claim the driver is receiving requests.
+    return false;
+  }
+}
+
 export const driverApi = {
   getProfile: async (signal?: AbortSignal): Promise<DriverProfile> => {
     try {
@@ -24,6 +61,8 @@ export const driverApi = {
     } catch {
       try {
         const p = await request<any>({ url: '/partner/profile', signal });
+        const vehicle = await activeVehicle(signal);
+        const isOnline = await isAvailable(signal);
         const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Partner Driver';
         return {
           id: p.id,
@@ -35,9 +74,9 @@ export const driverApi = {
           joinedAt: p.created_at ?? new Date().toISOString(),
           rating: p.rating ?? null,
           ratingCount: p.rating_count ?? 0,
-          isOnline: p.onboarding_status === 'APPROVED',
+          isOnline,
           onlineSince: null,
-          vehicle: null,
+          vehicle,
           kyc: null,
           bank: null,
           pendingSteps: [],

@@ -28,6 +28,13 @@ import { usePhotoUpload } from '../hooks/use-photo-upload';
 
 type Stop = 'pickup' | 'drop';
 
+/**
+ * Whether a parcel / proof-of-delivery photo must be uploaded before the code is
+ * accepted. Off until the backend has a photo upload endpoint — with it on today,
+ * no pickup or delivery could be completed. Turn on as soon as uploads work.
+ */
+const PROOF_PHOTO_REQUIRED = false;
+
 const COPY: Record<
   Stop,
   { title: string; who: 'sender' | 'receiver'; photoTitle: string; photoHint: string; cta: string }
@@ -85,6 +92,13 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
   const paymentDue = isPaymentDueAt(job, stop);
 
   const handleConfirm = () => {
+    if (PROOF_PHOTO_REQUIRED && !photo.url) {
+      Alert.alert(
+        stop === 'pickup' ? 'Photo of the parcel needed' : 'Proof of delivery needed',
+        'Take the photo before confirming.',
+      );
+      return;
+    }
     if (otp.length < 4) {
       setOtpError(`Enter the 4-digit code from the ${copy.who}.`);
       return;
@@ -93,6 +107,11 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
     verify
       .mutateAsync({ id: job.id, otp, photoUrl: photo.url ?? undefined })
       .then((updated) => {
+        // More stops to deliver: back to the trip for the next one.
+        if (stop === 'drop' && updated.status !== 'delivered') {
+          router.replace('/active-delivery');
+          return;
+        }
         // Payment is collected only once the code is verified, never before.
         if (paymentDue) onPaymentDue({ ...job, status: updated.status });
         else leaveStop(router, stop, updated.id);

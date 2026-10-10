@@ -6,10 +6,16 @@ import {
   startBackgroundLocation,
   stopBackgroundLocation,
 } from '@/lib/background-location';
+import { driverApi } from '@/lib/api/driver';
 import { useLocationStore } from '@/stores/location-store';
 
 /** A cached fix older than this is not trusted as the starting position. */
 const MAX_LAST_KNOWN_AGE_MS = 2 * 60_000;
+/**
+ * The backend drops a driver from dispatch when their position is older than
+ * 60 s, and GPS sends nothing while parked — so re-send the last fix this often.
+ */
+const HEARTBEAT_MS = 20_000;
 /** Don't let a slow first fix hold up the continuous updates. */
 const FIRST_FIX_TIMEOUT_MS = 10_000;
 
@@ -58,8 +64,25 @@ export function useLocationReporter(isOnline: boolean) {
       });
     })();
 
+    const heartbeat = setInterval(() => {
+      const fix = useLocationStore.getState().current;
+      if (!fix) return;
+      driverApi
+        .reportLocation({
+          latitude: fix.latitude,
+          longitude: fix.longitude,
+          heading: fix.heading,
+          speedKmph: fix.speedKmph,
+          recordedAt: new Date().toISOString(),
+        })
+        .catch(() => {
+          // The next beat retries.
+        });
+    }, HEARTBEAT_MS);
+
     return () => {
       cancelled = true;
+      clearInterval(heartbeat);
     };
   }, [isOnline]);
 }
