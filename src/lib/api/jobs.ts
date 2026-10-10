@@ -1,3 +1,5 @@
+import { useLocationStore } from '@/stores/location-store';
+
 import { request } from './client';
 import type { ChatMessage, DriverJob, JobOffer, PaymentQr, VerifyStopInput } from './models';
 
@@ -96,6 +98,13 @@ let lastTripId: string | null = null;
 
 const TRIP_UNREACHABLE = 'Could not reach the trip. Check your connection and try again.';
 
+/** The device's latest GPS fix — the backend geofences every arrival and handover against it. */
+function devicePosition(): { latitude: number; longitude: number } {
+  const fix = useLocationStore.getState().current;
+  if (!fix) throw new Error('Waiting for your GPS location. Try again in a moment.');
+  return { latitude: fix.latitude, longitude: fix.longitude };
+}
+
 async function getActiveTripDetails(): Promise<{
   tripId: string;
   dropStopId: string;
@@ -106,7 +115,7 @@ async function getActiveTripDetails(): Promise<{
     const locRes = await request<any>({
       method: 'POST',
       url: '/tracking/location',
-      data: { latitude: 28.628, longitude: 77.2405, recorded_at: now },
+      data: { ...devicePosition(), recorded_at: now },
     });
     if (locRes?.trip_id) {
       lastTripId = locRes.trip_id;
@@ -218,21 +227,19 @@ export const jobsApi = {
   },
 
   arriveAtPickup: async (id: string): Promise<DriverJob> => {
-    try {
-      const trip = await getActiveTripDetails();
-      if (trip?.tripId) {
-        if (trip.status === 'ASSIGNED') {
-          try {
-            await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/en-route-pickup` });
-          } catch {}
-        }
-        await request<any>({
-          method: 'POST',
-          url: `/trips/${trip.tripId}/arrived-pickup`,
-          data: { latitude: 28.628, longitude: 77.2405 },
-        });
-      }
-    } catch {}
+    const trip = await getActiveTripDetails();
+    if (!trip?.tripId) throw new Error(TRIP_UNREACHABLE);
+    if (trip.status === 'ASSIGNED') {
+      try {
+        await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/en-route-pickup` });
+      } catch {}
+    }
+    // Not swallowed: the backend rejects an arrival away from the stop.
+    await request<any>({
+      method: 'POST',
+      url: `/trips/${trip.tripId}/arrived-pickup`,
+      data: devicePosition(),
+    });
     const active = await jobsApi.getActiveJob();
     return active ?? mapDriverJob({ id, status: 'arrived_at_pickup' });
   },
@@ -247,7 +254,7 @@ export const jobsApi = {
     await request<any>({
       method: 'POST',
       url: `/trips/${trip.tripId}/pickup/verify`,
-      data: { otp: input.otp, latitude: 28.628, longitude: 77.2405 },
+      data: { otp: input.otp, ...devicePosition() },
     });
     try {
       await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/start` });
@@ -257,21 +264,19 @@ export const jobsApi = {
   },
 
   arriveAtDrop: async (id: string): Promise<DriverJob> => {
+    const trip = await getActiveTripDetails();
+    if (!trip?.tripId || !trip.dropStopId) throw new Error(TRIP_UNREACHABLE);
+    // Not swallowed: the backend rejects an arrival away from the stop.
+    await request<any>({
+      method: 'POST',
+      url: `/trips/${trip.tripId}/stops/${trip.dropStopId}/arrive`,
+      data: devicePosition(),
+    });
     try {
-      const trip = await getActiveTripDetails();
-      if (trip?.tripId && trip.dropStopId) {
-        await request<any>({
-          method: 'POST',
-          url: `/trips/${trip.tripId}/stops/${trip.dropStopId}/arrive`,
-          data: { latitude: 28.7159, longitude: 77.1723 },
-        });
-        try {
-          await request<any>({
-            method: 'POST',
-            url: `/trips/${trip.tripId}/stops/${trip.dropStopId}/start-service`,
-          });
-        } catch {}
-      }
+      await request<any>({
+        method: 'POST',
+        url: `/trips/${trip.tripId}/stops/${trip.dropStopId}/start-service`,
+      });
     } catch {}
     const active = await jobsApi.getActiveJob();
     return active ?? mapDriverJob({ id, status: 'arrived_at_drop' });
@@ -287,8 +292,7 @@ export const jobsApi = {
       data: {
         otp: input.otp,
         recipient_name: 'Receiver',
-        latitude: 28.7159,
-        longitude: 77.1723,
+        ...devicePosition(),
       },
     });
     const active = await jobsApi.getActiveJob();

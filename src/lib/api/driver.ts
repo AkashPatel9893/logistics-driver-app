@@ -1,3 +1,5 @@
+import { useLocationStore } from '@/stores/location-store';
+
 import { request } from './client';
 import type {
   BankInput,
@@ -107,7 +109,11 @@ export const driverApi = {
           await request<any>({
             method: 'POST',
             url: '/partner/availability/online',
-            data: { latitude: 12.9716, longitude: 77.5946 },
+            // MG Road, Bengaluru until the first GPS fix arrives.
+            data: {
+              latitude: useLocationStore.getState().current?.latitude ?? 12.9716,
+              longitude: useLocationStore.getState().current?.longitude ?? 77.5946,
+            },
           });
         } else {
           await request<any>({

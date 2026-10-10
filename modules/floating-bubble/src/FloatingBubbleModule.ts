@@ -1,4 +1,4 @@
-import { NativeModule, requireNativeModule } from 'expo-modules-core';
+import { NativeModule, requireOptionalNativeModule } from 'expo-modules-core';
 
 declare class FloatingBubbleModule extends NativeModule {
   canDrawOverlays(): boolean;
@@ -9,4 +9,5 @@ declare class FloatingBubbleModule extends NativeModule {
   bringToFront(deepLink: string): boolean;
 }
 
-export default requireNativeModule<FloatingBubbleModule>('FloatingBubble');
+// Android only: null on iOS, where index.ts turns every call into a no-op.
+export default requireOptionalNativeModule<FloatingBubbleModule>('FloatingBubble');
