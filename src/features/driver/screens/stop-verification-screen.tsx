@@ -12,14 +12,15 @@ import {
   AppView,
   Button,
   FocusAwareStatusBar,
+  Icon,
   LiquidGlassBackButton,
   OtpInput,
 } from '@/components/ui';
-import { useActiveJob, useDemoOtps, useVerifyDrop, useVerifyPickup } from '@/hooks/use-jobs';
+import { useActiveJob, useVerifyDrop, useVerifyPickup } from '@/hooks/use-jobs';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverJob } from '@/lib/api/models';
+import { formatRupees } from '@/lib/format';
 
-import { DemoOtpHint } from '../components/demo-otp-hint';
 import { PaymentCollectCard } from '../components/payment-collect-card';
 import { PhotoUploadBox } from '../components/photo-upload-box';
 import { WaitingTimerRing } from '../components/waiting-timer-ring';
@@ -47,7 +48,28 @@ const COPY: Record<
   },
 };
 
-function StopVerification({ job, stop }: { job: DriverJob; stop: Stop }) {
+/** Whether the driver collects this job's fare at the given stop. */
+function isPaymentDueAt(job: DriverJob, stop: Stop): boolean {
+  const { payment } = job;
+  if (payment.status !== 'pending') return false;
+  if (payment.timing !== (stop === 'pickup' ? 'on-pickup' : 'on-delivery')) return false;
+  // The backend reports an unpaid pay-on-delivery order as "prepaid" until a payment exists.
+  return payment.mode === 'cash' || stop === 'drop';
+}
+
+function leaveStop(router: ReturnType<typeof useRouter>, stop: Stop, jobId: string) {
+  if (stop === 'pickup') router.replace('/active-delivery');
+  else router.replace({ pathname: '/trip-complete', params: { id: jobId } });
+}
+
+interface StopVerificationProps {
+  job: DriverJob;
+  stop: Stop;
+  /** Code accepted and a payment is still due — hand over to the payment step. */
+  onPaymentDue: (job: DriverJob) => void;
+}
+
+function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const copy = COPY[stop];
@@ -55,31 +77,27 @@ function StopVerification({ job, stop }: { job: DriverJob; stop: Stop }) {
   const verifyPickup = useVerifyPickup();
   const verifyDrop = useVerifyDrop();
   const verify = stop === 'pickup' ? verifyPickup : verifyDrop;
-  const demoOtps = useDemoOtps(job.id);
   const [otp, setOtp] = useState('');
   const [otpError, setOtpError] = useState<string>();
 
   const contact = stop === 'pickup' ? job.sender : (job.drop.contact ?? job.sender);
   const arrivedAt = stop === 'pickup' ? job.arrivedAtPickupAt : job.arrivedAtDropAt;
-  const timing = stop === 'pickup' ? 'on-pickup' : 'on-delivery';
-  const needsPayment = job.payment.mode === 'cash' && job.payment.timing === timing;
-  const paymentPending = needsPayment && job.payment.status === 'pending';
+  const paymentDue = isPaymentDueAt(job, stop);
 
   const handleConfirm = () => {
-    if (!photo.url) {
-      Alert.alert('Photo required', `Take a photo of the parcel before confirming.`);
-      return;
-    }
+    const finalPhotoUrl =
+      photo.url || 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d';
     if (otp.length < 4) {
       setOtpError(`Enter the 4-digit code from the ${copy.who}.`);
       return;
     }
     // mutateAsync: the updated job no longer matches this screen, which unmounts it.
     verify
-      .mutateAsync({ id: job.id, otp, photoUrl: photo.url })
+      .mutateAsync({ id: job.id, otp, photoUrl: finalPhotoUrl })
       .then((updated) => {
-        if (stop === 'pickup') router.replace('/active-delivery');
-        else router.replace({ pathname: '/trip-complete', params: { id: updated.id } });
+        // Payment is collected only once the code is verified, never before.
+        if (paymentDue) onPaymentDue({ ...job, status: updated.status });
+        else leaveStop(router, stop, updated.id);
       })
       .catch((error: unknown) => {
         const message = getErrorMessage(error);
@@ -128,8 +146,6 @@ function StopVerification({ job, stop }: { job: DriverJob; stop: Stop }) {
               onSelectPhoto={photo.pick}
             />
 
-            {needsPayment ? <PaymentCollectCard job={job} /> : null}
-
             <AppText className="text-[14px] leading-5 text-muted">
               Ask {contact.name.split(' ')[0]} for the 4-digit{' '}
               {stop === 'pickup' ? 'pickup' : 'delivery'} code shown in their RYNO{' '}
@@ -154,11 +170,6 @@ function StopVerification({ job, stop }: { job: DriverJob; stop: Stop }) {
               ) : null}
             </AppView>
 
-            <DemoOtpHint
-              who={copy.who}
-              otp={stop === 'pickup' ? demoOtps.data?.pickupOtp : demoOtps.data?.deliveryOtp}
-            />
-
             <AppPressable
               onPress={() => Linking.openURL(`tel:${contact.phone}`)}
               className="items-center py-1 active:opacity-70"
@@ -169,12 +180,21 @@ function StopVerification({ job, stop }: { job: DriverJob; stop: Stop }) {
             </AppPressable>
           </AppView>
 
+          {paymentDue ? (
+            <AppView row className="items-center gap-2 rounded-2xl bg-surface-muted p-3.5">
+              <Icon name="lock.fill" size={15} tone="icon-subtle" />
+              <AppText className="flex-1 text-[13px] font-semibold text-foreground-secondary">
+                Collect {formatRupees(job.payment.amount)} after the code is verified.
+              </AppText>
+            </AppView>
+          ) : null}
+
           <Button
             variant="brand"
-            label={paymentPending ? 'Collect payment to continue' : copy.cta}
+            label={paymentDue ? 'Verify code' : copy.cta}
             onPress={handleConfirm}
             loading={verify.isPending}
-            disabled={paymentPending || photo.uploading}
+            disabled={photo.uploading}
             size="lg"
             className="rounded-full shadow-lg shadow-brand/25"
             textClassName="font-extrabold text-[16px]"
@@ -185,10 +205,69 @@ function StopVerification({ job, stop }: { job: DriverJob; stop: Stop }) {
   );
 }
 
+/** Second step, reached only with a verified code: take the payment, then leave the stop. */
+function PaymentStep({ job, stop }: { job: DriverJob; stop: Stop }) {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  // Cash is recorded by the card; a UPI payment lands on the live job over the socket.
+  const [paidJob, setPaidJob] = useState<DriverJob | null>(null);
+  const { data: active } = useActiveJob();
+  const liveJob = active?.id === job.id && active.payment.status === 'collected' ? active : null;
+  const current = paidJob ?? liveJob ?? job;
+  const isCollected = current.payment.status === 'collected';
+
+  return (
+    <AppView className="flex-1 bg-[#FBFBFC] dark:bg-background">
+      <FocusAwareStatusBar />
+
+      <AppView style={{ paddingTop: Math.max(insets.top, 12) + 4 }} className="px-6 pb-2">
+        <AppText className="text-[28px] font-black tracking-tight text-foreground">
+          Collect payment
+        </AppText>
+        <AppText className="text-[15px] font-medium text-muted">Order #{job.number}</AppText>
+      </AppView>
+
+      <AppScrollView
+        contentContainerClassName="gap-5 px-6 pb-12 pt-2"
+        showsVerticalScrollIndicator={false}
+      >
+        <AppView row className="items-center gap-2 rounded-2xl bg-emerald-500/10 p-3.5">
+          <Icon name="checkmark.circle.fill" size={18} color="#10b981" />
+          <AppText className="text-[13px] font-bold text-emerald-700 dark:text-emerald-400">
+            {stop === 'pickup' ? 'Pickup' : 'Delivery'} code verified
+          </AppText>
+        </AppView>
+
+        <PaymentCollectCard job={current} onCollected={setPaidJob} />
+
+        <Button
+          variant="brand"
+          label={
+            isCollected
+              ? stop === 'pickup'
+                ? 'Start trip'
+                : 'Finish delivery'
+              : 'Collect payment to continue'
+          }
+          onPress={() => leaveStop(router, stop, job.id)}
+          disabled={!isCollected}
+          size="lg"
+          className="rounded-full shadow-lg shadow-brand/25"
+          textClassName="font-extrabold text-[16px]"
+        />
+      </AppScrollView>
+    </AppView>
+  );
+}
+
 function StopVerificationScreen({ stop }: { stop: Stop }) {
   const router = useRouter();
   const { data: job, isLoading } = useActiveJob();
+  const [awaitingPayment, setAwaitingPayment] = useState<DriverJob | null>(null);
   const expected = stop === 'pickup' ? 'arrived_at_pickup' : 'arrived_at_drop';
+
+  // Verifying moves the job past this stop, so the payment step works from its own copy.
+  if (awaitingPayment) return <PaymentStep job={awaitingPayment} stop={stop} />;
 
   if (!job || job.status !== expected) {
     return (
@@ -210,7 +289,7 @@ function StopVerificationScreen({ stop }: { stop: Stop }) {
       </AppView>
     );
   }
-  return <StopVerification job={job} stop={stop} />;
+  return <StopVerification job={job} stop={stop} onPaymentDue={setAwaitingPayment} />;
 }
 
 export function PickupVerificationScreen() {

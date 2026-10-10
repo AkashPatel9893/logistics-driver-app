@@ -8,11 +8,8 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
-import { useAuthStore } from '@/features/auth/use-auth-store';
-import { IS_MOCK_API } from '@/lib/api/config';
 import { driverApi } from '@/lib/api/driver';
 import { refreshBubble } from '@/lib/driver-bubble';
-import { tick as runMockBackend } from '@/mocks/driver/scheduler';
 import { useLocationStore } from '@/stores/location-store';
 
 export const DRIVER_LOCATION_TASK = 'ryno-driver-location';
@@ -53,11 +50,6 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(
     if (error || !data) return;
     const latest = data.locations.at(-1);
     if (latest) handleLocationFix(latest);
-    // Android pauses JS timers in the background, which would freeze the
-    // in-app mock backend (offers, chat, payments). A real backend pushes over
-    // the socket instead, so this only matters without one.
-    const userId = useAuthStore.getState().user?.id;
-    if (IS_MOCK_API && userId) runMockBackend(userId);
     refreshBubble();
   },
 );

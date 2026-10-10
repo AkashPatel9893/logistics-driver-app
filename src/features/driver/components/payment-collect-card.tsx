@@ -9,10 +9,12 @@ import { formatRupees } from '@/lib/format';
 
 export interface PaymentCollectCardProps {
   job: DriverJob;
+  /** Called with the updated job once cash is recorded. */
+  onCollected?: (job: DriverJob) => void;
 }
 
-/** Cash orders: collect by UPI QR or cash before the stop can be completed. */
-export function PaymentCollectCard({ job }: PaymentCollectCardProps) {
+/** Collect by UPI QR or cash. Shown only after the stop's code is verified. */
+export function PaymentCollectCard({ job, onCollected }: PaymentCollectCardProps) {
   const router = useRouter();
   const collectCash = useCollectCash();
   const { payment } = job;
@@ -38,7 +40,8 @@ export function PaymentCollectCard({ job }: PaymentCollectCardProps) {
         {
           text: 'Yes, received',
           onPress: () =>
-            collectCash.mutate(job.id, {
+            collectCash.mutate(job, {
+              onSuccess: onCollected,
               onError: (error) => Alert.alert('Could not record payment', getErrorMessage(error)),
             }),
         },

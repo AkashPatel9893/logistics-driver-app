@@ -7,7 +7,7 @@ const memoryStore = new Map<string, string>();
 export const storage: MMKV = (function () {
   try {
     if (Platform.OS !== 'web') {
-      return createMMKV({ id: 'logistics_app_storage' });
+      return createMMKV({ id: 'logistics_driver_app_storage' });
     }
   } catch {}
   return {

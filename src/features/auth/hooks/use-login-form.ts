@@ -16,7 +16,7 @@ export function useLoginForm() {
   const router = useRouter();
   const { data: languages = [FALLBACK_LANGUAGE] } = useLanguages();
 
-  const [email, setEmail] = useState(() => kvStorage.getString(STORAGE_KEYS.CACHED_EMAIL) ?? '');
+  const [email, setEmail] = useState('9886000001@ryno.app');
   const [languageCode, setLanguageCode] = useState(
     () => kvStorage.getString(STORAGE_KEYS.LANGUAGE_CODE) ?? FALLBACK_LANGUAGE.code,
   );

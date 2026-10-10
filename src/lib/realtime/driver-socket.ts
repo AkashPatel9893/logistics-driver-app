@@ -1,11 +1,9 @@
 /**
  * Driver realtime transport. The server pushes offers, job changes, chat and
- * payment events on `driver:<userId>` over a WebSocket (see docs/API.md). In
- * mock mode the in-app mock server emits the same events without a network.
+ * payment events on `driver:<userId>` over a WebSocket.
  */
-import { IS_MOCK_API, WS_URL } from '@/lib/api/config';
+import { WS_URL } from '@/lib/api/config';
 import { getToken } from '@/lib/auth/utils';
-import { subscribeMockDriverChannel } from '@/mocks/realtime';
 
 import type { DriverEvent } from './driver-events';
 
@@ -94,7 +92,5 @@ export const driverChannel = (userId: string) => `driver:${userId}`;
 
 /** Subscribes to the driver's channel; returns an unsubscribe function. */
 export function subscribeToDriverChannel(channel: string, listener: Listener): () => void {
-  return IS_MOCK_API
-    ? subscribeMockDriverChannel(channel, listener)
-    : socket.subscribe(channel, listener);
+  return socket.subscribe(channel, listener);
 }

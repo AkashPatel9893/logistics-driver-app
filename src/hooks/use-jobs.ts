@@ -1,7 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { IS_MOCK_API } from '@/lib/api/config';
-import { request } from '@/lib/api/client';
 import { jobsApi } from '@/lib/api/jobs';
 import type { ChatMessage, DriverJob, JobOffer, VerifyStopInput } from '@/lib/api/models';
 import { queryKeys } from '@/lib/queries/keys';
@@ -107,7 +105,7 @@ export function useCancelJob() {
 }
 
 export function useCollectCash() {
-  return useJobMutation((id: string) => jobsApi.collectCash(id));
+  return useJobMutation((job: DriverJob) => jobsApi.collectCash(job));
 }
 
 export function usePaymentQr(jobId: string | undefined) {
@@ -148,19 +146,5 @@ export function useMarkMessagesRead(jobId: string | undefined) {
         job ? { ...job, unreadMessages: 0 } : job,
       );
     },
-  });
-}
-
-/**
- * Demo-only: the OTPs the sender/receiver would read in the customer app.
- * Disabled against a real backend, which never exposes them to drivers.
- */
-export function useDemoOtps(jobId: string | undefined) {
-  return useQuery({
-    queryKey: queryKeys.demoOtps(jobId ?? ''),
-    queryFn: () =>
-      request<{ pickupOtp: string; deliveryOtp: string }>({ url: `/dev/jobs/${jobId}/otps` }),
-    enabled: IS_MOCK_API && __DEV__ && Boolean(jobId),
-    staleTime: Infinity,
   });
 }

@@ -1,7 +1,6 @@
 export * from './active-delivery-card';
 export * from './daily-check-banner';
 export * from './delivery-request-card';
-export * from './demo-otp-hint';
 export * from './driver-online-toggle';
 export * from './driver-past-trip-card';
 export * from './driver-setup-checklist';
