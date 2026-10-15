@@ -1,3 +1,5 @@
+import { deviceInfo } from '@/lib/device';
+
 import { request } from './client';
 import { setToken } from '../auth/utils';
 import type { AuthSession, LanguageOption, OtpChallenge, UpdateProfileInput, User } from './models';
@@ -31,51 +33,28 @@ export const authApi = {
         phone,
         app_type: 'PARTNER',
         code: otp,
-        device: { device_uuid: 'expo-driver-client-1', platform: 'WEB' },
+        device: deviceInfo(),
       },
     });
-    const session: AuthSession = {
+    setToken({ accessToken: res.access_token, refreshToken: res.refresh_token });
+    // A first-time driver has no partner profile yet and must fill in their details.
+    const profile = await request<any>({ url: '/partner/profile' }).catch((error: any) => {
+      if (error?.status === 404 || error?.code === 'DRIVER_PROFILE_NOT_FOUND') return null;
+      throw error;
+    });
+    return {
       accessToken: res.access_token,
       refreshToken: res.refresh_token,
       user: {
-        id: res.user?.id ?? 'drv-1',
+        id: profile?.id ?? res.user?.id ?? '',
         email: '',
-        name: 'Partner Driver',
+        name: [profile?.first_name, profile?.last_name].filter(Boolean).join(' '),
         phone,
-        dob: '01 / 01 / 1990',
-        city: 'Dev City',
-        isOnboarded: true,
+        dob: profile?.date_of_birth ? String(profile.date_of_birth) : null,
+        city: null,
+        isOnboarded: profile !== null,
       },
     };
-    setToken({ accessToken: session.accessToken, refreshToken: session.refreshToken });
-    return session;
-  },
-
-  getMe: async (signal?: AbortSignal): Promise<User> => {
-    try {
-      const res = await request<any>({ url: '/partner/profile', signal });
-      const fullName =
-        [res.first_name, res.last_name].filter(Boolean).join(' ') || 'Partner Driver';
-      return {
-        id: res.id ?? res.driver_id ?? res.user_id ?? 'drv-1',
-        email: res.email ?? '',
-        name: fullName,
-        phone: res.phone_masked ?? null,
-        dob: res.date_of_birth ? String(res.date_of_birth) : '01 / 01 / 1990',
-        city: 'Dev City',
-        isOnboarded: res.onboarding_status === 'APPROVED',
-      };
-    } catch {
-      return {
-        id: 'drv-me',
-        email: '',
-        name: 'Partner Driver',
-        phone: null,
-        dob: '01 / 01 / 1990',
-        city: 'Dev City',
-        isOnboarded: false,
-      };
-    }
   },
 
   updateProfile: async (input: UpdateProfileInput): Promise<User> => {
@@ -109,7 +88,6 @@ export const authApi = {
           first_name: firstName,
           last_name: lastName,
           date_of_birth: dobFormatted,
-          gender: 'MALE',
         },
       });
     } catch (err: any) {
@@ -121,7 +99,6 @@ export const authApi = {
             first_name: firstName,
             last_name: lastName,
             date_of_birth: dobFormatted,
-            gender: 'MALE',
             market_code: 'DEV',
           },
         });
@@ -138,8 +115,8 @@ export const authApi = {
       name: fullName,
       phone: res.phone_masked ?? null,
       dob: res.date_of_birth ? String(res.date_of_birth) : (input.dob ?? '1990-01-01'),
-      city: input.city ?? 'Dev City',
-      isOnboarded: res.onboarding_status === 'APPROVED',
+      city: input.city ?? null,
+      isOnboarded: true,
     };
   },
 

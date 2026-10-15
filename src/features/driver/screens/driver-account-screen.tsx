@@ -53,7 +53,9 @@ export function DriverAccountScreen() {
     {
       icon: 'checkmark.shield.fill',
       label: 'KYC Documents',
-      sublabel: profile?.kyc ? `Licence ${profile.kyc.dlNumber}` : 'Driving licence, PAN & Aadhaar',
+      sublabel: profile?.kyc
+        ? `Licence ${profile.kyc.dlNumber || 'submitted'}`
+        : 'Driving licence, PAN and selfie',
       route: '/setup-kyc',
     },
     {

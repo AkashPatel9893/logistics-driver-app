@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -39,6 +40,7 @@ export function OnboardingScreen() {
           style={{ paddingTop: insets.top + 8 }}
           contentContainerClassName="px-6 pb-12"
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           <AppView className="mb-4 min-h-[48px] justify-center">
             <LiquidGlassBackButton onPress={form.handleSignOut} />
@@ -109,7 +111,11 @@ export function OnboardingScreen() {
                 Location
               </AppText>
               <AppPressable
-                onPress={() => setShowCityPicker((prev) => !prev)}
+                onPress={() => {
+                  // The keyboard would otherwise cover the list.
+                  Keyboard.dismiss();
+                  setShowCityPicker((prev) => !prev);
+                }}
                 className="flex-row items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
               >
                 <AppView row className="items-center gap-3">

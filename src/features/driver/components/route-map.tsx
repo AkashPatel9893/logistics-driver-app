@@ -1,6 +1,7 @@
 import { AppView, OlaMapCamera, OlaMapMarker, OlaMapPolyline, OlaMapView } from '@/components/ui';
 import type { GeoPoint } from '@/lib/api/models';
-import { computeBounds } from '@/lib/geo';
+import { useRoadRoute } from '@/hooks/use-road-route';
+import { computeBounds, distanceKm } from '@/lib/geo';
 
 export interface RouteMapProps {
   pickup: GeoPoint | null;
@@ -27,7 +28,23 @@ export function RouteMap({
   const target = focus === 'pickup' ? pickup : focus === 'drop' ? drop : null;
   const leg =
     focus === 'route' ? [pickup, drop] : [driver ?? (focus === 'drop' ? pickup : null), target];
-  const line = leg.filter((p): p is GeoPoint => p !== null);
+  const ends = leg.filter((p): p is GeoPoint => p !== null);
+  // One road route per leg, fetched from where the driver was when the leg began.
+  const road = useRoadRoute(
+    `${focus}:${ends.at(-1)?.latitude},${ends.at(-1)?.longitude}`,
+    ends.length >= 2 ? ends[0] : null,
+    ends.length >= 2 ? ends[ends.length - 1] : null,
+  );
+  // Drop the part already driven: start the line at the driver, then the road ahead.
+  let line = ends;
+  if (road.data && ends.length >= 2) {
+    const from = ends[0];
+    let nearest = 0;
+    road.data.forEach((point, index) => {
+      if (distanceKm(point, from) < distanceKm(road.data[nearest], from)) nearest = index;
+    });
+    line = [from, ...road.data.slice(Math.min(nearest + 1, road.data.length - 1))];
+  }
   const fit = [...line, ...(focus === 'route' ? [] : [pickup, drop])].filter(
     (p): p is GeoPoint => p !== null,
   );

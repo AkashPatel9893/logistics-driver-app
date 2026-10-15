@@ -36,6 +36,10 @@ export function useSaveBank() {
   return useProfileMutation((input: BankInput) => driverApi.saveBank(input));
 }
 
+export function useSubmitOnboarding() {
+  return useProfileMutation(() => driverApi.submitOnboarding());
+}
+
 export function useMarkWelcomeBonusSeen() {
   return useProfileMutation(() => driverApi.markWelcomeBonusSeen());
 }

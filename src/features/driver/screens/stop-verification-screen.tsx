@@ -195,6 +195,28 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
                 Call {contact.name.split(' ')[0]} for the code
               </AppText>
             </AppPressable>
+            <AppPressable
+              onPress={() =>
+                Alert.alert(
+                  "Customer can't find the code?",
+                  stop === 'pickup'
+                    ? 'The sender sees the pickup code on the order tracking screen in their RYNO app, under the order number.'
+                    : 'The sender sees the delivery code on the order tracking screen and can share it with the receiver using "Share code".',
+                  [
+                    { text: 'OK', style: 'cancel' },
+                    {
+                      text: 'Call sender',
+                      onPress: () => Linking.openURL(`tel:${job.sender.phone}`),
+                    },
+                  ],
+                )
+              }
+              className="items-center py-1"
+            >
+              <AppText className="text-[13px] font-medium text-muted">
+                Customer can&apos;t find the code?
+              </AppText>
+            </AppPressable>
           </AppView>
 
           {paymentDue ? (

@@ -87,8 +87,12 @@ export type VerificationStatus = 'under_review' | 'verified' | 'rejected';
 export interface VehicleTypeOption {
   id: string;
   name: string;
+  /** Backend vehicle type code, needed to register a vehicle. */
+  code: string;
   capacityKg: number;
   imageKey: string;
+  /** Picture served by the backend; null shows the app's one fallback image. */
+  imageUrl: string | null;
 }
 
 export interface VehicleDetails {
@@ -102,28 +106,40 @@ export interface VehicleDetails {
   submittedAt: string;
 }
 
+export type FuelType = 'PETROL' | 'DIESEL' | 'CNG' | 'ELECTRIC';
+
 export interface VehicleInput {
   vehicleTypeId: string;
+  make: string;
   model: string;
   plateNumber: string;
-  rcPhotoUrl: string;
-  frontPhotoUrl: string;
+  fuelType: FuelType;
+  /** Local photo URIs and ISO expiry dates; uploaded when the form is submitted. */
+  rcPhotoUri: string;
+  insurancePhotoUri: string;
+  insuranceExpiry: string;
+  /** Pollution certificate — not needed for electric vehicles. */
+  pucPhotoUri: string | null;
+  pucExpiry: string | null;
 }
 
 export interface KycDetails {
+  /** Masked by the backend, e.g. "••••1234"; empty when not on file. */
   panNumber: string;
   dlNumber: string;
-  dlPhotoUrl: string;
-  aadhaarPhotoUrl: string;
   status: VerificationStatus;
-  submittedAt: string;
+  /** Required documents not yet submitted, e.g. ["Selfie"]. */
+  missing: string[];
 }
 
 export interface KycInput {
   panNumber: string;
+  panPhotoUri: string;
   dlNumber: string;
-  dlPhotoUrl: string;
-  aadhaarPhotoUrl: string;
+  /** ISO date (YYYY-MM-DD). */
+  dlExpiry: string;
+  dlPhotoUri: string;
+  selfieUri: string;
 }
 
 export interface BankDetails {
@@ -141,7 +157,16 @@ export interface BankInput {
   holderName: string;
   accountNumber: string;
   ifscCode: string;
-  chequePhotoUrl: string;
+}
+
+/** Where the driver's application stands with the backend. */
+export interface OnboardingState {
+  status: 'in_progress' | 'submitted' | 'approved' | 'rejected';
+  /** Every step is complete and the application can be sent for review. */
+  canSubmit: boolean;
+  rejectionReason: string | null;
+  /** Why the driver can't go online yet, in the backend's words. */
+  blockers: string[];
 }
 
 export type SetupStep = 'vehicle' | 'kyc' | 'bank';
@@ -182,6 +207,7 @@ export interface DriverProfile {
   /** Steps still missing or not yet verified; empty when the driver can go online. */
   pendingSteps: SetupStep[];
   canGoOnline: boolean;
+  onboarding: OnboardingState;
   dailyCheck: DailyCheck;
   welcomeBonus: WelcomeBonus;
   walletBalance: number;

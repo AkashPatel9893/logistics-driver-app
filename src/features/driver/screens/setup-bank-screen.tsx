@@ -13,9 +13,7 @@ import {
 import { useDriverProfile, useSaveBank } from '@/hooks/use-driver';
 import { getErrorMessage } from '@/lib/api/api-error';
 
-import { PhotoUploadBox } from '../components/photo-upload-box';
 import { SetupScreenLayout } from '../components/setup-screen-layout';
-import { usePhotoUpload } from '../hooks/use-photo-upload';
 
 export function SetupBankScreen() {
   const router = useRouter();
@@ -28,20 +26,20 @@ export function SetupBankScreen() {
   const [accountNumber, setAccountNumber] = useState('');
   const [confirmAccount, setConfirmAccount] = useState('');
   const [ifscCode, setIfscCode] = useState(current?.ifscCode ?? '');
-  const cheque = usePhotoUpload('bank_cheque', current?.chequePhotoUrl ?? null, 'document');
   const [error, setError] = useState<string>();
 
   const handleSave = () => {
     if (accountNumber !== confirmAccount) return setError('Account numbers do not match.');
-    if (!cheque.url) return setError('Add a photo of a cancelled cheque or passbook.');
+    if (!/^\d{6,18}$/.test(accountNumber)) return setError('Enter a valid account number.');
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscCode)) return setError('Enter a valid IFSC code.');
     setError(undefined);
     saveBank.mutate(
-      { holderName, accountNumber, ifscCode, chequePhotoUrl: cheque.url },
+      { holderName, accountNumber, ifscCode },
       {
         onSuccess: (updated) =>
           Alert.alert(
             'Bank account submitted',
-            `${updated.bank?.bankName ?? 'Your bank'} •• ${updated.bank?.accountLast4 ?? ''} will be verified shortly.`,
+            `Account ending ${updated.bank?.accountLast4 ?? ''} has been added.`,
             [{ text: 'OK', onPress: () => router.back() }],
           ),
         onError: (e) => setError(getErrorMessage(e)),
@@ -112,23 +110,12 @@ export function SetupBankScreen() {
             leading={<Icon name="tag.fill" size={18} tone="icon-subtle" />}
           />
 
-          <PhotoUploadBox
-            label="Cancelled cheque or passbook"
-            title="Add cheque photo"
-            hint="Account number and IFSC must be visible"
-            photoUri={cheque.previewUri}
-            uploading={cheque.uploading}
-            error={cheque.error}
-            onSelectPhoto={cheque.pick}
-          />
-
           {error ? <AppText className="text-[13px] font-medium text-error">{error}</AppText> : null}
 
           <Button
             label={current ? 'Update bank account' : 'Submit bank account'}
             onPress={handleSave}
             loading={saveBank.isPending}
-            disabled={cheque.uploading}
             size="lg"
             textClassName="font-extrabold text-base"
           />

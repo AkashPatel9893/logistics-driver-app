@@ -1,6 +1,9 @@
 import { useRouter } from 'expo-router';
+import { Alert } from 'react-native';
 
-import { AppPressable, AppText, AppView, Icon, type IconName } from '@/components/ui';
+import { AppPressable, AppText, AppView, Button, Icon, type IconName } from '@/components/ui';
+import { useSubmitOnboarding } from '@/hooks/use-driver';
+import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverProfile, VerificationStatus } from '@/lib/api/models';
 
 export interface DriverSetupChecklistProps {
@@ -51,7 +54,7 @@ export function DriverSetupChecklist({ profile, className = '' }: DriverSetupChe
       title: 'Add your vehicle',
       subtitle: vehicle
         ? `${vehicle.model} · ${vehicle.plateNumber}`
-        : 'Vehicle details & RC photo',
+        : 'Vehicle details, RC, insurance and PUC',
       action: vehicle ? 'Edit vehicle' : 'Add vehicle',
       icon: 'box.truck.fill',
       state: vehicle?.status ?? 'todo',
@@ -61,8 +64,10 @@ export function DriverSetupChecklist({ profile, className = '' }: DriverSetupChe
       id: 'kyc',
       title: 'Add your KYC details',
       subtitle: kyc
-        ? `PAN ${kyc.panNumber.slice(0, 2)}•••••${kyc.panNumber.slice(-3)}`
-        : 'Driving licence, PAN & Aadhaar',
+        ? kyc.missing.length > 0
+          ? `Still needed: ${kyc.missing.join(', ')}`
+          : 'Licence, PAN and selfie submitted'
+        : 'Driving licence, PAN and selfie',
       action: kyc ? 'Edit KYC' : 'Add KYC details',
       icon: 'checkmark.shield.fill',
       state: kyc?.status ?? 'todo',
@@ -79,18 +84,49 @@ export function DriverSetupChecklist({ profile, className = '' }: DriverSetupChe
     },
   ];
 
-  const inReview = items.some((i) => i.state === 'under_review');
+  const { onboarding } = profile;
+  const submit = useSubmitOnboarding();
+  const headline =
+    onboarding.status === 'rejected'
+      ? `Your application needs changes: ${onboarding.rejectionReason ?? 'see the steps below'}. Fix them and submit again.`
+      : onboarding.status === 'submitted'
+        ? 'Your application is with our team for review. You can go online once it is approved.'
+        : onboarding.canSubmit
+          ? 'All steps are done. Submit your application for review.'
+          : 'Complete these steps to start taking trips.';
 
   return (
     <AppView className={`gap-3 ${className}`}>
       <AppView className="gap-1 px-1">
         <AppText className="text-[22px] font-extrabold text-foreground">Finish setting up</AppText>
-        <AppText className="text-[13px] text-muted">
-          {inReview
-            ? 'We are reviewing your documents. This usually takes a few minutes.'
-            : 'Complete these steps to start taking trips.'}
-        </AppText>
+        <AppText className="text-[13px] text-muted">{headline}</AppText>
       </AppView>
+
+      {onboarding.canSubmit ? (
+        <Button
+          variant="brand"
+          label="Submit for review"
+          loading={submit.isPending}
+          onPress={() =>
+            Alert.alert(
+              'Submit your application?',
+              'By submitting you accept the RYNO partner agreement. Our team will review your documents.',
+              [
+                { text: 'Not yet', style: 'cancel' },
+                {
+                  text: 'Accept and submit',
+                  onPress: () =>
+                    submit.mutate(undefined, {
+                      onError: (error) => Alert.alert('Could not submit', getErrorMessage(error)),
+                    }),
+                },
+              ],
+            )
+          }
+          size="lg"
+          textClassName="font-extrabold text-[15px]"
+        />
+      ) : null}
 
       {items.map((item) => {
         const badge = STATE_BADGE[item.state];

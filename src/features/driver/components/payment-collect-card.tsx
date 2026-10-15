@@ -1,7 +1,6 @@
-import { useRouter } from 'expo-router';
 import { Alert } from 'react-native';
 
-import { AppPressable, AppText, AppView, Button, Icon } from '@/components/ui';
+import { AppText, AppView, Button, Icon } from '@/components/ui';
 import { useCollectCash } from '@/hooks/use-jobs';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverJob } from '@/lib/api/models';
@@ -15,7 +14,6 @@ export interface PaymentCollectCardProps {
 
 /** Collect by UPI QR or cash. Shown only after the stop's code is verified. */
 export function PaymentCollectCard({ job, onCollected }: PaymentCollectCardProps) {
-  const router = useRouter();
   const collectCash = useCollectCash();
   const { payment } = job;
 
@@ -56,23 +54,16 @@ export function PaymentCollectCard({ job, onCollected }: PaymentCollectCardProps
           {formatRupees(payment.amount)}
         </AppText>
       </AppView>
+      {/* UPI QR returns with the payment gateway; cash is the only method today. */}
       <Button
         variant="brand"
-        label="Show UPI QR"
-        leftIcon={<Icon name="qrcode" size={18} color="#ffffff" />}
-        onPress={() => router.push('/payment-qr')}
+        label={collectCash.isPending ? 'Saving…' : 'Cash received'}
+        leftIcon={<Icon name="banknote" size={18} color="#ffffff" />}
+        onPress={confirmCash}
+        disabled={collectCash.isPending}
         size="lg"
         textClassName="font-extrabold text-[15px]"
       />
-      <AppPressable
-        onPress={confirmCash}
-        disabled={collectCash.isPending}
-        className="items-center py-1.5"
-      >
-        <AppText className="text-[13px] font-bold text-foreground-secondary">
-          {collectCash.isPending ? 'Saving…' : 'Customer paid in cash'}
-        </AppText>
-      </AppPressable>
     </AppView>
   );
 }

@@ -98,7 +98,13 @@ export function DriverHomeScreen() {
 
   const blockedReason = profile.canGoOnline
     ? null
-    : `Complete your ${profile.pendingSteps.map((s) => STEP_LABEL[s]).join(', ')} to go online`;
+    : profile.pendingSteps.length > 0
+      ? `Complete your ${profile.pendingSteps.map((s) => STEP_LABEL[s]).join(', ')} to go online`
+      : profile.onboarding.status === 'in_progress'
+        ? 'Submit your application for review to go online.'
+        : profile.onboarding.status === 'rejected'
+          ? (profile.onboarding.rejectionReason ?? 'Your application needs changes.')
+          : 'Your application is being reviewed. You can go online once it is approved.';
 
   const handleToggle = (next: boolean) => {
     if (next && !profile.canGoOnline) {
