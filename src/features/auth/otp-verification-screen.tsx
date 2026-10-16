@@ -6,7 +6,6 @@ import {
   AppScrollView,
   AppText,
   AppView,
-  Button,
   FocusAwareStatusBar,
   LiquidGlassBackButton,
   OtpInput,
@@ -85,13 +84,20 @@ export function OtpVerificationScreen() {
           </AppView>
 
           <AppView className="mt-9">
-            <Button
-              label={otp.isVerifying ? 'Verifying...' : 'Verify & Proceed'}
+            <AppPressable
               onPress={() => otp.handleVerify()}
-              disabled={otp.code.length < otp.otpLength}
-              loading={otp.isVerifying}
-              textClassName="font-bold"
-            />
+              disabled={otp.code.length < otp.otpLength || otp.isVerifying}
+              pressScale={0.97}
+              className={`w-full items-center justify-center rounded-2xl py-4 shadow-sm ${
+                otp.code.length < otp.otpLength || otp.isVerifying
+                  ? 'bg-neutral-300 dark:bg-neutral-700 opacity-60'
+                  : 'bg-[#1A1A1A] dark:bg-white active:bg-neutral-800'
+              }`}
+            >
+              <AppText className="text-[16px] font-bold text-white dark:text-[#1A1A1A]">
+                {otp.isVerifying ? 'Verifying...' : 'Verify & Proceed'}
+              </AppText>
+            </AppPressable>
             <AppPressable
               onPress={otp.navigateBack}
               className="mt-5 items-center justify-center py-3"

@@ -280,6 +280,23 @@ export interface DriverJob {
   cancelledAt: string | null;
   cancelReason: string | null;
   unreadMessages: number;
+  stops?: JobStop[];
+  currentStopId?: string | null;
+}
+
+export interface JobStop {
+  stopId: string;
+  sequenceNumber: number;
+  stopType: 'PICKUP' | 'DROP';
+  status: 'PENDING' | 'ARRIVED' | 'COMPLETED' | 'FAILED';
+  label: string;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  landmark?: string | null;
+  location: GeoPoint | null;
+  contact: OrderContact | null;
+  arrivedAt?: string | null;
+  completedAt?: string | null;
 }
 
 export interface VerifyStopInput {

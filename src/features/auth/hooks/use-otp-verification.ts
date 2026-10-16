@@ -34,7 +34,7 @@ export function useOtpVerification() {
     mutationFn: (otp: string) => authApi.verifyOtp(phone, otp),
     onSuccess: (session) => {
       useAuthStore.getState().signIn(session);
-      router.replace(session.user.isOnboarded ? '/home' : '/onboarding');
+      router.replace(session.user.isOnboarded ? '/home' : ('/(auth)/choose-role' as any));
     },
     onError: (error) => {
       setValidationError(getErrorMessage(error));

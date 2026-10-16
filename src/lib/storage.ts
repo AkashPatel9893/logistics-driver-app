@@ -136,4 +136,5 @@ export const STORAGE_KEYS = {
   IS_FIRST_TIME: 'IS_FIRST_TIME',
   TOKEN: 'auth_token',
   USER: 'auth_user',
+  FLEET_DATA: 'fleet_data',
 } as const;

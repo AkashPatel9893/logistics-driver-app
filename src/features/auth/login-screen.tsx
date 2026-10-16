@@ -2,10 +2,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   AppKeyboardAvoidingView,
+  AppPressable,
   AppScrollView,
   AppText,
   AppView,
-  Button,
   FocusAwareStatusBar,
   TextField,
 } from '@/components/ui';
@@ -43,7 +43,10 @@ export function LoginScreen() {
               textContentType="telephoneNumber"
               maxLength={10}
               leading={
-                <AppText className="mr-3 text-[16px] font-bold text-foreground">+91</AppText>
+                <AppView row className="items-center gap-1.5 mr-2">
+                  <AppText className="text-[18px]">🇮🇳</AppText>
+                  <AppText className="text-[15px] font-bold text-foreground">+91</AppText>
+                </AppView>
               }
               returnKeyType="done"
               onSubmitEditing={form.handleContinue}
@@ -53,13 +56,20 @@ export function LoginScreen() {
             />
 
             <AppView className="mt-4">
-              <Button
-                label={form.isLoading ? 'Sending code...' : 'Continue'}
+              <AppPressable
                 onPress={form.handleContinue}
-                disabled={!form.isPhoneValid}
-                loading={form.isLoading}
-                textClassName="font-bold"
-              />
+                disabled={!form.isPhoneValid || form.isLoading}
+                pressScale={0.97}
+                className={`w-full items-center justify-center rounded-2xl py-4 shadow-sm ${
+                  !form.isPhoneValid || form.isLoading
+                    ? 'bg-neutral-300 dark:bg-neutral-700 opacity-60'
+                    : 'bg-[#1A1A1A] dark:bg-white active:bg-neutral-800'
+                }`}
+              >
+                <AppText className="text-[16px] font-bold text-white dark:text-[#1A1A1A]">
+                  {form.isLoading ? 'Sending code...' : 'Continue'}
+                </AppText>
+              </AppPressable>
             </AppView>
 
             <AppView className="mt-6">

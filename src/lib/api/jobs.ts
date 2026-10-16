@@ -96,6 +96,23 @@ function mapDriverJob(raw: any): DriverJob {
     cancelledAt: raw.cancelled_at ?? raw.cancelledAt ?? null,
     cancelReason: raw.cancel_reason ?? raw.cancelReason ?? null,
     unreadMessages: Number(raw.unread_messages ?? raw.unreadMessages ?? 0),
+    stops: Array.isArray(raw.stops)
+      ? raw.stops.map((s: any) => ({
+          stopId: s.stop_id ?? s.stopId ?? s.id,
+          sequenceNumber: s.sequence_number ?? s.sequenceNumber ?? 1,
+          stopType: s.stop_type ?? s.stopType ?? 'DROP',
+          status: s.status ?? 'PENDING',
+          label: s.label ?? '',
+          addressLine1: s.address_line_1 ?? s.addressLine1 ?? null,
+          addressLine2: s.address_line_2 ?? s.addressLine2 ?? null,
+          landmark: s.landmark ?? null,
+          location: s.location ?? null,
+          contact: s.contact ? { name: s.contact.name, phone: s.contact.phone } : null,
+          arrivedAt: s.arrived_at ?? s.arrivedAt ?? null,
+          completedAt: s.completed_at ?? s.completedAt ?? null,
+        }))
+      : undefined,
+    currentStopId: raw.current_stop_id ?? raw.currentStopId ?? null,
   };
 }
 /** Trip of the job last worked on — cash is recorded after delivery, when no trip is active. */
@@ -205,11 +222,30 @@ export const jobsApi = {
 
   /** The job in progress, or null. */
   getActiveJob: async (signal?: AbortSignal): Promise<DriverJob | null> => {
-    const raw = await request<any>({ url: '/driver/jobs/active', signal });
+    let raw: any = null;
+    try {
+      raw = await request<any>({ url: '/partner/jobs/active', signal });
+    } catch {
+      raw = await request<any>({ url: '/driver/jobs/active', signal });
+    }
     if (!raw) return null;
     const job = mapDriverJob(raw);
-    // The job only names the final drop. On a multi-stop trip, point the driver at the
-    // stop that is actually next; its address and contact aren't available yet.
+    // If the backend already provided stops with current stop information, use it directly
+    if (job.stops && job.stops.length > 0 && job.currentStopId) {
+      const currentStop = job.stops.find((s) => s.stopId === job.currentStopId);
+      if (currentStop && currentStop.stopType === 'DROP') {
+        return {
+          ...job,
+          drop: {
+            label: currentStop.label || `Stop ${currentStop.sequenceNumber}`,
+            location: currentStop.location,
+            houseNumber: currentStop.addressLine2 || '',
+            contact: currentStop.contact,
+          },
+        };
+      }
+    }
+    // Fallback: On a multi-stop trip, query trip details
     const trip = job.pickedUpAt ? await getActiveTripDetails() : null;
     const next = trip?.currentDrop;
     if (next && !next.isFinal && trip) {
@@ -234,8 +270,11 @@ export const jobsApi = {
   getJob: async (id: string, signal?: AbortSignal): Promise<DriverJob> => {
     const active = await jobsApi.getActiveJob(signal);
     if (active && (active.id === id || active.number === id)) return active;
-    // Fails for finished jobs until the backend serves them; callers keep their cached copy.
-    return mapDriverJob(await request<any>({ url: `/driver/jobs/${id}`, signal }));
+    try {
+      return mapDriverJob(await request<any>({ url: `/partner/jobs/${id}`, signal }));
+    } catch {
+      return mapDriverJob(await request<any>({ url: `/driver/jobs/${id}`, signal }));
+    }
   },
 
   arriveAtPickup: async (id: string): Promise<DriverJob> => {
@@ -324,6 +363,13 @@ export const jobsApi = {
 
   cancel: async (id: string, reason: string): Promise<DriverJob> => {
     const before = await jobsApi.getActiveJob();
+    if (
+      before?.pickedUpAt ||
+      before?.status === 'pickup_complete' ||
+      before?.status === 'arrived_at_drop'
+    ) {
+      throw new Error('Trip cannot be cancelled after pickup. You must complete the delivery.');
+    }
     const trip = await getActiveTripDetails();
     if (!trip?.tripId) throw new Error(TRIP_UNREACHABLE);
     await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/cancel`, data: { reason } });

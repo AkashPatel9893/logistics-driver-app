@@ -94,8 +94,21 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
     markArrived();
   };
 
+  // Cancellation is only allowed BEFORE pickup has occurred. Once picked up, the driver must complete the delivery.
+  const canCancel =
+    !job.pickedUpAt &&
+    isPickup &&
+    (job.status === 'heading_to_pickup' || job.status === 'arrived_at_pickup');
+
   // mutateAsync: the cache update unmounts this view, which would drop mutate() callbacks.
   const cancelWithReason = async (reason: string) => {
+    if (!canCancel) {
+      Alert.alert(
+        'Cannot cancel order',
+        'Goods have already been picked up. Mid-ride cancellations are not permitted. Please complete the delivery.',
+      );
+      return;
+    }
     try {
       await cancelJob.mutateAsync({ id: job.id, reason });
       router.replace('/home');
@@ -253,7 +266,7 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
           size="lg"
           textClassName="font-extrabold text-base"
         />
-        {isPickup ? (
+        {canCancel ? (
           <AppPressable onPress={() => setCancelSheetOpen(true)} className="mt-3 items-center py-1">
             <AppText className="text-[13px] font-semibold text-muted">Cancel trip</AppText>
           </AppPressable>

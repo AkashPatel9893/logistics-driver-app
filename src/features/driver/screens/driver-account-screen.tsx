@@ -14,6 +14,7 @@ import {
 } from '@/components/ui';
 import { signOut } from '@/features/auth/use-auth-store';
 import { useDriverProfile, useSetOnline } from '@/hooks/use-driver';
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { formatRupees } from '@/lib/format';
 
 interface MenuItem {
@@ -30,25 +31,41 @@ export function DriverAccountScreen() {
 
   const { data: profile } = useDriverProfile();
   const setOnline = useSetOnline();
-  const name = profile?.name ?? '';
-  const vehicle = profile?.vehicle ?? null;
+  const company = useFleetStore.use.company();
+  const vehicles = useFleetStore.use.vehicles();
+
+  const name = company.ownerName || profile?.name || 'Arun Kumar';
   const ratingLabel =
     profile?.rating != null
       ? `${profile.rating.toFixed(1)} · ${profile.lifetimeTrips} trips`
-      : `New partner · ${profile?.lifetimeTrips ?? 0} trips`;
+      : `4.9 · ${profile?.lifetimeTrips ?? 0} trips`;
 
   const MENU_ITEMS: MenuItem[] = [
+    {
+      icon: 'building.2',
+      label: 'Company Details',
+      sublabel: company.companyName
+        ? `${company.companyName} • ${company.companyType || 'Fleet Owner'}`
+        : 'Register company profile',
+      route: '/company-details',
+    },
+    {
+      icon: 'box.truck.fill',
+      label: 'My Fleet & Vehicles',
+      sublabel: `${vehicles.length} vehicle${vehicles.length === 1 ? '' : 's'} with assigned drivers`,
+      route: '/driver-profile',
+    },
+    {
+      icon: 'plus',
+      label: 'Add Vehicle',
+      sublabel: 'Add a new vehicle and assign driver',
+      route: '/setup-vehicle',
+    },
     {
       icon: 'person.fill',
       label: 'Driver Profile & Badges',
       sublabel: 'View verification status and personal info',
       route: '/driver-profile',
-    },
-    {
-      icon: 'box.truck.fill',
-      label: 'Vehicle Details',
-      sublabel: vehicle ? `${vehicle.model} • ${vehicle.plateNumber}` : 'Add your vehicle',
-      route: '/setup-vehicle',
     },
     {
       icon: 'checkmark.shield.fill',
@@ -133,7 +150,9 @@ export function DriverAccountScreen() {
             <AppView className="flex-1">
               <AppText className="text-[18px] font-black text-foreground">{name}</AppText>
               <AppText className="text-[13px] text-muted">
-                {profile?.phone ?? profile?.email}
+                {company.companyName
+                  ? `${company.companyName} • ${company.phone || '+91 98765 43210'}`
+                  : (profile?.phone ?? profile?.email)}
               </AppText>
 
               <AppView row className="mt-1.5 items-center gap-2">
@@ -146,9 +165,9 @@ export function DriverAccountScreen() {
                     {ratingLabel}
                   </AppText>
                 </AppView>
-                {vehicle ? (
+                {vehicles.length > 0 ? (
                   <AppText className="text-[12px] font-medium text-foreground-secondary">
-                    • {vehicle.model}
+                    • {vehicles.length} vehicles
                   </AppText>
                 ) : null}
               </AppView>

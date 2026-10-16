@@ -81,6 +81,19 @@ const ANDROID_ICON_REGISTRY = {
   'arrow.up.right': { set: 'ionicons', name: 'arrow-up' },
   'exclamationmark.triangle.fill': { set: 'ionicons', name: 'warning' },
   'photo.on.rectangle': { set: 'ionicons', name: 'images-outline' },
+  envelope: { set: 'ionicons', name: 'mail-outline' },
+  'building.2': { set: 'ionicons', name: 'business-outline' },
+  steeringwheel: { set: 'material-community', name: 'steering' },
+  'person.badge.plus': { set: 'ionicons', name: 'person-add-outline' },
+  'arrow.up.doc': { set: 'ionicons', name: 'cloud-upload-outline' },
+  'doc.text.fill': { set: 'ionicons', name: 'document-text' },
+  'shield.fill': { set: 'ionicons', name: 'shield' },
+  'leaf.fill': { set: 'ionicons', name: 'leaf' },
+  scalemass: { set: 'material-community', name: 'weight-kilogram' },
+  trash: { set: 'ionicons', name: 'trash-outline' },
+  'trash.fill': { set: 'ionicons', name: 'trash' },
+  car: { set: 'ionicons', name: 'car-outline' },
+  'car.fill': { set: 'ionicons', name: 'car' },
 } as const satisfies Record<string, AndroidGlyph>;
 
 export type IconName = keyof typeof ANDROID_ICON_REGISTRY;

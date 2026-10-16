@@ -10,18 +10,21 @@ export const unstable_settings = {
 export default function AuthLayout() {
   const isSignedIn = useAuthStore((state) => state.status === 'signIn');
   const isOnboarded = useAuthStore((state) => state.user?.isOnboarded === true);
-  const isOnOnboarding = useSegments().at(-1) === 'onboarding';
+  const segments = useSegments();
+  const lastSegment = segments.at(-1) as string | undefined;
+  const isAllowedAuthRoute = lastSegment === 'onboarding' || lastSegment === 'choose-role';
   const animation = useStackAnimation();
 
   if (isSignedIn && isOnboarded) return <Redirect href="/home" />;
-  // Signed in but no profile yet: onboarding is mandatory.
-  if (isSignedIn && !isOnOnboarding) return <Redirect href="/onboarding" />;
-  if (!isSignedIn && isOnOnboarding) return <Redirect href="/" />;
+  // Signed in but no profile yet: role selection or onboarding is required.
+  if (isSignedIn && !isAllowedAuthRoute) return <Redirect href={'/(auth)/choose-role' as any} />;
+  if (!isSignedIn && isAllowedAuthRoute) return <Redirect href="/" />;
 
   return (
     <Stack screenOptions={{ headerShown: false, animation }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="otp" />
+      <Stack.Screen name="choose-role" />
       <Stack.Screen name="onboarding" />
     </Stack>
   );

@@ -51,10 +51,10 @@ export function DriverSetupChecklist({ profile, className = '' }: DriverSetupChe
   }[] = [
     {
       id: 'vehicle',
-      title: 'Add your vehicle',
+      title: 'Add your vehicle & Driver',
       subtitle: vehicle
         ? `${vehicle.model} · ${vehicle.plateNumber}`
-        : 'Vehicle details, RC, insurance and PUC',
+        : 'Vehicle type, registration and photos',
       action: vehicle ? 'Edit vehicle' : 'Add vehicle',
       icon: 'box.truck.fill',
       state: vehicle?.status ?? 'todo',

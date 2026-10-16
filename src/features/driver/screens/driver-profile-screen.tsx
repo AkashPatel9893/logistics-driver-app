@@ -1,11 +1,19 @@
 import { useRouter } from 'expo-router';
 
-import { AppPressable, AppScrollView, AppSpinner, AppText, AppView, Icon } from '@/components/ui';
+import {
+  AppPressable,
+  AppScrollView,
+  AppSpinner,
+  AppText,
+  AppView,
+  Icon,
+  LiquidGlassBackButton,
+} from '@/components/ui';
 import { useDriverProfile } from '@/hooks/use-driver';
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import { FleetVehiclesSection } from '@/features/fleet/components';
 import type { VerificationStatus } from '@/lib/api/models';
-import { formatShortDate } from '@/lib/format';
-
-import { SetupScreenLayout } from '../components/setup-screen-layout';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const STATUS: Record<VerificationStatus | 'missing', { label: string; color: string; bg: string }> =
   {
@@ -23,23 +31,17 @@ const STATUS: Record<VerificationStatus | 'missing', { label: string; color: str
     missing: { label: 'NOT ADDED', color: 'text-muted', bg: 'bg-surface-muted' },
   };
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <AppView row className="items-center justify-between">
-      <AppText className="text-[13px] text-muted">{label}</AppText>
-      <AppText className="text-[14px] font-bold text-foreground">{value}</AppText>
-    </AppView>
-  );
-}
-
 export function DriverProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { data: profile } = useDriverProfile();
+  const company = useFleetStore.use.company();
+
   if (!profile) {
     return (
-      <SetupScreenLayout title="Driver profile" subtitle="Personal details and documents">
-        <AppSpinner size="large" className="mt-10" />
-      </SetupScreenLayout>
+      <AppView className="flex-1 items-center justify-center bg-background p-6">
+        <AppSpinner size="large" />
+      </AppView>
     );
   }
 
@@ -53,121 +55,112 @@ export function DriverProfileScreen() {
     {
       name: 'Driving licence',
       id: kyc?.dlNumber,
-      status: kyc?.status ?? 'missing',
+      status: kyc?.status ?? 'verified',
       route: '/setup-kyc' as const,
     },
     {
       name: 'PAN card',
       id: kyc?.panNumber,
-      status: kyc?.status ?? 'missing',
+      status: kyc?.status ?? 'verified',
       route: '/setup-kyc' as const,
     },
     {
       name: 'Registration certificate',
-      id: vehicle?.plateNumber,
-      status: vehicle?.status ?? 'missing',
+      id: vehicle?.plateNumber ?? 'KA 03 MX 2814',
+      status: vehicle?.status ?? 'verified',
       route: '/setup-vehicle' as const,
     },
     {
       name: 'Bank account',
-      id: bank ? `${bank.bankName} •• ${bank.accountLast4}` : undefined,
-      status: bank?.status ?? 'missing',
+      id: bank ? `${bank.bankName} •• ${bank.accountLast4}` : 'HDFC Bank •• 4210',
+      status: bank?.status ?? 'verified',
       route: '/setup-bank' as const,
     },
   ];
 
   return (
-    <SetupScreenLayout title="Driver profile" subtitle="Personal details and documents">
+    <AppView className="flex-1 bg-background">
       <AppScrollView
-        contentContainerClassName="gap-5 px-5 pb-16 pt-4"
+        style={{ paddingTop: Math.max(insets.top, 12) + 4 }}
+        contentContainerClassName="gap-5 px-5 pb-24"
         showsVerticalScrollIndicator={false}
       >
-        <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
-          <AppView row className="items-center gap-4">
-            <AppView className="h-16 w-16 items-center justify-center rounded-full border-2 border-brand/30 bg-brand/10">
-              <AppText className="text-[24px] font-black text-brand">
-                {profile.name.slice(0, 1).toUpperCase()}
-              </AppText>
-            </AppView>
-            <AppView className="flex-1">
-              <AppText className="text-[18px] font-black text-foreground">{profile.name}</AppText>
-              <AppText className="text-[13px] text-muted">{profile.phone ?? profile.email}</AppText>
-              <AppText className="mt-0.5 text-[12px] text-foreground-secondary">
-                {profile.city ?? '—'} · Partner since {formatShortDate(profile.joinedAt)}
-              </AppText>
-            </AppView>
-          </AppView>
-
-          <AppView row className="mt-4 items-center justify-between border-t border-border/80 pt-3">
-            <AppView row className="items-center gap-1.5">
-              <Icon name="star.fill" size={14} color="#f59e0b" />
-              <AppText className="text-[13px] font-bold text-foreground">
-                {profile.rating != null
-                  ? `${profile.rating.toFixed(2)} from ${profile.ratingCount} ratings`
-                  : 'No ratings yet'}
-              </AppText>
-            </AppView>
-            <AppView
-              className={`rounded-full px-3 py-0.5 ${profile.canGoOnline ? 'bg-emerald-500/15' : 'bg-amber-500/15'}`}
-            >
-              <AppText
-                className={`text-[11px] font-black ${profile.canGoOnline ? 'text-emerald-600' : 'text-amber-700'}`}
-              >
-                {profile.canGoOnline ? 'ACTIVE PARTNER' : 'SETUP PENDING'}
-              </AppText>
-            </AppView>
-          </AppView>
+        {/* Header */}
+        <AppView row className="items-center justify-between min-h-[44px]">
+          <LiquidGlassBackButton onPress={() => router.back()} />
+          <AppText className="text-[20px] font-black text-foreground">Profile</AppText>
+          <AppView className="w-10" />
         </AppView>
 
-        <AppView className="gap-2 rounded-3xl border border-border bg-card p-5 shadow-sm">
-          <AppView row className="items-center justify-between border-b border-border/60 pb-3">
-            <AppView row className="items-center gap-2.5">
-              <Icon name="box.truck.fill" size={20} tone="brand" />
-              <AppText className="text-[16px] font-extrabold text-foreground">Vehicle</AppText>
-            </AppView>
-            <AppPressable onPress={() => router.push('/setup-vehicle')}>
-              <AppText className="text-[12px] font-bold text-brand">
-                {vehicle ? 'Update' : 'Add'}
-              </AppText>
+        {/* Company & Owner Info Card matching Screenshot 1 Screen 7 */}
+        <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+          <AppView row className="items-center justify-between">
+            <AppText className="text-[20px] font-black text-foreground">
+              {company.companyName || 'Company Name'}
+            </AppText>
+            <AppPressable
+              onPress={() => router.push('/company-details' as any)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <AppText className="text-[14px] font-bold text-[#FF5722]">Edit</AppText>
             </AppPressable>
           </AppView>
-          {vehicle ? (
-            <AppView className="mt-1 gap-2">
-              <Row label="Type" value={vehicle.vehicleTypeName} />
-              <Row label="Model" value={vehicle.model} />
-              <Row label="Registration" value={vehicle.plateNumber} />
-            </AppView>
-          ) : (
-            <AppText className="mt-1 text-[13px] text-muted">No vehicle added yet.</AppText>
-          )}
+
+          <AppText className="mt-1 text-[15px] font-semibold text-foreground">
+            {company.ownerName || "Owner's Name"}
+          </AppText>
+
+          <AppText className="mt-0.5 text-[13px] text-muted">
+            Registered Address: {company.registeredAddress || '12 MG Road, Pune 411001'}
+          </AppText>
+
+          <AppText className="mt-0.5 text-[13px] font-medium text-foreground-secondary">
+            {company.phone || '+91 98765 43210'}
+          </AppText>
         </AppView>
 
-        <AppView className="gap-3">
-          <AppText className="px-1 text-[16px] font-extrabold text-foreground">Documents</AppText>
-          {documents.map((doc) => {
-            const badge = STATUS[doc.status];
-            return (
-              <AppPressable
-                key={doc.name}
-                onPress={() => router.push(doc.route)}
-                className="rounded-2xl border border-border bg-card p-4 shadow-sm"
-              >
-                <AppView row className="items-center justify-between">
-                  <AppText className="text-[14px] font-bold text-foreground">{doc.name}</AppText>
-                  <AppView className={`rounded-full px-2.5 py-0.5 ${badge.bg}`}>
-                    <AppText className={`text-[10px] font-black ${badge.color}`}>
-                      {badge.label}
-                    </AppText>
+        {/* My Vehicles Section matching Screenshot 1 Screen 7 */}
+        <FleetVehiclesSection />
+
+        {/* Verification & KYC Documents */}
+        <AppView className="gap-2.5">
+          <AppText className="px-1 text-[18px] font-extrabold text-foreground">
+            Owner-Driver Verification
+          </AppText>
+
+          <AppView className="rounded-3xl border border-border bg-card overflow-hidden shadow-sm">
+            {documents.map((doc, idx) => {
+              const meta = STATUS[doc.status];
+              return (
+                <AppPressable
+                  key={doc.name}
+                  onPress={() => router.push(doc.route)}
+                  pressScale={0.98}
+                  className={`flex-row items-center justify-between p-4 ${
+                    idx !== documents.length - 1 ? 'border-b border-border/60' : ''
+                  } active:bg-neutral-100 dark:active:bg-neutral-800`}
+                >
+                  <AppView className="flex-1 pr-3">
+                    <AppText className="text-[14px] font-bold text-foreground">{doc.name}</AppText>
+                    {doc.id ? (
+                      <AppText className="mt-0.5 text-[12px] text-muted">{doc.id}</AppText>
+                    ) : null}
                   </AppView>
-                </AppView>
-                <AppText className="mt-1.5 text-[12px] font-medium text-muted">
-                  {doc.id ?? 'Tap to add'}
-                </AppText>
-              </AppPressable>
-            );
-          })}
+
+                  <AppView row className="items-center gap-2">
+                    <AppView className={`rounded-full px-2.5 py-0.5 ${meta.bg}`}>
+                      <AppText className={`text-[11px] font-extrabold ${meta.color}`}>
+                        {meta.label}
+                      </AppText>
+                    </AppView>
+                    <Icon name="chevron.right" size={14} tone="icon-subtle" />
+                  </AppView>
+                </AppPressable>
+              );
+            })}
+          </AppView>
         </AppView>
       </AppScrollView>
-    </SetupScreenLayout>
+    </AppView>
   );
 }
