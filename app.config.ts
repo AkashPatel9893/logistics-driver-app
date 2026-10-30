@@ -2,16 +2,15 @@ import type { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: 'RYNO Partner',
-  slug: 'logistics-driver-app',
+  name: 'Ryno Driver',
+  slug: 'ryno-driver',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
-  scheme: 'logisticsdriverapp',
+  scheme: 'ryno-driver',
   userInterfaceStyle: 'automatic',
   ios: {
-    bundleIdentifier: 'com.logisticsdriverapp',
-    icon: './assets/expo.icon',
+    bundleIdentifier: 'com.ryno.driver.app',
     config: {
       googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
     },
@@ -21,12 +20,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
   },
   android: {
-    package: 'com.logisticsdriverapp',
+    package: 'com.ryno.driver.app',
     adaptiveIcon: {
-      backgroundColor: '#E6F4FE',
+      backgroundColor: '#000000',
       foregroundImage: './assets/images/android-icon-foreground.png',
-      backgroundImage: './assets/images/android-icon-background.png',
-      monochromeImage: './assets/images/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: false,
     config: {
@@ -52,7 +49,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'expo-location',
       {
         locationWhenInUsePermission:
-          'RYNO Partner uses your location to show nearby delivery requests and share your live position with the customer during a trip.',
+          'Ryno Driver uses your location to show nearby delivery requests and share your live position with the customer during a trip.',
         // Keeps location running while you're online and in another app (e.g. Google Maps).
         // iOS: background mode with the blue location pill. Android: a foreground
         // service with a persistent notification, which needs no "all the time" permission.
@@ -65,9 +62,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'expo-image-picker',
       {
         cameraPermission:
-          'RYNO Partner uses the camera to photograph parcels at pickup and drop, your vehicle and your documents.',
+          'Ryno Driver uses the camera to photograph parcels at pickup and drop, your vehicle and your documents.',
         photosPermission:
-          'RYNO Partner lets you choose document photos from your library during onboarding.',
+          'Ryno Driver lets you choose document photos from your library during onboarding.',
         microphonePermission: false,
       },
     ],
