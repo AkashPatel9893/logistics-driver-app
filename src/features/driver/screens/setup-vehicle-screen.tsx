@@ -13,7 +13,7 @@ import {
   TextField,
 } from '@/components/ui';
 import { useDriverProfile, useSaveVehicle, useVehicleTypes } from '@/hooks/use-driver';
-import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import { useAddFleetVehicle, useFleetCompany, useRequestFleetLink } from '@/hooks/use-fleet';
 import type { FleetDriver } from '@/features/fleet/types';
 import type { FuelType } from '@/lib/api/models';
 
@@ -33,8 +33,9 @@ export function SetupVehicleScreen() {
   const { data: profile } = useDriverProfile();
   const { data: vehicleTypes = [] } = useVehicleTypes();
   const saveVehicle = useSaveVehicle();
-  const addFleetVehicle = useFleetStore.use.addVehicle();
-  const company = useFleetStore.use.company();
+  const addFleetVehicle = useAddFleetVehicle();
+  const requestFleetLink = useRequestFleetLink();
+  const { data: company } = useFleetCompany();
 
   const current = profile?.vehicle ?? null;
 
@@ -44,7 +45,7 @@ export function SetupVehicleScreen() {
 
   const [typeId, setTypeId] = useState(current?.vehicleTypeId ?? (vehicleTypes[0]?.id || ''));
   const [showTypePicker, setShowTypePicker] = useState(false);
-  const [plateNumber, setPlateNumber] = useState(current?.plateNumber ?? 'KA 03 MX 2814');
+  const [plateNumber, setPlateNumber] = useState(current?.plateNumber ?? '');
   const [capacityKg, setCapacityKg] = useState(600);
   const [showCapacityPicker, setShowCapacityPicker] = useState(false);
   const [fuelType] = useState<FuelType>('DIESEL');
@@ -60,18 +61,21 @@ export function SetupVehicleScreen() {
 
   const selectedType = vehicleTypes.find((t) => t.id === typeId) || vehicleTypes[0];
 
-  const handleLinkOwner = () => {
+  const handleLinkOwner = async () => {
     const clean = ownerPhone.replace(/[^0-9]/g, '');
     if (clean.length < 10) {
       return setError('Enter a valid 10-digit mobile number for your fleet owner.');
     }
     setError(undefined);
     setIsLinking(true);
-    setTimeout(() => {
+    try {
+      const res = await requestFleetLink.mutateAsync({
+        owner_phone: `+91 ${clean.slice(-10)}`,
+      });
       setIsLinking(false);
       Alert.alert(
         'Request Sent to Fleet Owner',
-        `We have sent an authorization request to +91 ${clean.slice(-10)}. Once your fleet owner approves and assigns you a vehicle, you will be notified to start driving!`,
+        `We have sent an authorization request to ${res.owner_phone_masked || `+91 ${clean.slice(-10)}`}. Once your fleet owner approves and assigns you a vehicle, you will be notified to start driving!`,
         [
           {
             text: 'Got it',
@@ -79,17 +83,18 @@ export function SetupVehicleScreen() {
           },
         ],
       );
-    }, 700);
+    } catch (err: any) {
+      setIsLinking(false);
+      const msg = err?.response?.data?.detail || err?.message || 'Failed to send link request.';
+      setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
   };
 
   const handleSelfDrive = () => {
     const selfDriver: FleetDriver = {
       id: 'driver-self',
-      name: company.ownerName || profile?.name || 'Arun Kumar',
-      phone: company.phone || profile?.phone || '+91 98765 43210',
-      dob: '12 / 05 / 1990',
-      dlNumber: 'KA0320180012345',
-      rating: 4.9,
+      name: company?.ownerName || profile?.name || 'Owner',
+      phone: company?.phone || profile?.phone || '',
       isOwnerSelf: true,
       aadhaarUploaded: true,
       dlUploaded: true,
@@ -103,75 +108,57 @@ export function SetupVehicleScreen() {
     router.push('/add-driver' as any);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const cleanPlate = plateNumber.replace(/[^A-Z0-9]/gi, '').toUpperCase();
     if (cleanPlate.length < 6) {
       return setError('Enter the registration number as printed on your RC.');
     }
     setError(undefined);
 
-    const vehicleTypeName = selectedType?.name || 'Mini truck';
     const make = 'Tata';
     const model = 'Tata Ace Gold';
+    const vehicleTypeCode = selectedType?.code || 'MINI_TRUCK';
 
-    // Save to fleet store
-    addFleetVehicle({
-      vehicleTypeCode: selectedType?.code || 'MINI_TRUCK',
-      vehicleTypeName,
-      make,
-      model,
-      plateNumber: plateNumber.trim().toUpperCase(),
-      capacityKg,
-      driver: assignedDriver ?? {
-        id: 'driver-self',
-        name: company.ownerName || profile?.name || 'Arun Kumar',
-        phone: company.phone || profile?.phone || '+91 98765 43210',
-        rating: 4.9,
-        isOwnerSelf: true,
-      },
-      documents: {
-        rc: { verified: true, label: 'Verified' },
-        insurance: {
-          verified: true,
-          label: 'Expires in 28 days',
-          expiryDays: 28,
-          isExpiringSoon: true,
-        },
-        pollution: { verified: true, label: 'Verified' },
-      },
-    });
+    try {
+      await addFleetVehicle.mutateAsync({
+        registration_number: cleanPlate,
+        vehicle_type_code: vehicleTypeCode,
+        make,
+        model,
+        capacity_kg: capacityKg,
+        fuel_type: fuelType,
+        assign_driver: assignedDriver?.isOwnerSelf ? { is_owner_self: true } : undefined,
+      });
 
-    // Also try to save to backend if online
-    if (selectedType) {
-      saveVehicle.mutate(
-        {
-          vehicleTypeId: selectedType.id,
-          make,
-          model,
-          plateNumber: cleanPlate,
-          fuelType,
-          rcPhotoUri: 'local://rc.jpg',
-          insurancePhotoUri: 'local://insurance.jpg',
-          insuranceExpiry: '2027-10-15',
-          pucPhotoUri: 'local://puc.jpg',
-          pucExpiry: '2027-10-15',
-        },
-        { onError: () => undefined },
-      );
-    }
+      // Also update personal driver vehicle if individual setup
+      if (selectedType) {
+        saveVehicle.mutate(
+          {
+            vehicleTypeId: selectedType.id,
+            make,
+            model,
+            plateNumber: cleanPlate,
+            fuelType,
+            rcPhotoUri: 'local://rc.jpg',
+            insurancePhotoUri: 'local://insurance.jpg',
+            insuranceExpiry: '2027-10-15',
+            pucPhotoUri: 'local://puc.jpg',
+            pucExpiry: '2027-10-15',
+          },
+          { onError: () => undefined },
+        );
+      }
 
-    Alert.alert(
-      'Vehicle saved',
-      `Your ${model} (${plateNumber.trim().toUpperCase()}) has been added to your fleet with ${
-        assignedDriver?.name ? assignedDriver.name : company.ownerName || 'Arun (You)'
-      } assigned as the driver.`,
-      [
+      Alert.alert('Vehicle saved', `Your ${model} (${cleanPlate}) has been added to your fleet.`, [
         {
           text: 'Continue',
           onPress: () => router.back(),
         },
-      ],
-    );
+      ]);
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || 'Could not add vehicle.';
+      setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
   };
 
   return (
@@ -564,7 +551,7 @@ export function SetupVehicleScreen() {
                         <Icon name="steeringwheel" size={20} tone="brand" />
                         <AppView>
                           <AppText className="text-[14px] font-bold text-foreground">
-                            I will drive myself ({company.ownerName || 'Arun'})
+                            I will drive myself ({company?.ownerName || 'Owner'})
                           </AppText>
                           <AppText className="text-[11px] text-muted">
                             Assign owner self as active driver
@@ -610,8 +597,10 @@ export function SetupVehicleScreen() {
               <AppView className="mt-4 gap-3">
                 <Button
                   variant="brand"
-                  label="Save vehicle"
+                  label={addFleetVehicle.isPending ? 'Saving...' : 'Save vehicle'}
                   onPress={handleSave}
+                  disabled={addFleetVehicle.isPending}
+                  loading={addFleetVehicle.isPending}
                   size="lg"
                   textClassName="font-extrabold text-base"
                 />

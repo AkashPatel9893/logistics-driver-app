@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Keyboard } from 'react-native';
+import { Alert, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -14,6 +14,7 @@ import {
   LiquidGlassBackButton,
   TextField,
 } from '@/components/ui';
+import { useRegisterCompany } from '@/hooks/use-fleet';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 
 import { useOnboardingForm } from './hooks/use-onboarding-form';
@@ -40,7 +41,7 @@ const COMPANY_TYPES = [
 export function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const form = useOnboardingForm();
-  const updateCompany = useFleetStore.use.updateCompany();
+  const registerCompany = useRegisterCompany();
   const setDashboardRole = useFleetStore.use.setDashboardRole();
 
   // Registration type choice: individual driver vs company / fleet owner
@@ -56,7 +57,12 @@ export function OnboardingScreen() {
   const [companyEmail, setCompanyEmail] = useState('');
   const [companyType, setCompanyType] = useState('Fleet Owner / Transport');
   const [registeredAddress, setRegisteredAddress] = useState('');
+  const [gstin, setGstin] = useState('');
   const [showTypePicker, setShowTypePicker] = useState(false);
+
+  const isValidGstin = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(
+    gstin.trim().toUpperCase(),
+  );
 
   const isCompanyValid =
     companyName.trim().length >= 2 &&
@@ -64,25 +70,42 @@ export function OnboardingScreen() {
     companyPhone.trim().length >= 10 &&
     companyEmail.trim().includes('@') &&
     Boolean(companyType) &&
-    registeredAddress.trim().length >= 5;
+    registeredAddress.trim().length >= 5 &&
+    isValidGstin;
 
-  const handleCompanySubmit = () => {
-    updateCompany({
-      companyName: companyName.trim(),
-      ownerName: ownerName.trim(),
-      phone: `+91 ${companyPhone.trim()}`,
-      email: companyEmail.trim(),
-      companyType,
-      registeredAddress: registeredAddress.trim(),
-      isRegistered: true,
-    });
-    setDashboardRole('owner');
+  const handleCompanySubmit = async () => {
+    if (!isCompanyValid) {
+      if (!isValidGstin) {
+        Alert.alert(
+          'Invalid GSTIN',
+          'Please enter a valid 15-character GSTIN (e.g. 29ABCDE1234F1Z5).',
+        );
+        return;
+      }
+      return;
+    }
 
-    // Also update driver profile with owner's name and phone
-    form.handleNameChange(ownerName);
-    form.handlePhoneChange(companyPhone);
-    form.handleCitySelect('Bengaluru');
-    form.handleSubmit();
+    try {
+      await registerCompany.mutateAsync({
+        company_name: companyName.trim(),
+        owner_name: ownerName.trim(),
+        phone: `+91 ${companyPhone.trim().slice(-10)}`,
+        email: companyEmail.trim(),
+        company_type: companyType,
+        registered_address: registeredAddress.trim(),
+        gstin: gstin.trim().toUpperCase(),
+      });
+      setDashboardRole('owner');
+
+      // Also update driver profile with owner's name and phone
+      form.handleNameChange(ownerName);
+      form.handlePhoneChange(companyPhone);
+      form.handleCitySelect('Bengaluru');
+      form.handleSubmit();
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || 'Failed to register company.';
+      Alert.alert('Registration Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
   };
 
   return (
@@ -345,6 +368,27 @@ export function OnboardingScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   leading={<Icon name="envelope" size={20} tone="icon-subtle" />}
+                  inputClassName="ml-2 text-[15px]"
+                />
+
+                {/* GSTIN */}
+                <TextField
+                  variant="outlined"
+                  label="GSTIN"
+                  required
+                  value={gstin}
+                  onChangeText={(text) =>
+                    setGstin(
+                      text
+                        .toUpperCase()
+                        .replace(/[^A-Z0-9]/g, '')
+                        .slice(0, 15),
+                    )
+                  }
+                  placeholder="e.g. 29ABCDE1234F1Z5"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  leading={<Icon name="document" size={20} tone="icon-subtle" />}
                   inputClassName="ml-2 text-[15px]"
                 />
 

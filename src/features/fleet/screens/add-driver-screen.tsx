@@ -15,9 +15,19 @@ import {
   LiquidGlassBackButton,
   TextField,
 } from '@/components/ui';
+import { useAssignFleetDriver, useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
+import type { AssignDriverRequest } from '@/lib/api/fleet';
 
-import { useFleetStore } from '../use-fleet-store';
-import type { FleetDriver } from '../types';
+function parseDobToIso(formatted: string): string | undefined {
+  const parts = formatted.split('/').map((s) => s.trim());
+  if (parts.length === 3) {
+    const [day, month, year] = parts;
+    if (day && month && year && year.length === 4) {
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+  }
+  return undefined;
+}
 
 export function AddDriverScreen() {
   const router = useRouter();
@@ -25,9 +35,9 @@ export function AddDriverScreen() {
   const params = useLocalSearchParams<{ vehicleId?: string }>();
   const vehicleId = params.vehicleId;
 
-  const company = useFleetStore.use.company();
-  const assignDriver = useFleetStore.use.assignDriver();
-  const vehicles = useFleetStore.use.vehicles();
+  const { data: company } = useFleetCompany();
+  const { data: vehicles } = useFleetVehicles();
+  const assignDriverMutation = useAssignFleetDriver();
 
   const [isSelfDrive, setIsSelfDrive] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -40,12 +50,12 @@ export function AddDriverScreen() {
   const handleToggleSelfDrive = () => {
     if (!isSelfDrive) {
       setIsSelfDrive(true);
-      setFullName(company.ownerName || 'Arun Kumar');
+      setFullName(company?.ownerName || '');
       setPhone(
-        company.phone ? company.phone.replace(/^\+91/, '').replace(/\D/g, '') : '9876543210',
+        company?.phone ? company.phone.replace(/^\+91/, '').replace(/\D/g, '').slice(-10) : '',
       );
-      setDob('12 / 05 / 1990');
-      setDlNumber('KA0320180012345');
+      setDob('');
+      setDlNumber('');
       setAadhaarUploaded(true);
       setDlUploaded(true);
     } else {
@@ -70,52 +80,58 @@ export function AddDriverScreen() {
     setDob(formatted);
   };
 
-  const isValid =
-    fullName.trim().length >= 2 &&
-    phone.trim().length >= 10 &&
-    dob.trim().length >= 8 &&
-    dlNumber.trim().length >= 6;
+  const isoDob = parseDobToIso(dob);
 
-  const handleContinue = () => {
+  const isValid = isSelfDrive
+    ? true
+    : fullName.trim().length >= 2 &&
+      phone.trim().length >= 10 &&
+      Boolean(isoDob) &&
+      dlNumber.trim().length >= 6;
+
+  const handleContinue = async () => {
+    const targetVehicleId = vehicleId || vehicles?.[0]?.id;
+    if (!targetVehicleId) {
+      Alert.alert('No vehicle available', 'Please add a vehicle to your fleet first.');
+      return;
+    }
+
     if (!isValid) {
       Alert.alert(
         'Incomplete details',
-        'Please fill in all driver information and upload documents.',
+        'Please enter full name, 10-digit phone number, valid DOB (DD/MM/YYYY), and DL number.',
       );
       return;
     }
 
-    const driver: FleetDriver = {
-      id: `driver-${Date.now()}`,
-      name: fullName.trim(),
-      phone: `+91 ${phone.trim()}`,
-      dob,
-      dlNumber: dlNumber.trim().toUpperCase(),
-      rating: 5.0,
-      isOwnerSelf: isSelfDrive,
-      aadhaarUploaded,
-      dlUploaded,
-    };
+    const body: AssignDriverRequest = isSelfDrive
+      ? { is_owner_self: true }
+      : {
+          is_owner_self: false,
+          name: fullName.trim(),
+          phone: `+91 ${phone.trim().slice(-10)}`,
+          dob: isoDob,
+          dl_number: dlNumber.trim().toUpperCase(),
+        };
 
-    if (vehicleId) {
-      assignDriver(vehicleId, driver);
-    } else if (vehicles.length > 0) {
-      // Assign to the most recently added vehicle
-      assignDriver(vehicles[0].id, driver);
+    try {
+      await assignDriverMutation.mutateAsync({ vehicleId: targetVehicleId, body });
+      Alert.alert(
+        'Driver assigned',
+        isSelfDrive
+          ? 'You have been assigned as the active driver for this vehicle.'
+          : `${fullName.trim()} has been assigned to the vehicle.`,
+        [
+          {
+            text: 'Continue',
+            onPress: () => router.back(),
+          },
+        ],
+      );
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || 'Failed to assign driver.';
+      Alert.alert('Assignment Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
     }
-
-    Alert.alert(
-      'Driver added',
-      isSelfDrive
-        ? 'You have been assigned as the active driver for this vehicle.'
-        : `${fullName} has been added and assigned to the vehicle.`,
-      [
-        {
-          text: 'Continue',
-          onPress: () => router.back(),
-        },
-      ],
-    );
   };
 
   return (
@@ -139,7 +155,7 @@ export function AddDriverScreen() {
               Add driver
             </AppText>
             <AppText className="mt-1.5 text-[15px] leading-5 text-muted">
-              Tell us a little about yourself to set up your driver profile.
+              Assign yourself or a new driver to your fleet vehicle.
             </AppText>
           </AppView>
 
@@ -161,176 +177,165 @@ export function AddDriverScreen() {
                   <Icon
                     name="steeringwheel"
                     size={20}
-                    color={isSelfDrive ? '#ffffff' : '#FF5722'}
+                    tone={isSelfDrive ? 'background' : 'foreground'}
                   />
                 </AppView>
                 <AppView>
-                  <AppText className="text-[15px] font-bold text-foreground">
-                    I will drive this vehicle myself
-                  </AppText>
+                  <AppText className="text-[15px] font-bold text-foreground">Drive myself</AppText>
                   <AppText className="text-[12px] text-muted">
-                    Assign owner ({company.ownerName || 'Arun Kumar'}) as driver
+                    {company?.ownerName
+                      ? `Assign owner (${company.ownerName}) as driver`
+                      : 'Assign owner as driver'}
                   </AppText>
                 </AppView>
               </AppView>
               <AppView
                 className={`h-6 w-6 items-center justify-center rounded-full border ${
-                  isSelfDrive ? 'border-[#FF5722] bg-[#FF5722]' : 'border-border'
+                  isSelfDrive ? 'border-[#FF5722] bg-[#FF5722]' : 'border-muted bg-transparent'
                 }`}
               >
-                {isSelfDrive ? <Icon name="check" size={14} color="#ffffff" /> : null}
+                {isSelfDrive ? <Icon name="check" size={14} tone="background" /> : null}
               </AppView>
             </AppView>
           </AppPressable>
 
-          {/* Form fields */}
-          <AppView className="gap-5">
-            {/* Full name */}
-            <TextField
-              variant="outlined"
-              label="Full name"
-              required
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="Enter your full name"
-              autoCapitalize="words"
-              leading={<Icon name="person" size={20} tone="icon-subtle" />}
-              inputClassName="ml-2 text-[15px]"
-            />
+          {!isSelfDrive ? (
+            /* Driver Form Fields */
+            <AppView className="gap-5">
+              {/* Full name */}
+              <TextField
+                variant="outlined"
+                label="Full name"
+                required
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Enter driver's full name"
+                autoCapitalize="words"
+                leading={<Icon name="person" size={20} tone="icon-subtle" />}
+                inputClassName="ml-2 text-[15px]"
+              />
 
-            {/* Phone Number */}
-            <TextField
-              variant="outlined"
-              label="Phone Number"
-              required
-              value={phone}
-              onChangeText={(text) => setPhone(text.replace(/\D/g, '').slice(0, 10))}
-              placeholder="Enter phone number"
-              keyboardType="phone-pad"
-              leading={
-                <AppText className="text-[15px] font-bold text-foreground-secondary">+91</AppText>
-              }
-              inputClassName="ml-2 text-[15px]"
-            />
+              {/* Phone number */}
+              <TextField
+                variant="outlined"
+                label="Phone number*"
+                required
+                value={phone}
+                onChangeText={(text) => setPhone(text.replace(/\D/g, '').slice(0, 10))}
+                placeholder="Enter 10-digit mobile number"
+                keyboardType="phone-pad"
+                leading={
+                  <AppText className="text-[15px] font-bold text-foreground-secondary">+91</AppText>
+                }
+                inputClassName="ml-2 text-[15px]"
+              />
 
-            {/* Date of birth */}
-            <TextField
-              variant="outlined"
-              label="Date of birth"
-              required
-              value={dob}
-              onChangeText={handleDobChange}
-              placeholder="DD / MM / YYYY"
-              keyboardType="number-pad"
-              maxLength={14}
-              leading={<Icon name="calendar" size={20} tone="icon-subtle" />}
-              inputClassName="ml-2 text-[15px]"
-            />
+              {/* Date of birth */}
+              <TextField
+                variant="outlined"
+                label="Date of birth*"
+                required
+                value={dob}
+                onChangeText={handleDobChange}
+                placeholder="DD / MM / YYYY"
+                keyboardType="numeric"
+                maxLength={14}
+                leading={<Icon name="calendar" size={20} tone="icon-subtle" />}
+                inputClassName="ml-2 text-[15px]"
+              />
 
-            {/* Driving licence number */}
-            <TextField
-              variant="outlined"
-              label="Driving licence number"
-              required
-              value={dlNumber}
-              onChangeText={(text) => setDlNumber(text.toUpperCase())}
-              placeholder="Enter licence number"
-              autoCapitalize="characters"
-              leading={<Icon name="creditcard" size={20} tone="icon-subtle" />}
-              inputClassName="ml-2 text-[15px]"
-            />
+              {/* DL number */}
+              <TextField
+                variant="outlined"
+                label="Driving Licence number*"
+                required
+                value={dlNumber}
+                onChangeText={(text) => setDlNumber(text.toUpperCase().slice(0, 16))}
+                placeholder="e.g. DL-1420110012345"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                leading={<Icon name="document" size={20} tone="icon-subtle" />}
+                inputClassName="ml-2 text-[15px]"
+              />
 
-            {/* Identity proof section */}
-            <AppView className="mt-2 gap-3">
-              <AppText className="text-[15px] font-bold text-foreground">Identity proof</AppText>
+              {/* Document upload checklist */}
+              <AppView className="mt-2 gap-3">
+                <AppText className="text-[13px] font-bold text-foreground">
+                  Verification Documents
+                </AppText>
 
-              {/* Upload Aadhaar card */}
-              <AppView className="rounded-2xl border border-dashed border-[#FF5722]/50 bg-card p-4">
-                <AppView row className="items-center justify-between">
-                  <AppView row className="flex-1 items-center gap-3">
-                    <AppView className="h-10 w-10 items-center justify-center rounded-xl bg-[#FF5722]/10">
-                      <Icon name="arrow.up.doc" size={20} tone="brand" />
-                    </AppView>
-                    <AppView className="flex-1 pr-2">
+                <AppPressable
+                  onPress={() => setAadhaarUploaded((prev) => !prev)}
+                  className="flex-row items-center justify-between rounded-2xl border border-dashed border-border bg-card p-4 active:bg-neutral-100 dark:active:bg-neutral-800"
+                >
+                  <AppView row className="items-center gap-3">
+                    <Icon name="doc.text.fill" size={20} tone="icon-subtle" />
+                    <AppView>
                       <AppText className="text-[14px] font-bold text-foreground">
-                        Upload Aadhaar card
+                        Aadhaar Card
                       </AppText>
-                      <AppText className="text-[12px] text-muted">
-                        Front and back · PDF, JPG or PNG
-                      </AppText>
+                      <AppText className="text-[12px] text-muted">Front & back copy</AppText>
                     </AppView>
                   </AppView>
-                  <AppPressable
-                    onPress={() => setAadhaarUploaded((prev) => !prev)}
-                    className={`rounded-xl px-4 py-2 ${
+                  <AppView
+                    className={`rounded-full px-3 py-1 ${
                       aadhaarUploaded ? 'bg-emerald-500/15' : 'bg-surface-muted'
                     }`}
                   >
                     <AppText
-                      className={`text-[12px] font-bold ${
+                      className={`text-[11px] font-bold ${
                         aadhaarUploaded
                           ? 'text-emerald-600 dark:text-emerald-400'
                           : 'text-foreground'
                       }`}
                     >
-                      {aadhaarUploaded ? 'Uploaded' : 'Upload'}
+                      {aadhaarUploaded ? 'Attached' : 'Attach'}
                     </AppText>
-                  </AppPressable>
-                </AppView>
-              </AppView>
+                  </AppView>
+                </AppPressable>
 
-              {/* Upload driving licence */}
-              <AppView className="rounded-2xl border border-dashed border-[#FF5722]/50 bg-card p-4">
-                <AppView row className="items-center justify-between">
-                  <AppView row className="flex-1 items-center gap-3">
-                    <AppView className="h-10 w-10 items-center justify-center rounded-xl bg-[#FF5722]/10">
-                      <Icon name="arrow.up.doc" size={20} tone="brand" />
-                    </AppView>
-                    <AppView className="flex-1 pr-2">
+                <AppPressable
+                  onPress={() => setDlUploaded((prev) => !prev)}
+                  className="flex-row items-center justify-between rounded-2xl border border-dashed border-border bg-card p-4 active:bg-neutral-100 dark:active:bg-neutral-800"
+                >
+                  <AppView row className="items-center gap-3">
+                    <Icon name="doc.text.fill" size={20} tone="icon-subtle" />
+                    <AppView>
                       <AppText className="text-[14px] font-bold text-foreground">
-                        Upload driving licence
+                        Driving Licence
                       </AppText>
-                      <AppText className="text-[12px] text-muted">
-                        Make sure all details are clearly visible
-                      </AppText>
+                      <AppText className="text-[12px] text-muted">Commercial / LMV licence</AppText>
                     </AppView>
                   </AppView>
-                  <AppPressable
-                    onPress={() => setDlUploaded((prev) => !prev)}
-                    className={`rounded-xl px-4 py-2 ${
+                  <AppView
+                    className={`rounded-full px-3 py-1 ${
                       dlUploaded ? 'bg-emerald-500/15' : 'bg-surface-muted'
                     }`}
                   >
                     <AppText
-                      className={`text-[12px] font-bold ${
+                      className={`text-[11px] font-bold ${
                         dlUploaded ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'
                       }`}
                     >
-                      {dlUploaded ? 'Uploaded' : 'Upload'}
+                      {dlUploaded ? 'Attached' : 'Attach'}
                     </AppText>
-                  </AppPressable>
-                </AppView>
+                  </AppView>
+                </AppPressable>
               </AppView>
             </AppView>
-          </AppView>
+          ) : null}
 
-          {/* Continue button */}
+          {/* Submit button */}
           <AppView className="mt-8">
             <Button
               variant="brand"
-              label="Continue"
+              label={assignDriverMutation.isPending ? 'Assigning...' : 'Assign Driver'}
               onPress={handleContinue}
-              disabled={!isValid}
+              disabled={!isValid || assignDriverMutation.isPending}
+              loading={assignDriverMutation.isPending}
               size="lg"
               textClassName="font-extrabold text-base"
             />
-
-            <AppView row className="mt-5 items-center justify-center gap-1.5">
-              <Icon name="shield" size={14} tone="icon-subtle" />
-              <AppText className="text-center text-[12px] text-muted">
-                Your details are kept private and secure.
-              </AppText>
-            </AppView>
           </AppView>
         </AppScrollView>
       </AppKeyboardAvoidingView>

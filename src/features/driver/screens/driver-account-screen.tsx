@@ -14,7 +14,7 @@ import {
 } from '@/components/ui';
 import { signOut } from '@/features/auth/use-auth-store';
 import { useDriverProfile, useSetOnline } from '@/hooks/use-driver';
-import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import { formatRupees } from '@/lib/format';
 
 interface MenuItem {
@@ -31,20 +31,20 @@ export function DriverAccountScreen() {
 
   const { data: profile } = useDriverProfile();
   const setOnline = useSetOnline();
-  const company = useFleetStore.use.company();
-  const vehicles = useFleetStore.use.vehicles();
+  const { data: company } = useFleetCompany();
+  const { data: vehicles = [] } = useFleetVehicles();
 
-  const name = company.ownerName || profile?.name || 'Arun Kumar';
+  const name = company?.ownerName || profile?.name || 'Partner';
   const ratingLabel =
     profile?.rating != null
       ? `${profile.rating.toFixed(1)} · ${profile.lifetimeTrips} trips`
-      : `4.9 · ${profile?.lifetimeTrips ?? 0} trips`;
+      : `${profile?.lifetimeTrips ?? 0} trips`;
 
   const MENU_ITEMS: MenuItem[] = [
     {
       icon: 'building.2',
       label: 'Company Details',
-      sublabel: company.companyName
+      sublabel: company?.companyName
         ? `${company.companyName} • ${company.companyType || 'Fleet Owner'}`
         : 'Register company profile',
       route: '/company-details',
@@ -150,8 +150,8 @@ export function DriverAccountScreen() {
             <AppView className="flex-1">
               <AppText className="text-[18px] font-black text-foreground">{name}</AppText>
               <AppText className="text-[13px] text-muted">
-                {company.companyName
-                  ? `${company.companyName} • ${company.phone || '+91 98765 43210'}`
+                {company?.companyName
+                  ? `${company.companyName} • ${company.phone || profile?.phone || ''}`
                   : (profile?.phone ?? profile?.email)}
               </AppText>
 

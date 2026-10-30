@@ -1,12 +1,13 @@
 import { useRouter } from 'expo-router';
 
 import { AppPressable, AppText, AppView } from '@/components/ui';
+import { useFleetStats } from '@/hooks/use-fleet';
 import { formatRupees } from '@/lib/format';
 
 export interface FleetStatsRowProps {
-  vehiclesCount: number;
-  totalEarnings: number;
-  walletBalance: number;
+  vehiclesCount?: number;
+  totalEarnings?: number;
+  walletBalance?: number;
   className?: string;
   onPressVehicles?: () => void;
 }
@@ -19,21 +20,26 @@ export function FleetStatsRow({
   onPressVehicles,
 }: FleetStatsRowProps) {
   const router = useRouter();
+  const { data: statsData } = useFleetStats();
+
+  const count = vehiclesCount ?? statsData?.total_vehicles ?? 0;
+  const earnings = totalEarnings ?? Number(statsData?.earnings?.total_revenue ?? 0);
+  const balance = walletBalance ?? Number(statsData?.earnings?.balance ?? 0);
 
   const stats = [
     {
       label: 'Vehicles',
-      value: String(vehiclesCount),
+      value: String(count),
       onPress: onPressVehicles ?? (() => router.push('/driver-profile')),
     },
     {
       label: 'Total Earning',
-      value: formatRupees(totalEarnings),
+      value: formatRupees(earnings),
       onPress: () => router.push('/earnings'),
     },
     {
       label: 'BALANCE',
-      value: formatRupees(walletBalance),
+      value: formatRupees(balance),
       onPress: () => router.push('/wallet'),
     },
   ];

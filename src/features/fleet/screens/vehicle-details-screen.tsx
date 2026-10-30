@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AppPressable,
   AppScrollView,
+  AppSpinner,
   AppText,
   AppView,
   Button,
@@ -13,23 +14,37 @@ import {
   Icon,
   LiquidGlassBackButton,
 } from '@/components/ui';
-
-import { useFleetStore } from '../use-fleet-store';
+import {
+  useAssignFleetDriver,
+  useFleetCompany,
+  useFleetVehicles,
+  useRemoveFleetVehicle,
+  useUnassignFleetDriver,
+} from '@/hooks/use-fleet';
 
 export function VehicleDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ vehicleId?: string }>();
-  const vehicles = useFleetStore.use.vehicles();
-  const company = useFleetStore.use.company();
-  const assignDriver = useFleetStore.use.assignDriver();
-  const unassignDriver = useFleetStore.use.unassignDriver();
-  const removeVehicle = useFleetStore.use.removeVehicle();
 
-  const vehicleId = params.vehicleId || vehicles[0]?.id;
-  const vehicle = vehicles.find((v) => v.id === vehicleId) ?? vehicles[0];
+  const { data: vehicles, isLoading } = useFleetVehicles();
+  const { data: company } = useFleetCompany();
+  const assignDriverMutation = useAssignFleetDriver();
+  const unassignDriverMutation = useUnassignFleetDriver();
+  const removeVehicleMutation = useRemoveFleetVehicle();
+
+  const vehicleId = params.vehicleId || vehicles?.[0]?.id;
+  const vehicle = vehicles?.find((v) => v.id === vehicleId) ?? vehicles?.[0];
 
   const [showDriverSheet, setShowDriverSheet] = useState(false);
+
+  if (isLoading) {
+    return (
+      <AppView className="flex-1 items-center justify-center bg-background p-6">
+        <AppSpinner size="large" />
+      </AppView>
+    );
+  }
 
   if (!vehicle) {
     return (
@@ -42,26 +57,29 @@ export function VehicleDetailsScreen() {
 
   const driver = vehicle.driver;
 
-  const handleSelfAssign = () => {
-    assignDriver(vehicle.id, {
-      id: 'driver-owner',
-      name: company.ownerName || 'Arun Kumar',
-      phone: company.phone || '+91 98765 43210',
-      dob: '12 / 05 / 1990',
-      dlNumber: 'KA0320180012345',
-      rating: 4.9,
-      isOwnerSelf: true,
-      aadhaarUploaded: true,
-      dlUploaded: true,
-    });
-    setShowDriverSheet(false);
-    Alert.alert('Driver updated', 'You (Owner) are now assigned as the driver for this vehicle.');
+  const handleSelfAssign = async () => {
+    try {
+      await assignDriverMutation.mutateAsync({
+        vehicleId: vehicle.id,
+        body: { is_owner_self: true },
+      });
+      setShowDriverSheet(false);
+      Alert.alert('Driver updated', 'You (Owner) are now assigned as the driver for this vehicle.');
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || 'Could not assign driver.';
+      Alert.alert('Assignment Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
   };
 
-  const handleUnassignDriver = () => {
-    unassignDriver(vehicle.id);
-    setShowDriverSheet(false);
-    Alert.alert('Driver Unassigned', `${vehicle.model} is now unassigned.`);
+  const handleUnassignDriver = async () => {
+    try {
+      await unassignDriverMutation.mutateAsync(vehicle.id);
+      setShowDriverSheet(false);
+      Alert.alert('Driver Unassigned', `${vehicle.model} is now unassigned.`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || 'Could not unassign driver.';
+      Alert.alert('Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
   };
 
   const handleDeleteVehicle = () => {
@@ -73,9 +91,15 @@ export function VehicleDetailsScreen() {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => {
-            removeVehicle(vehicle.id);
-            router.back();
+          onPress: async () => {
+            try {
+              await removeVehicleMutation.mutateAsync(vehicle.id);
+              router.back();
+            } catch (err: any) {
+              const msg =
+                err?.response?.data?.detail || err?.message || 'Could not remove vehicle.';
+              Alert.alert('Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
+            }
           },
         },
       ],
@@ -118,12 +142,6 @@ export function VehicleDetailsScreen() {
                 <AppText className="text-[12px] font-semibold text-muted">
                   {vehicle.vehicleTypeName || 'Mini truck'}
                 </AppText>
-                <AppPressable
-                  onPress={() => router.push('/setup-vehicle')}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <AppText className="text-[13px] font-bold text-[#FF5722]">Edit</AppText>
-                </AppPressable>
               </AppView>
 
               <AppText className="text-[18px] font-black text-foreground">{vehicle.model}</AppText>
@@ -154,9 +172,19 @@ export function VehicleDetailsScreen() {
                 </AppView>
                 <AppText className="text-[15px] font-bold text-foreground">Vehicle RC</AppText>
               </AppView>
-              <AppView className="rounded-full bg-emerald-500/15 px-3 py-1">
-                <AppText className="text-[12px] font-bold text-emerald-600 dark:text-emerald-400">
-                  {vehicle.documents?.rc?.label || 'Verified'}
+              <AppView
+                className={`rounded-full px-3 py-1 ${
+                  vehicle.documents?.rc?.verified ? 'bg-emerald-500/15' : 'bg-amber-500/15'
+                }`}
+              >
+                <AppText
+                  className={`text-[12px] font-bold ${
+                    vehicle.documents?.rc?.verified
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-amber-700 dark:text-amber-400'
+                  }`}
+                >
+                  {vehicle.documents?.rc?.label || 'Pending'}
                 </AppText>
               </AppView>
             </AppView>
@@ -169,9 +197,19 @@ export function VehicleDetailsScreen() {
                 </AppView>
                 <AppText className="text-[15px] font-bold text-foreground">Insurance</AppText>
               </AppView>
-              <AppView className="rounded-full bg-amber-500/15 px-3 py-1">
-                <AppText className="text-[12px] font-bold text-amber-700 dark:text-amber-400">
-                  {vehicle.documents?.insurance?.label || 'Expires in 28 days'}
+              <AppView
+                className={`rounded-full px-3 py-1 ${
+                  vehicle.documents?.insurance?.verified ? 'bg-emerald-500/15' : 'bg-amber-500/15'
+                }`}
+              >
+                <AppText
+                  className={`text-[12px] font-bold ${
+                    vehicle.documents?.insurance?.verified
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-amber-700 dark:text-amber-400'
+                  }`}
+                >
+                  {vehicle.documents?.insurance?.label || 'Pending'}
                 </AppText>
               </AppView>
             </AppView>
@@ -186,9 +224,19 @@ export function VehicleDetailsScreen() {
                   Pollution certificate
                 </AppText>
               </AppView>
-              <AppView className="rounded-full bg-emerald-500/15 px-3 py-1">
-                <AppText className="text-[12px] font-bold text-emerald-600 dark:text-emerald-400">
-                  {vehicle.documents?.pollution?.label || 'Verified'}
+              <AppView
+                className={`rounded-full px-3 py-1 ${
+                  vehicle.documents?.pollution?.verified ? 'bg-emerald-500/15' : 'bg-amber-500/15'
+                }`}
+              >
+                <AppText
+                  className={`text-[12px] font-bold ${
+                    vehicle.documents?.pollution?.verified
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-amber-700 dark:text-amber-400'
+                  }`}
+                >
+                  {vehicle.documents?.pollution?.label || 'Pending'}
                 </AppText>
               </AppView>
             </AppView>
@@ -230,19 +278,21 @@ export function VehicleDetailsScreen() {
                 </AppView>
 
                 <AppView row className="mt-1 items-center gap-2">
-                  <AppView
-                    row
-                    className="items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5"
-                  >
-                    <Icon name="star.fill" size={11} color="#f59e0b" />
-                    <AppText className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
-                      {driver?.rating ? driver.rating.toFixed(1) : '4.9'}
-                    </AppText>
-                  </AppView>
+                  {driver?.rating != null ? (
+                    <AppView
+                      row
+                      className="items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5"
+                    >
+                      <Icon name="star.fill" size={11} color="#f59e0b" />
+                      <AppText className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                        {driver.rating.toFixed(1)}
+                      </AppText>
+                    </AppView>
+                  ) : null}
 
-                  <AppText className="text-[13px] font-medium text-muted">
-                    {driver?.phone || '+91 98765 43210'}
-                  </AppText>
+                  {driver?.phone ? (
+                    <AppText className="text-[13px] font-medium text-muted">{driver.phone}</AppText>
+                  ) : null}
                 </AppView>
               </AppView>
 
@@ -275,7 +325,7 @@ export function VehicleDetailsScreen() {
                   <Icon name="steeringwheel" size={20} tone="brand" />
                   <AppView>
                     <AppText className="text-[14px] font-bold text-foreground">
-                      Drive myself ({company.ownerName || 'Arun'})
+                      Drive myself {company?.ownerName ? `(${company.ownerName})` : ''}
                     </AppText>
                     <AppText className="text-[11px] text-muted">Owner self-drive mode</AppText>
                   </AppView>

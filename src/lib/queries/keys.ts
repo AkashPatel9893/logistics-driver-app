@@ -18,4 +18,13 @@ export const queryKeys = {
   earnings: (period: EarningsPeriod) => ['driver', 'earnings', period] as const,
   wallet: ['driver', 'wallet'] as const,
   trips: ['driver', 'trips'] as const,
+  fleet: {
+    company: ['fleet', 'company'] as const,
+    stats: ['fleet', 'stats'] as const,
+    vehicles: ['fleet', 'vehicles'] as const,
+    linkRequests: ['fleet', 'link-requests'] as const,
+    wallet: ['fleet', 'wallet'] as const,
+    transactions: (limit?: number) => ['fleet', 'wallet', 'transactions', limit] as const,
+    payouts: ['fleet', 'payouts'] as const,
+  },
 };

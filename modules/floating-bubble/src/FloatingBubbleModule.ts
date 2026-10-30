@@ -1,4 +1,4 @@
-import { NativeModule, requireOptionalNativeModule } from 'expo-modules-core';
+import { NativeModule, requireOptionalNativeModule } from 'expo';
 
 declare class FloatingBubbleModule extends NativeModule {
   canDrawOverlays(): boolean;

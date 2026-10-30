@@ -10,7 +10,7 @@ import {
   LiquidGlassBackButton,
 } from '@/components/ui';
 import { useDriverProfile } from '@/hooks/use-driver';
-import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import { useFleetCompany } from '@/hooks/use-fleet';
 import { FleetVehiclesSection } from '@/features/fleet/components';
 import type { VerificationStatus } from '@/lib/api/models';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,7 +35,7 @@ export function DriverProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { data: profile } = useDriverProfile();
-  const company = useFleetStore.use.company();
+  const { data: company } = useFleetCompany();
 
   if (!profile) {
     return (
@@ -66,14 +66,14 @@ export function DriverProfileScreen() {
     },
     {
       name: 'Registration certificate',
-      id: vehicle?.plateNumber ?? 'KA 03 MX 2814',
-      status: vehicle?.status ?? 'verified',
+      id: vehicle?.plateNumber,
+      status: vehicle?.status ?? (vehicle?.plateNumber ? 'verified' : 'missing'),
       route: '/setup-vehicle' as const,
     },
     {
       name: 'Bank account',
-      id: bank ? `${bank.bankName} •• ${bank.accountLast4}` : 'HDFC Bank •• 4210',
-      status: bank?.status ?? 'verified',
+      id: bank ? `${bank.bankName} •• ${bank.accountLast4}` : undefined,
+      status: bank?.status ?? (bank ? 'verified' : 'missing'),
       route: '/setup-bank' as const,
     },
   ];
@@ -92,31 +92,37 @@ export function DriverProfileScreen() {
           <AppView className="w-10" />
         </AppView>
 
-        {/* Company & Owner Info Card matching Screenshot 1 Screen 7 */}
+        {/* Company & Owner Info Card */}
         <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
           <AppView row className="items-center justify-between">
             <AppText className="text-[20px] font-black text-foreground">
-              {company.companyName || 'Company Name'}
+              {company?.companyName || 'Company Profile'}
             </AppText>
             <AppPressable
               onPress={() => router.push('/company-details' as any)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <AppText className="text-[14px] font-bold text-[#FF5722]">Edit</AppText>
+              <AppText className="text-[14px] font-bold text-[#FF5722]">
+                {company?.isRegistered ? 'Edit' : 'Register'}
+              </AppText>
             </AppPressable>
           </AppView>
 
           <AppText className="mt-1 text-[15px] font-semibold text-foreground">
-            {company.ownerName || "Owner's Name"}
+            {company?.ownerName || profile.name}
           </AppText>
 
-          <AppText className="mt-0.5 text-[13px] text-muted">
-            Registered Address: {company.registeredAddress || '12 MG Road, Pune 411001'}
-          </AppText>
+          {company?.registeredAddress ? (
+            <AppText className="mt-0.5 text-[13px] text-muted">
+              Registered Address: {company.registeredAddress}
+            </AppText>
+          ) : null}
 
-          <AppText className="mt-0.5 text-[13px] font-medium text-foreground-secondary">
-            {company.phone || '+91 98765 43210'}
-          </AppText>
+          {company?.phone || profile.phone ? (
+            <AppText className="mt-0.5 text-[13px] font-medium text-foreground-secondary">
+              {company?.phone || profile.phone}
+            </AppText>
+          ) : null}
         </AppView>
 
         {/* My Vehicles Section matching Screenshot 1 Screen 7 */}

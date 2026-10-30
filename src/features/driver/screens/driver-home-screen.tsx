@@ -15,6 +15,7 @@ import {
 } from '@/components/ui';
 import { useDriverProfile, useMarkWelcomeBonusSeen, useSetOnline } from '@/hooks/use-driver';
 import { useEarnings } from '@/hooks/use-earnings';
+import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import { useActiveJob, useOffers } from '@/hooks/use-jobs';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { FleetStatsRow, FleetVehiclesSection, RoleSwitcher } from '@/features/fleet/components';
@@ -74,8 +75,8 @@ export function DriverHomeScreen() {
   // Fleet Owner state
   const dashboardRole = useFleetStore.use.dashboardRole();
   const setDashboardRole = useFleetStore.use.setDashboardRole();
-  const vehicles = useFleetStore.use.vehicles();
-  const company = useFleetStore.use.company();
+  const { data: vehicles = [] } = useFleetVehicles();
+  const { data: company } = useFleetCompany();
   const activeDriverVehicleId = useFleetStore.use.activeDriverVehicleId();
   const setActiveDriverVehicleId = useFleetStore.use.setActiveDriverVehicleId();
 
@@ -133,7 +134,8 @@ export function DriverHomeScreen() {
     router.push({ pathname: '/incoming-job', params: { offerId: offer.id } });
 
   const firstName =
-    profile.name.split(' ')[0] || (company.ownerName ? company.ownerName.split(' ')[0] : 'Partner');
+    profile.name.split(' ')[0] ||
+    (company?.ownerName ? company.ownerName.split(' ')[0] : 'Partner');
   const showBonus =
     !profile.welcomeBonus.seen && profile.welcomeBonus.status === 'active' && isFocused;
 
@@ -143,7 +145,7 @@ export function DriverHomeScreen() {
     ? `${profile.vehicle.vehicleTypeName} · ${profile.vehicle.plateNumber}`
     : activeDriverVehicle
       ? `${activeDriverVehicle.vehicleTypeName} · ${activeDriverVehicle.plateNumber}`
-      : 'Mini truck · KA 03 MX 2814';
+      : 'No vehicle assigned';
 
   const handleSwitchActiveVehicle = () => {
     if (vehicles.length <= 1) return;
@@ -269,7 +271,7 @@ export function DriverHomeScreen() {
             <FleetStatsRow
               vehiclesCount={vehicles.length}
               totalEarnings={todayQuery.data?.totalEarnings ?? 0}
-              walletBalance={profile.walletBalance || 1000}
+              walletBalance={profile.walletBalance}
               onPressVehicles={() => router.push('/driver-profile')}
             />
 
