@@ -40,7 +40,12 @@ export function DriverTripsScreen() {
         renderItem={({ item }) => <DriverPastTripCard trip={item} />}
         contentContainerClassName="gap-3 px-5 pb-32 pt-4"
         refreshControl={
-          <RefreshControl refreshing={tripsQuery.isRefetching} onRefresh={tripsQuery.refetch} />
+          <RefreshControl
+            refreshing={tripsQuery.isRefetching}
+            onRefresh={() => {
+              void tripsQuery.refetch();
+            }}
+          />
         }
         ListEmptyComponent={
           tripsQuery.isLoading ? (

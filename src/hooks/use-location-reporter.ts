@@ -1,4 +1,4 @@
-import * as Location from 'expo-location';
+import { Location } from 'expo-location/next';
 import { useEffect } from 'react';
 
 import {
@@ -9,26 +9,20 @@ import {
 import { driverApi } from '@/lib/api/driver';
 import { useLocationStore } from '@/stores/location-store';
 
-/** A cached fix older than this is not trusted as the starting position. */
-const MAX_LAST_KNOWN_AGE_MS = 2 * 60_000;
+/** A cached fix older than this is not trusted as the starting position (in seconds). */
+const MAX_LAST_KNOWN_AGE_SEC = 120;
 /**
  * The backend drops a driver from dispatch when their position is older than
  * 60 s, and GPS sends nothing while parked — so re-send the last fix this often.
  */
 const HEARTBEAT_MS = 20_000;
-/** Don't let a slow first fix hold up the continuous updates. */
-const FIRST_FIX_TIMEOUT_MS = 10_000;
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  return Promise.race([
-    promise.catch(() => null),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
-  ]);
-}
+/** Don't let a slow first fix hold up the continuous updates (in seconds). */
+const FIRST_FIX_TIMEOUT_SEC = 10;
 
 /**
  * While the driver is online, keeps GPS running — in the foreground and in
  * the background (see lib/background-location) — and stops it when offline.
+ * Uses next-gen expo-location/next APIs.
  */
 export function useLocationReporter(isOnline: boolean) {
   useEffect(() => {
@@ -39,22 +33,21 @@ export function useLocationReporter(isOnline: boolean) {
     let cancelled = false;
 
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      const perm = await Location.requestForegroundPermissions().catch(() => null);
       if (cancelled) return;
-      useLocationStore.getState().setPermission(status === 'granted' ? 'granted' : 'denied');
+      const status = perm?.status === 'granted' ? 'granted' : 'denied';
+      useLocationStore.getState().setPermission(status);
       if (status !== 'granted') return;
 
       // Updates only arrive when the position changes, so a driver standing
-      // still would never get a first fix. Seed it explicitly.
-      const lastKnown = await Location.getLastKnownPositionAsync({
-        maxAge: MAX_LAST_KNOWN_AGE_MS,
+      // still would never get a first fix. Seed it explicitly via getPosition().
+      const position = await Location.getPosition({
+        maxCachedAge: MAX_LAST_KNOWN_AGE_SEC,
+        timeout: FIRST_FIX_TIMEOUT_SEC,
       }).catch(() => null);
-      if (lastKnown) handleLocationFix(lastKnown, true);
-      else {
-        void withTimeout(
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
-          FIRST_FIX_TIMEOUT_MS,
-        ).then((fix) => fix && handleLocationFix(fix, true));
+
+      if (position && !cancelled) {
+        handleLocationFix(position, true);
       }
       if (cancelled) return;
 

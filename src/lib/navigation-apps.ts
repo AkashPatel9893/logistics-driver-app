@@ -1,5 +1,6 @@
 import { ActionSheetIOS, Alert, Linking, Platform } from 'react-native';
 
+import { env } from '@/env';
 import type { GeoPoint } from '@/lib/api/models';
 
 /**
@@ -22,7 +23,7 @@ function coords({ latitude, longitude }: GeoPoint): string {
 }
 
 function googleMapsWebUrl(target: GeoPoint): string {
-  return `https://www.google.com/maps/dir/?api=1&destination=${coords(target)}&travelmode=driving`;
+  return `${env.GOOGLE_MAPS_WEB_URL}/dir/?api=1&destination=${coords(target)}&travelmode=driving`;
 }
 
 function iosApps(target: GeoPoint): NavigationApp[] {

@@ -1,4 +1,4 @@
-import { AppView, OlaMapCamera, OlaMapMarker, OlaMapPolyline, OlaMapView } from '@/components/ui';
+import { AppMapCamera, AppMapMarker, AppMapPolyline, AppMapView, AppView } from '@/components/ui';
 import type { GeoPoint } from '@/lib/api/models';
 import { useRoadRoute } from '@/hooks/use-road-route';
 import { computeBounds, distanceKm } from '@/lib/geo';
@@ -51,31 +51,31 @@ export function RouteMap({
 
   return (
     <AppView className={className}>
-      <OlaMapView style={{ flex: 1 }}>
+      <AppMapView style={{ flex: 1 }}>
         {fit.length > 0 ? (
-          <OlaMapCamera bounds={computeBounds(fit, 0.004)} padding={padding} />
+          <AppMapCamera bounds={computeBounds(fit, 0.004)} padding={padding} />
         ) : null}
         {line.length >= 2 ? (
-          <OlaMapPolyline coordinates={line} strokeColor={ROUTE_COLOR} strokeWidth={4} />
+          <AppMapPolyline coordinates={line} strokeColor={ROUTE_COLOR} strokeWidth={4} />
         ) : null}
         {pickup ? (
-          <OlaMapMarker coordinate={pickup}>
+          <AppMapMarker coordinate={pickup}>
             <AppView className="h-5 w-5 rounded-full border-[3px] border-white bg-emerald-500 shadow-sm" />
-          </OlaMapMarker>
+          </AppMapMarker>
         ) : null}
         {drop ? (
-          <OlaMapMarker coordinate={drop}>
+          <AppMapMarker coordinate={drop}>
             <AppView className="h-5 w-5 rounded-full border-[3px] border-white bg-brand shadow-sm" />
-          </OlaMapMarker>
+          </AppMapMarker>
         ) : null}
         {driver ? (
-          <OlaMapMarker coordinate={driver}>
+          <AppMapMarker coordinate={driver}>
             <AppView className="h-6 w-6 items-center justify-center rounded-full bg-sky-500/25">
               <AppView className="h-3.5 w-3.5 rounded-full border-2 border-white bg-sky-500" />
             </AppView>
-          </OlaMapMarker>
+          </AppMapMarker>
         ) : null}
-      </OlaMapView>
+      </AppMapView>
     </AppView>
   );
 }

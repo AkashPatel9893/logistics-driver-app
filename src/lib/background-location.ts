@@ -7,6 +7,7 @@
  */
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import type { Position } from 'expo-location/next';
 
 import { driverApi } from '@/lib/api/driver';
 import { refreshBubble } from '@/lib/driver-bubble';
@@ -18,9 +19,45 @@ export const DRIVER_LOCATION_TASK = 'ryno-driver-location';
 const REPORT_INTERVAL_MS = 15_000;
 let lastReportAt = 0;
 
+export type LocationFixInput =
+  | Location.LocationObject
+  | Position
+  | {
+      latitude: number;
+      longitude: number;
+      heading?: number | null;
+      speed?: number | null;
+      timestamp?: number;
+    };
+
 /** Stores a fix for the UI and reports it to the backend (throttled). */
-export function handleLocationFix(position: Location.LocationObject, forceReport = false): void {
-  const { latitude, longitude, heading, speed } = position.coords;
+export function handleLocationFix(position: LocationFixInput, forceReport = false): void {
+  let latitude: number;
+  let longitude: number;
+  let heading: number | null = null;
+  let speed: number | null = null;
+  let timestamp = Date.now();
+
+  if ('coordinates' in position) {
+    latitude = position.coordinates.latitude;
+    longitude = position.coordinates.longitude;
+    heading = (position as any).heading ?? null;
+    speed = (position as any).speed ?? null;
+    timestamp = position.timestamp;
+  } else if ('coords' in position) {
+    latitude = position.coords.latitude;
+    longitude = position.coords.longitude;
+    heading = position.coords.heading ?? null;
+    speed = position.coords.speed ?? null;
+    timestamp = position.timestamp;
+  } else {
+    latitude = position.latitude;
+    longitude = position.longitude;
+    heading = position.heading ?? null;
+    speed = position.speed ?? null;
+    if (position.timestamp) timestamp = position.timestamp;
+  }
+
   const speedKmph = speed !== null && speed >= 0 ? Math.round(speed * 3.6) : null;
   useLocationStore
     .getState()
@@ -35,7 +72,7 @@ export function handleLocationFix(position: Location.LocationObject, forceReport
       longitude,
       heading: heading ?? null,
       speedKmph,
-      recordedAt: new Date(position.timestamp).toISOString(),
+      recordedAt: new Date(timestamp).toISOString(),
     })
     .catch(() => {
       // Next fix retries; a dropped update is harmless.

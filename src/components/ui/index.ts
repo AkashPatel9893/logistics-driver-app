@@ -24,5 +24,5 @@ export * from './star-rating';
 export * from './status-bar-scrim';
 export * from './text-field';
 export * from './use-theme-config';
-export * from './ola-map-view';
+export * from './app-map-view';
 export * from './option-sheet';

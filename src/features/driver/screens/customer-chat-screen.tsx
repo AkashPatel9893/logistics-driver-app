@@ -1,7 +1,9 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, type ScrollView, TextInput } from 'react-native';
+import { Alert, Linking, type ScrollViewInstance, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { env } from '@/env';
 
 import {
   AppKeyboardAvoidingView,
@@ -27,7 +29,7 @@ const QUICK_REPLIES = ["I've reached", '5 mins away', 'Stuck in traffic', 'Share
 function Chat({ job }: { job: DriverJob }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const messagesQuery = useMessages(job.id);
   const messages = messagesQuery.data ?? [];
   const send = useSendMessage(job.id);
@@ -49,7 +51,7 @@ function Chat({ job }: { job: DriverJob }) {
         Alert.alert('Location unavailable', 'Turn on location to share where you are.');
         return;
       }
-      text = `My live location: https://maps.google.com/?q=${location.latitude.toFixed(5)},${location.longitude.toFixed(5)}`;
+      text = `My live location: ${env.GOOGLE_MAPS_WEB_URL}/?q=${location.latitude.toFixed(5)},${location.longitude.toFixed(5)}`;
     }
     if (!text) return;
     send.mutate(text, {

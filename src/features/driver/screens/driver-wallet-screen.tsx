@@ -98,7 +98,12 @@ export function DriverWalletScreen() {
         contentContainerClassName="gap-5 px-5 pb-16 pt-4"
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={walletQuery.isRefetching} onRefresh={walletQuery.refetch} />
+          <RefreshControl
+            refreshing={walletQuery.isRefetching}
+            onRefresh={() => {
+              void walletQuery.refetch();
+            }}
+          />
         }
       >
         <AppView className="overflow-hidden rounded-3xl bg-neutral-950 p-6 shadow-xl dark:border dark:border-neutral-800">

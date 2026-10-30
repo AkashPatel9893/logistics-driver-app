@@ -12,6 +12,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     bundleIdentifier: 'com.logisticsdriverapp',
     icon: './assets/expo.icon',
+    config: {
+      googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+    },
     infoPlist: {
       // Lets the app check which navigation apps are installed (src/lib/navigation-apps.ts).
       LSApplicationQueriesSchemes: ['comgooglemaps', 'waze'],
@@ -26,6 +29,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       monochromeImage: './assets/images/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: false,
+    config: {
+      googleMaps: {
+        apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+      },
+    },
     // expo-task-manager persists the background location job across reboots;
     // SYSTEM_ALERT_WINDOW powers the floating bubble overlay while driving.
     permissions: [
@@ -63,11 +71,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         microphonePermission: false,
       },
     ],
-    '@maplibre/maplibre-react-native',
+    [
+      'expo-maps',
+      {
+        requestLocationPermission: true,
+      },
+    ],
     [
       'expo-build-properties',
       {
         ios: {
+          deploymentTarget: '17.0',
           enableSceneSupport: true,
         },
       },
