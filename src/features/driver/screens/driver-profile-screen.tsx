@@ -15,6 +15,7 @@ import { FleetVehiclesSection } from '@/features/fleet/components';
 import type { VerificationStatus } from '@/lib/api/models';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { goBack } from '@/lib/go-back';
+import { useAuthStore } from '@/features/auth/use-auth-store';
 
 const STATUS: Record<VerificationStatus | 'missing', { label: string; color: string; bg: string }> =
   {
@@ -37,6 +38,7 @@ export function DriverProfileScreen() {
   const insets = useSafeAreaInsets();
   const { data: profile } = useDriverProfile();
   const { data: company } = useFleetCompany();
+  const user = useAuthStore.use.user();
 
   if (!profile) {
     return (
@@ -113,15 +115,21 @@ export function DriverProfileScreen() {
             {company?.ownerName || profile.name}
           </AppText>
 
+          {user?.phone || profile.phone ? (
+            <AppText className="mt-1 text-[13px] font-medium text-foreground-secondary">
+              Phone: {user?.phone || profile.phone}
+            </AppText>
+          ) : null}
+
           {company?.registeredAddress ? (
             <AppText className="mt-0.5 text-[13px] text-muted">
               Registered Address: {company.registeredAddress}
             </AppText>
           ) : null}
 
-          {company?.phone || profile.phone ? (
+          {company?.phone && company.phone !== user?.phone ? (
             <AppText className="mt-0.5 text-[13px] font-medium text-foreground-secondary">
-              {company?.phone || profile.phone}
+              Company phone: {company.phone}
             </AppText>
           ) : null}
         </AppView>

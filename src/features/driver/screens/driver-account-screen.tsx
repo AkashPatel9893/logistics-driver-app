@@ -13,7 +13,7 @@ import {
   Icon,
   type IconName,
 } from '@/components/ui';
-import { signOut } from '@/features/auth/use-auth-store';
+import { signOut, useAuthStore } from '@/features/auth/use-auth-store';
 import { useDriverProfile, useSetOnline } from '@/hooks/use-driver';
 import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import { formatRupees } from '@/lib/format';
@@ -31,6 +31,7 @@ export function DriverAccountScreen() {
   const insets = useSafeAreaInsets();
 
   const { data: profile } = useDriverProfile();
+  const user = useAuthStore.use.user();
   const setOnline = useSetOnline();
   const { data: wallet } = useWallet();
   const { data: company } = useFleetCompany();
@@ -145,6 +146,11 @@ export function DriverAccountScreen() {
 
             <AppView className="flex-1">
               <AppText className="text-[18px] font-black text-foreground">{name}</AppText>
+              {user?.phone || profile?.phone ? (
+                <AppText className="text-[13px] text-muted">
+                  Phone: {user?.phone || profile?.phone}
+                </AppText>
+              ) : null}
               <AppText className="text-[13px] text-muted">
                 {company?.companyName
                   ? `${company.companyName} • ${company.phone || profile?.phone || ''}`
