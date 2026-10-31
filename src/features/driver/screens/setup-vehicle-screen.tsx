@@ -12,8 +12,12 @@ import {
   Icon,
   TextField,
 } from '@/components/ui';
-import { useDriverProfile, useVehicleTypes } from '@/hooks/use-driver';
+import { useDriverProfile, useSaveVehicle, useVehicleTypes } from '@/hooks/use-driver';
 import { useAddFleetVehicle, useFleetCompany, useRequestFleetLink } from '@/hooks/use-fleet';
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import { toIsoDate } from '@/lib/api/onboarding';
+import { PhotoUploadBox } from '../components/photo-upload-box';
+import { useLocalPhoto } from '../hooks/use-local-photo';
 import type { FleetDriver } from '@/features/fleet/types';
 import type { FuelType } from '@/lib/api/models';
 
@@ -29,11 +33,23 @@ const CAPACITIES = [
   { value: 2000, label: '2 Ton (2000 kg)' },
 ];
 
+function formatExpiryDate(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join('/');
+}
+
 export function SetupVehicleScreen() {
   const router = useRouter();
   const { data: profile } = useDriverProfile();
   const { data: vehicleTypes = [] } = useVehicleTypes();
   const addFleetVehicle = useAddFleetVehicle();
+  const saveVehicle = useSaveVehicle();
+  const isFleetOwner = useFleetStore.use.dashboardRole() === 'owner';
+  const rc = useLocalPhoto();
+  const insurance = useLocalPhoto();
+  const puc = useLocalPhoto();
+  const [insuranceExpiry, setInsuranceExpiry] = useState('');
+  const [pucExpiry, setPucExpiry] = useState('');
   const requestFleetLink = useRequestFleetLink();
   const { data: company } = useFleetCompany();
 
@@ -114,26 +130,52 @@ export function SetupVehicleScreen() {
     if (!selectedType || !make.trim() || !model.trim() || !fuelType) {
       return setError('Choose a vehicle type and fuel type, and enter the make and model.');
     }
+    if (!isFleetOwner) {
+      if (!rc.uri || !insurance.uri || (fuelType !== 'ELECTRIC' && !puc.uri)) {
+        return setError('Add photos of the RC, insurance, and, for non-electric vehicles, PUC.');
+      }
+      if (!toIsoDate(insuranceExpiry) || (fuelType !== 'ELECTRIC' && !toIsoDate(pucExpiry))) {
+        return setError('Enter valid insurance and PUC expiry dates as DD/MM/YYYY.');
+      }
+    }
     setError(undefined);
     const vehicleTypeCode = selectedType.code;
 
     try {
-      await addFleetVehicle.mutateAsync({
-        registration_number: cleanPlate,
-        vehicle_type_code: vehicleTypeCode,
-        make: make.trim(),
-        model: model.trim(),
-        capacity_kg: capacityKg ?? undefined,
-        fuel_type: fuelType,
-        assign_driver: assignedDriver?.isOwnerSelf ? { is_owner_self: true } : undefined,
-      });
+      if (!isFleetOwner) {
+        await saveVehicle.mutateAsync({
+          vehicleTypeId: selectedType.id,
+          plateNumber: cleanPlate,
+          make: make.trim(),
+          model: model.trim(),
+          fuelType,
+          rcPhotoUri: rc.uri!,
+          insurancePhotoUri: insurance.uri!,
+          insuranceExpiry: toIsoDate(insuranceExpiry)!,
+          pucPhotoUri: fuelType === 'ELECTRIC' ? null : puc.uri,
+          pucExpiry: fuelType === 'ELECTRIC' ? null : toIsoDate(pucExpiry),
+        });
+      } else
+        await addFleetVehicle.mutateAsync({
+          registration_number: cleanPlate,
+          vehicle_type_code: vehicleTypeCode,
+          make: make.trim(),
+          model: model.trim(),
+          capacity_kg: capacityKg ?? undefined,
+          fuel_type: fuelType,
+          assign_driver: assignedDriver?.isOwnerSelf ? { is_owner_self: true } : undefined,
+        });
 
-      Alert.alert('Vehicle saved', `Your ${model} (${cleanPlate}) has been added to your fleet.`, [
-        {
-          text: 'Continue',
-          onPress: () => goBack(router),
-        },
-      ]);
+      Alert.alert(
+        'Vehicle saved',
+        `Your ${model} (${cleanPlate}) has been registered for review.`,
+        [
+          {
+            text: 'Continue',
+            onPress: () => goBack(router),
+          },
+        ],
+      );
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || 'Could not add vehicle.';
       setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
@@ -407,9 +449,17 @@ export function SetupVehicleScreen() {
                     <AppPressable
                       key={fuel}
                       onPress={() => setFuelType(fuel)}
-                      className={`rounded-xl border border-border px-3 py-2 ${fuelType === fuel ? 'bg-surface-muted' : 'bg-card'}`}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: fuelType === fuel }}
+                      className={`rounded-xl border px-3 py-2 ${fuelType === fuel ? 'border-brand bg-brand' : 'border-border bg-card'}`}
                     >
-                      <AppText>{fuel}</AppText>
+                      <AppText
+                        className={
+                          fuelType === fuel ? 'font-bold text-brand-foreground' : 'text-foreground'
+                        }
+                      >
+                        {fuel}
+                      </AppText>
                     </AppPressable>
                   ))}
                 </AppView>
@@ -418,76 +468,107 @@ export function SetupVehicleScreen() {
                 <AppText className="text-[15px] font-bold text-foreground">
                   Vehicle documents
                 </AppText>
-                {[
-                  { title: 'Upload registration certificate', icon: 'arrow.up.doc' as const },
-                  { title: 'Add vehicle photo', icon: 'camera' as const },
-                ].map((document) => (
-                  <AppView
-                    key={document.title}
-                    row
-                    className="items-center justify-between rounded-2xl border border-dashed border-border bg-card p-4"
-                  >
-                    <AppView row className="flex-1 items-center gap-3">
-                      <AppView className="h-10 w-10 items-center justify-center rounded-xl bg-brand/10">
-                        <Icon name={document.icon} size={20} tone="brand" />
-                      </AppView>
-                      <AppView className="flex-1">
-                        <AppText className="text-[14px] font-bold text-foreground">
-                          {document.title}
-                        </AppText>
-                        <AppText className="text-[12px] text-muted">Unavailable</AppText>
-                      </AppView>
-                    </AppView>
-                    <AppText className="text-[12px] font-bold text-muted">—</AppText>
+                {isFleetOwner ? (
+                  <AppText className="text-[13px] text-muted">
+                    Fleet vehicle document and photo uploads are not yet available.
+                  </AppText>
+                ) : (
+                  <AppView className="gap-4">
+                    <PhotoUploadBox
+                      label="Registration certificate (RC)"
+                      title="Add RC photo"
+                      photoUri={rc.uri}
+                      onSelectPhoto={rc.pick}
+                    />
+                    <PhotoUploadBox
+                      label="Insurance"
+                      title="Add insurance photo"
+                      photoUri={insurance.uri}
+                      onSelectPhoto={insurance.pick}
+                    />
+                    <TextField
+                      variant="outlined"
+                      label="Insurance expiry date"
+                      placeholder="DD/MM/YYYY"
+                      value={insuranceExpiry}
+                      onChangeText={(value) => setInsuranceExpiry(formatExpiryDate(value))}
+                      keyboardType="numbers-and-punctuation"
+                      maxLength={10}
+                    />
+                    {fuelType !== 'ELECTRIC' ? (
+                      <>
+                        <PhotoUploadBox
+                          label="Pollution certificate (PUC)"
+                          title="Add PUC photo"
+                          photoUri={puc.uri}
+                          onSelectPhoto={puc.pick}
+                        />
+                        <TextField
+                          variant="outlined"
+                          label="PUC expiry date"
+                          placeholder="DD/MM/YYYY"
+                          value={pucExpiry}
+                          onChangeText={(value) => setPucExpiry(formatExpiryDate(value))}
+                          keyboardType="numbers-and-punctuation"
+                          maxLength={10}
+                        />
+                      </>
+                    ) : null}
+                    <AppText className="text-[12px] text-muted">
+                      Some vehicle types also require a fitness certificate or permit before
+                      approval.
+                    </AppText>
                   </AppView>
-                ))}
+                )}
                 {/* Add a driver card matching screenshot 1 screen 5 */}
-                <AppView className="rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
-                  <AppView row className="items-center justify-between">
-                    <AppView row className="flex-1 items-center gap-3">
-                      <AppView className="h-12 w-12 items-center justify-center rounded-2xl bg-[#FFEFE9] dark:bg-[#3D1E12]">
-                        <Icon name="person.badge.plus" size={22} tone="brand" />
+                {isFleetOwner ? (
+                  <AppView className="rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
+                    <AppView row className="items-center justify-between">
+                      <AppView row className="flex-1 items-center gap-3">
+                        <AppView className="h-12 w-12 items-center justify-center rounded-2xl bg-[#FFEFE9] dark:bg-[#3D1E12]">
+                          <Icon name="person.badge.plus" size={22} tone="brand" />
+                        </AppView>
+                        <AppView className="flex-1 pr-2">
+                          <AppText className="text-[16px] font-bold text-foreground">
+                            {assignedDriver ? `Driver: ${assignedDriver.name}` : 'Add a driver'}
+                          </AppText>
+                          <AppText className="text-[12px] text-muted" numberOfLines={1}>
+                            {assignedDriver
+                              ? assignedDriver.isOwnerSelf
+                                ? 'Owner driving myself'
+                                : assignedDriver.phone
+                              : 'Vehicle type, registration and photos'}
+                          </AppText>
+                        </AppView>
                       </AppView>
-                      <AppView className="flex-1 pr-2">
-                        <AppText className="text-[16px] font-bold text-foreground">
-                          {assignedDriver ? `Driver: ${assignedDriver.name}` : 'Add a driver'}
-                        </AppText>
-                        <AppText className="text-[12px] text-muted" numberOfLines={1}>
-                          {assignedDriver
-                            ? assignedDriver.isOwnerSelf
-                              ? 'Owner driving myself'
-                              : assignedDriver.phone
-                            : 'Vehicle type, registration and photos'}
-                        </AppText>
-                      </AppView>
-                    </AppView>
-                    <AppView
-                      className={`rounded-full px-3 py-1 ${
-                        assignedDriver ? 'bg-emerald-500/15' : 'bg-[#F3ECE6] dark:bg-neutral-800'
-                      }`}
-                    >
-                      <AppText
-                        className={`text-[11px] font-bold ${
-                          assignedDriver
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-[#8C7A6B] dark:text-neutral-300'
+                      <AppView
+                        className={`rounded-full px-3 py-1 ${
+                          assignedDriver ? 'bg-emerald-500/15' : 'bg-[#F3ECE6] dark:bg-neutral-800'
                         }`}
                       >
-                        {assignedDriver ? 'Assigned' : 'Pending'}
-                      </AppText>
+                        <AppText
+                          className={`text-[11px] font-bold ${
+                            assignedDriver
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-[#8C7A6B] dark:text-neutral-300'
+                          }`}
+                        >
+                          {assignedDriver ? 'Assigned' : 'Pending'}
+                        </AppText>
+                      </AppView>
                     </AppView>
-                  </AppView>
 
-                  <AppPressable
-                    onPress={() => setShowDriverChoiceModal(true)}
-                    pressScale={0.98}
-                    className="mt-3.5 w-full items-center justify-center rounded-full border border-border bg-background py-2.5 active:bg-neutral-100 dark:active:bg-neutral-800"
-                  >
-                    <AppText className="text-[14px] font-bold text-foreground">
-                      {assignedDriver ? 'Change Driver' : 'Add Driver'}
-                    </AppText>
-                  </AppPressable>
-                </AppView>
+                    <AppPressable
+                      onPress={() => setShowDriverChoiceModal(true)}
+                      pressScale={0.98}
+                      className="mt-3.5 w-full items-center justify-center rounded-full border border-border bg-background py-2.5 active:bg-neutral-100 dark:active:bg-neutral-800"
+                    >
+                      <AppText className="text-[14px] font-bold text-foreground">
+                        {assignedDriver ? 'Change Driver' : 'Add Driver'}
+                      </AppText>
+                    </AppPressable>
+                  </AppView>
+                ) : null}
               </AppView>
 
               {/* Driver selection modal */}
@@ -555,15 +636,21 @@ export function SetupVehicleScreen() {
               <AppView className="mt-4 gap-3">
                 <Button
                   variant="brand"
-                  label={addFleetVehicle.isPending ? 'Saving...' : 'Save vehicle'}
+                  label={
+                    addFleetVehicle.isPending || saveVehicle.isPending
+                      ? 'Saving...'
+                      : 'Save vehicle'
+                  }
                   onPress={handleSave}
-                  disabled={addFleetVehicle.isPending}
-                  loading={addFleetVehicle.isPending}
+                  disabled={addFleetVehicle.isPending || saveVehicle.isPending}
+                  loading={addFleetVehicle.isPending || saveVehicle.isPending}
                   size="lg"
                   textClassName="font-extrabold text-base"
                 />
                 <AppText className="text-center text-[12px] text-muted">
-                  You can update these details later from your profile.
+                  {isFleetOwner
+                    ? 'Fleet documents are not yet available in the app.'
+                    : 'Your documents will be submitted for verification.'}
                 </AppText>
               </AppView>
             </>

@@ -294,17 +294,28 @@ export const driverApi = {
         fuel_type: input.fuelType,
         is_owner: true,
       }));
-    await onboardingApi.submitVehicleDocument(vehicle.id, {
-      type: 'RC',
-      identifier: plate,
-      fileUri: input.rcPhotoUri,
-    });
-    await onboardingApi.submitVehicleDocument(vehicle.id, {
-      type: 'INSURANCE',
-      expiryDate: input.insuranceExpiry,
-      fileUri: input.insurancePhotoUri,
-    });
-    if (input.pucPhotoUri && input.pucExpiry) {
+    // A previous attempt may have saved the vehicle and some documents before failing.
+    // Keep already-submitted documents on retry instead of superseding their review records.
+    const existingDocs = existing ? await onboardingApi.listVehicleDocuments(vehicle.id) : [];
+    const submitted = (type: string) =>
+      existingDocs.some(
+        (doc) =>
+          doc.document_type === type &&
+          ['VERIFIED', 'MANUAL_REVIEW'].includes(doc.verification_status),
+      );
+    if (!submitted('RC'))
+      await onboardingApi.submitVehicleDocument(vehicle.id, {
+        type: 'RC',
+        identifier: plate,
+        fileUri: input.rcPhotoUri,
+      });
+    if (!submitted('INSURANCE'))
+      await onboardingApi.submitVehicleDocument(vehicle.id, {
+        type: 'INSURANCE',
+        expiryDate: input.insuranceExpiry,
+        fileUri: input.insurancePhotoUri,
+      });
+    if (input.pucPhotoUri && input.pucExpiry && !submitted('PUC')) {
       await onboardingApi.submitVehicleDocument(vehicle.id, {
         type: 'PUC',
         expiryDate: input.pucExpiry,

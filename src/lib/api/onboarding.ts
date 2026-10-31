@@ -37,7 +37,8 @@ export function toIsoDate(text: string): string | null {
   if (!match) return null;
   const [, day, month, year] = match;
   const iso = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  return Number.isNaN(Date.parse(iso)) ? null : iso;
+  const date = new Date(`${iso}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== iso ? null : iso;
 }
 
 function uploadFile(url: string, fileUri: string) {
@@ -64,7 +65,10 @@ async function submitDocument(baseUrl: string, input: DocumentInput): Promise<vo
     },
   });
   await uploadFile(`${baseUrl}/${doc.id}/files`, input.fileUri);
-  await request<any>({ method: 'POST', url: `${baseUrl}/${doc.id}/verify` });
+  const result = await request<any>({ method: 'POST', url: `${baseUrl}/${doc.id}/verify` });
+  if (['FAILED', 'REJECTED', 'RESUBMISSION_REQUIRED'].includes(result.verification_status)) {
+    throw new Error(`${input.type} verification failed. Please check the document and try again.`);
+  }
 }
 
 export const onboardingApi = {
@@ -100,6 +104,9 @@ export const onboardingApi = {
     submitDocument(`/partner/vehicles/${vehicleId}/documents`, input),
 
   listVehicles: () => request<any[]>({ url: '/partner/vehicles' }),
+
+  listVehicleDocuments: (vehicleId: string) =>
+    request<any[]>({ url: `/partner/vehicles/${vehicleId}/documents` }),
 
   registerVehicle: (data: {
     vehicle_type_code: string;

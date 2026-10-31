@@ -1,4 +1,3 @@
-import * as Device from 'expo-device';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
 
@@ -28,11 +27,10 @@ async function launch(source: PhotoSource): Promise<string | null> {
 }
 
 /**
- * Takes a photo, falling back to the library when the camera is unavailable
- * (simulators have no camera feed). Resolves null if the user cancels.
+ * Takes a photo, falling back to the library when the camera is unavailable.
+ * Resolves null if the user cancels.
  */
 export async function capturePhoto(allowLibrary = true): Promise<string | null> {
-  if (!Device.isDevice) return allowLibrary ? launch('library') : null;
   try {
     return await launch('camera');
   } catch {
