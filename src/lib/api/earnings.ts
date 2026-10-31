@@ -3,6 +3,7 @@ import { storage } from '@/lib/storage';
 
 import { ApiError } from './api-error';
 import { request } from './client';
+import { jobsApi } from './jobs';
 import type { DriverWallet, EarningsPeriod, EarningsSummary, TripSummary } from './models';
 
 export const earningsApi = {
@@ -85,14 +86,27 @@ export const earningsApi = {
 
   getTrips: async (signal?: AbortSignal): Promise<TripSummary[]> => {
     const res = await request<any>({ url: '/partner/earnings', signal });
-    return res.items.map((item: any) => ({
-      id: item.trip_id,
-      number: String(item.trip_id).slice(0, 6).toUpperCase(),
-      status: item.status,
-      driverEarning: Number(item.net_amount),
-      endedAt: item.calculated_at,
-      paidTo: item.paid_to,
-      fleetName: item.fleet_name,
-    }));
+    const items: any[] = res.items ?? [];
+    // The earnings list carries amounts only; the route and order number live on the job record.
+    // Only the latest are looked up, so opening the tab stays a handful of cheap calls.
+    const detailed = await Promise.allSettled(
+      items.slice(0, 15).map((item) => jobsApi.getJob(String(item.order_id), signal)),
+    );
+    return items.map((item, index) => {
+      const job = detailed[index]?.status === 'fulfilled' ? detailed[index].value : null;
+      return {
+        id: item.trip_id,
+        number: String(item.trip_id).slice(0, 6).toUpperCase(),
+        status: item.status,
+        driverEarning: Number(item.net_amount),
+        endedAt: item.calculated_at,
+        paidTo: item.paid_to,
+        fleetName: item.fleet_name,
+        orderNumber: job?.number ?? null,
+        pickupLabel: job?.pickup.label ?? null,
+        dropLabel: job?.drop.label ?? null,
+        distanceKm: job?.tripDistanceKm ?? null,
+      };
+    });
   },
 };

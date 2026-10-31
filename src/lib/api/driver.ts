@@ -160,7 +160,7 @@ export const driverApi = {
           city: p.city ?? null,
           dob: p.date_of_birth ? String(p.date_of_birth) : null,
           joinedAt: p.created_at ?? new Date().toISOString(),
-          rating: p.rating ?? null,
+          rating: p.rating != null && Number.isFinite(Number(p.rating)) ? Number(p.rating) : null,
           ratingCount: p.rating_count ?? 0,
           isOnline,
           onlineSince: null,

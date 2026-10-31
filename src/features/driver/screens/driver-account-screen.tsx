@@ -37,7 +37,9 @@ export function DriverAccountScreen() {
   const { data: vehicles = [] } = useFleetVehicles();
 
   const name = company?.ownerName || profile?.name || '—';
-  const ratingLabel = profile?.rating != null ? profile.rating.toFixed(1) : '—';
+  // The backend may send the rating as a string (decimal) or a number.
+  const rating = profile?.rating != null ? Number(profile.rating) : NaN;
+  const ratingLabel = Number.isFinite(rating) ? rating.toFixed(1) : '—';
 
   const MENU_ITEMS: MenuItem[] = [
     {

@@ -20,6 +20,7 @@ import type { JobOffer } from '@/lib/api/models';
 import { formatDistance, formatMinutes, formatRupees } from '@/lib/format';
 
 import { RouteMap } from '../components/route-map';
+import { goBack } from '@/lib/go-back';
 
 const DECLINE_REASONS = ['Too far from me', 'Low fare', 'Vehicle not suitable', 'Taking a break'];
 
@@ -60,7 +61,7 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
 
   // The offer goes to the next driver when time runs out.
   useEffect(() => {
-    if (secondsLeft === 0 && !accept.isPending) router.back();
+    if (secondsLeft === 0 && !accept.isPending) goBack(router);
   }, [secondsLeft, accept.isPending, router]);
 
   // mutateAsync: accepting removes this offer from the cache and unmounts the view.
@@ -70,13 +71,13 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
       router.replace('/active-delivery');
     } catch (error) {
       Alert.alert('Request unavailable', getErrorMessage(error));
-      router.back();
+      goBack(router);
     }
   };
 
   const declineWithReason = (reason: string) => {
     reject.mutate({ offerId: offer.id, reason });
-    router.back();
+    goBack(router);
   };
 
   const isCash = offer.paymentMode === 'cash';
@@ -232,7 +233,7 @@ export function IncomingJobScreen() {
         <AppText className="mt-3 text-[18px] font-bold text-foreground">
           {offersQuery.isLoading ? 'Loading request…' : 'This request is no longer available'}
         </AppText>
-        <Button label="Back to home" onPress={() => router.back()} className="mt-6" />
+        <Button label="Back to home" onPress={() => goBack(router)} className="mt-6" />
       </AppView>
     );
   }

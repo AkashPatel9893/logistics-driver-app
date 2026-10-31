@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, AppView, FocusAwareStatusBar, LiquidGlassBackButton } from '@/components/ui';
+import { goBack } from '@/lib/go-back';
 
 export interface SetupScreenLayoutProps {
   title: string;
@@ -23,7 +24,7 @@ export function SetupScreenLayout({ title, subtitle, children }: SetupScreenLayo
         className="border-b border-border/80 bg-card px-5 pb-3.5 shadow-sm"
       >
         <AppView row className="items-center gap-3">
-          <LiquidGlassBackButton onPress={() => router.back()} />
+          <LiquidGlassBackButton onPress={() => goBack(router)} />
           <AppView className="flex-1">
             <AppText className="text-[20px] font-black text-foreground">{title}</AppText>
             <AppText className="text-[12px] text-muted">{subtitle}</AppText>

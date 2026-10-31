@@ -14,6 +14,7 @@ import { useDriverProfile, useSaveBank } from '@/hooks/use-driver';
 import { getErrorMessage } from '@/lib/api/api-error';
 
 import { SetupScreenLayout } from '../components/setup-screen-layout';
+import { goBack } from '@/lib/go-back';
 
 export function SetupBankScreen() {
   const router = useRouter();
@@ -40,7 +41,7 @@ export function SetupBankScreen() {
           Alert.alert(
             'Bank account submitted',
             `Account ending ${updated.bank?.accountLast4 ?? ''} has been added.`,
-            [{ text: 'OK', onPress: () => router.back() }],
+            [{ text: 'OK', onPress: () => goBack(router) }],
           ),
         onError: (e) => setError(getErrorMessage(e)),
       },

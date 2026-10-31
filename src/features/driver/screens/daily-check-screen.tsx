@@ -9,6 +9,7 @@ import { formatRupees } from '@/lib/format';
 import { PhotoUploadBox } from '../components/photo-upload-box';
 import { SetupScreenLayout } from '../components/setup-screen-layout';
 import { usePhotoUpload } from '../hooks/use-photo-upload';
+import { goBack } from '@/lib/go-back';
 
 const GUIDELINES = [
   'Stand in front of your vehicle with your face visible',
@@ -35,7 +36,7 @@ export function DailyCheckScreen() {
     submit.mutate(selfie.url, {
       onSuccess: () =>
         Alert.alert('Check complete', `${reward} has been added to your wallet.`, [
-          { text: 'OK', onPress: () => router.back() },
+          { text: 'OK', onPress: () => goBack(router) },
         ]),
       onError: (e) => Alert.alert('Could not submit', getErrorMessage(e)),
     });

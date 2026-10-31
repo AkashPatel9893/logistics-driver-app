@@ -14,6 +14,7 @@ import { useFleetCompany } from '@/hooks/use-fleet';
 import { FleetVehiclesSection } from '@/features/fleet/components';
 import type { VerificationStatus } from '@/lib/api/models';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { goBack } from '@/lib/go-back';
 
 const STATUS: Record<VerificationStatus | 'missing', { label: string; color: string; bg: string }> =
   {
@@ -87,7 +88,7 @@ export function DriverProfileScreen() {
       >
         {/* Header */}
         <AppView row className="items-center justify-between min-h-[44px]">
-          <LiquidGlassBackButton onPress={() => router.back()} />
+          <LiquidGlassBackButton onPress={() => goBack(router)} />
           <AppText className="text-[20px] font-black text-foreground">Profile</AppText>
           <AppView className="w-10" />
         </AppView>

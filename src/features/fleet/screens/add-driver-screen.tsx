@@ -17,6 +17,7 @@ import {
 } from '@/components/ui';
 import { useAssignFleetDriver, useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import type { AssignDriverRequest } from '@/lib/api/fleet';
+import { goBack } from '@/lib/go-back';
 
 function parseDobToIso(formatted: string): string | undefined {
   const parts = formatted.split('/').map((s) => s.trim());
@@ -124,7 +125,7 @@ export function AddDriverScreen() {
         [
           {
             text: 'Continue',
-            onPress: () => router.back(),
+            onPress: () => goBack(router),
           },
         ],
       );
@@ -146,7 +147,7 @@ export function AddDriverScreen() {
         >
           {/* Back button */}
           <AppView className="mb-3 min-h-[44px] justify-center">
-            <LiquidGlassBackButton onPress={() => router.back()} />
+            <LiquidGlassBackButton onPress={() => goBack(router)} />
           </AppView>
 
           {/* Header */}

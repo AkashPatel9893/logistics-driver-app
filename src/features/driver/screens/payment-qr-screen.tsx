@@ -17,6 +17,7 @@ import { useCountdown } from '@/hooks/use-countdown';
 import { useActiveJob, usePaymentQr } from '@/hooks/use-jobs';
 import { getErrorMessage } from '@/lib/api/api-error';
 import { formatRupees } from '@/lib/format';
+import { goBack } from '@/lib/go-back';
 
 /** How long the success state shows before returning to the stop screen. */
 const SUCCESS_HOLD_MS = 1_800;
@@ -33,7 +34,7 @@ export function PaymentQrScreen() {
   // The gateway webhook reaches us over the driver socket (payment.received).
   useEffect(() => {
     if (!isPaid) return;
-    const timer = setTimeout(() => router.back(), SUCCESS_HOLD_MS);
+    const timer = setTimeout(() => goBack(router), SUCCESS_HOLD_MS);
     return () => clearTimeout(timer);
   }, [isPaid, router]);
 
@@ -51,7 +52,7 @@ export function PaymentQrScreen() {
               Customer scans with any UPI app
             </AppText>
           </AppView>
-          <LiquidGlassBackButton onPress={() => router.back()} />
+          <LiquidGlassBackButton onPress={() => goBack(router)} />
         </AppView>
       </AppView>
 
@@ -131,7 +132,7 @@ export function PaymentQrScreen() {
           <Button
             variant={isPaid ? 'brand' : 'secondary'}
             label={isPaid ? 'Done' : 'Back to verification'}
-            onPress={() => router.back()}
+            onPress={() => goBack(router)}
             size="lg"
             className="rounded-full"
             textClassName="font-extrabold text-[16px]"

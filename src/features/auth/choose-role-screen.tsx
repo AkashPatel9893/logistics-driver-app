@@ -12,6 +12,7 @@ import {
   LiquidGlassBackButton,
 } from '@/components/ui';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import { goBack } from '@/lib/go-back';
 
 export type RoleType = 'driver' | 'owner';
 
@@ -48,7 +49,7 @@ export function ChooseRoleScreen() {
         <AppScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-6">
           {/* Header with back button */}
           <AppView row className="items-center min-h-[48px] gap-3 mb-2">
-            <LiquidGlassBackButton onPress={() => router.back()} />
+            <LiquidGlassBackButton onPress={() => goBack(router)} />
             <AppText className="text-[22px] font-black text-foreground">Choose your role</AppText>
           </AppView>
 

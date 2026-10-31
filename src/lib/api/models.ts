@@ -369,6 +369,11 @@ export interface TripSummary {
   endedAt: string;
   paidTo: 'DRIVER' | 'FLEET';
   fleetName: string | null;
+  /** From the job record; null when it could not be loaded. */
+  orderNumber: string | null;
+  pickupLabel: string | null;
+  dropLabel: string | null;
+  distanceKm: number | null;
 }
 
 // ─── Content ────────────────────────────────────────────────────────────────

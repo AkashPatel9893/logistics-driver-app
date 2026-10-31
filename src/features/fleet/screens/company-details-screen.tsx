@@ -20,6 +20,7 @@ import { useFleetCompany, useRegisterCompany } from '@/hooks/use-fleet';
 import type { CompanyDetails } from '../types';
 
 import { useFleetStore } from '../use-fleet-store';
+import { goBack } from '@/lib/go-back';
 
 const COMPANY_TYPES = [
   'Fleet Owner / Transport',
@@ -103,7 +104,7 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
             text: 'Continue',
             onPress: () => {
               if (router.canGoBack()) {
-                router.back();
+                goBack(router);
               } else {
                 router.replace('/(tabs)/home');
               }
@@ -131,7 +132,7 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
       >
         {/* Back button */}
         <AppView className="mb-3 min-h-[44px] justify-center">
-          <LiquidGlassBackButton onPress={() => router.back()} />
+          <LiquidGlassBackButton onPress={() => goBack(router)} />
         </AppView>
 
         {/* Screen Header */}

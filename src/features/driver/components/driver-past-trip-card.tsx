@@ -1,6 +1,6 @@
 import { AppText, AppView, Icon } from '@/components/ui';
 import type { TripSummary } from '@/lib/api/models';
-import { formatDayTime, formatRupees } from '@/lib/format';
+import { formatDayTime, formatDistance, formatRupees } from '@/lib/format';
 
 export function DriverPastTripCard({ trip }: { trip: TripSummary }) {
   return (
@@ -15,7 +15,12 @@ export function DriverPastTripCard({ trip }: { trip: TripSummary }) {
               {formatDayTime(trip.endedAt)}
             </AppText>
             <AppText className="text-[11px] font-medium text-foreground-secondary">
-              #{trip.number} · — · —
+              {[
+                `#${trip.orderNumber ?? trip.number}`,
+                trip.distanceKm != null ? formatDistance(trip.distanceKm) : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </AppText>
             {trip.paidTo === 'FLEET' ? (
               <AppText className="text-[11px] text-muted">
@@ -38,11 +43,15 @@ export function DriverPastTripCard({ trip }: { trip: TripSummary }) {
       <AppView className="mt-3 gap-2">
         <AppView row className="items-start gap-2.5">
           <AppView className="mt-1 h-2.5 w-2.5 rounded-full border border-emerald-500 bg-white" />
-          <AppText className="flex-1 text-[13px] font-medium text-foreground">—</AppText>
+          <AppText className="flex-1 text-[13px] font-medium text-foreground" numberOfLines={1}>
+            {trip.pickupLabel ?? '—'}
+          </AppText>
         </AppView>
         <AppView row className="items-start gap-2.5">
           <AppView className="mt-1 h-2.5 w-2.5 rounded-full bg-brand" />
-          <AppText className="flex-1 text-[13px] font-medium text-foreground">—</AppText>
+          <AppText className="flex-1 text-[13px] font-medium text-foreground" numberOfLines={1}>
+            {trip.dropLabel ?? '—'}
+          </AppText>
         </AppView>
       </AppView>
     </AppView>

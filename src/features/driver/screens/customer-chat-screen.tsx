@@ -23,6 +23,7 @@ import { formatTime } from '@/lib/format';
 import { useLocationStore } from '@/stores/location-store';
 
 import { currentStop, JOB_STAGE_LABEL } from '../job-stage';
+import { goBack } from '@/lib/go-back';
 
 const QUICK_REPLIES = ["I've reached", '5 mins away', 'Stuck in traffic', 'Share my location'];
 
@@ -73,7 +74,7 @@ function Chat({ job }: { job: DriverJob }) {
       >
         <AppView row className="items-center justify-between">
           <AppView row className="flex-1 items-center gap-3">
-            <LiquidGlassBackButton onPress={() => router.back()} />
+            <LiquidGlassBackButton onPress={() => goBack(router)} />
             <AppView className="h-11 w-11 items-center justify-center rounded-full bg-brand/10">
               <AppText className="text-[17px] font-black text-brand">
                 {job.sender.name.slice(0, 1)}
@@ -215,7 +216,7 @@ export function CustomerChatScreen() {
             <AppText className="text-[16px] font-bold text-foreground">
               Chat is available during a trip.
             </AppText>
-            <Button label="Back" className="mt-5" onPress={() => router.back()} />
+            <Button label="Back" className="mt-5" onPress={() => goBack(router)} />
           </>
         )}
       </AppView>

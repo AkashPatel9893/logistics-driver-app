@@ -17,6 +17,7 @@ import { toIsoDate } from '@/lib/api/onboarding';
 import { PhotoUploadBox } from '../components/photo-upload-box';
 import { SetupScreenLayout } from '../components/setup-screen-layout';
 import { useLocalPhoto } from '../hooks/use-local-photo';
+import { goBack } from '@/lib/go-back';
 
 /** Licence, PAN and a selfie — the three identity documents the backend requires. */
 export function SetupKycScreen() {
@@ -56,7 +57,7 @@ export function SetupKycScreen() {
       {
         onSuccess: () =>
           Alert.alert('Documents submitted', 'Your licence, PAN and selfie have been uploaded.', [
-            { text: 'OK', onPress: () => router.back() },
+            { text: 'OK', onPress: () => goBack(router) },
           ]),
         onError: (e) => setError(getErrorMessage(e)),
       },

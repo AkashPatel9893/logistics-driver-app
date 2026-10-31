@@ -18,6 +18,7 @@ import type { FleetDriver } from '@/features/fleet/types';
 import type { FuelType } from '@/lib/api/models';
 
 import { SetupScreenLayout } from '../components/setup-screen-layout';
+import { goBack } from '@/lib/go-back';
 
 const CAPACITIES = [
   { value: 500, label: '500 kg' },
@@ -76,7 +77,7 @@ export function SetupVehicleScreen() {
         [
           {
             text: 'Got it',
-            onPress: () => router.back(),
+            onPress: () => goBack(router),
           },
         ],
       );
@@ -130,7 +131,7 @@ export function SetupVehicleScreen() {
       Alert.alert('Vehicle saved', `Your ${model} (${cleanPlate}) has been added to your fleet.`, [
         {
           text: 'Continue',
-          onPress: () => router.back(),
+          onPress: () => goBack(router),
         },
       ]);
     } catch (err: any) {

@@ -25,6 +25,7 @@ import { PaymentCollectCard } from '../components/payment-collect-card';
 import { PhotoUploadBox } from '../components/photo-upload-box';
 import { WaitingTimerRing } from '../components/waiting-timer-ring';
 import { usePhotoUpload } from '../hooks/use-photo-upload';
+import { goBack } from '@/lib/go-back';
 
 type Stop = 'pickup' | 'drop';
 
@@ -138,7 +139,7 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
             </AppText>
             <AppText className="text-[15px] font-medium text-muted">Order #{job.number}</AppText>
           </AppView>
-          <LiquidGlassBackButton onPress={() => router.back()} />
+          <LiquidGlassBackButton onPress={() => goBack(router)} />
         </AppView>
       </AppView>
 

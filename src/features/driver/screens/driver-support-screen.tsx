@@ -47,9 +47,11 @@ export function DriverSupportScreen() {
         </AppView>
 
         <AppView className="gap-2.5">
-          <AppText className="px-1 text-[15px] font-extrabold text-foreground">
-            Frequently asked
-          </AppText>
+          {support?.faqs.length ? (
+            <AppText className="px-1 text-[15px] font-extrabold text-foreground">
+              Frequently asked
+            </AppText>
+          ) : null}
           {isLoading ? <AppSpinner /> : null}
           {support?.faqs.map((faq) => {
             const isOpen = openFaq === faq.id;

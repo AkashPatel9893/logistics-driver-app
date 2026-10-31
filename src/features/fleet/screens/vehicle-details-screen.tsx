@@ -21,6 +21,7 @@ import {
   useRemoveFleetVehicle,
   useUnassignFleetDriver,
 } from '@/hooks/use-fleet';
+import { goBack } from '@/lib/go-back';
 
 export function VehicleDetailsScreen() {
   const router = useRouter();
@@ -50,7 +51,7 @@ export function VehicleDetailsScreen() {
     return (
       <AppView className="flex-1 items-center justify-center bg-background p-6">
         <AppText className="text-[16px] text-muted">Vehicle not found</AppText>
-        <Button label="Go back" className="mt-4" onPress={() => router.back()} />
+        <Button label="Go back" className="mt-4" onPress={() => goBack(router)} />
       </AppView>
     );
   }
@@ -94,7 +95,7 @@ export function VehicleDetailsScreen() {
           onPress: async () => {
             try {
               await removeVehicleMutation.mutateAsync(vehicle.id);
-              router.back();
+              goBack(router);
             } catch (err: any) {
               const msg =
                 err?.response?.data?.detail || err?.message || 'Could not remove vehicle.';
@@ -121,7 +122,7 @@ export function VehicleDetailsScreen() {
       >
         {/* Top Header */}
         <AppView row className="items-center justify-between min-h-[44px]">
-          <LiquidGlassBackButton onPress={() => router.back()} />
+          <LiquidGlassBackButton onPress={() => goBack(router)} />
           <AppText className="text-[20px] font-black text-foreground">Vehicle Details</AppText>
           <AppView className="w-10" />
         </AppView>
@@ -285,7 +286,7 @@ export function VehicleDetailsScreen() {
                     >
                       <Icon name="star.fill" size={11} color="#f59e0b" />
                       <AppText className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
-                        {driver.rating.toFixed(1)}
+                        {Number(driver.rating).toFixed(1)}
                       </AppText>
                     </AppView>
                   ) : null}
