@@ -163,8 +163,8 @@ export function AddDriverScreen() {
           <AppPressable
             onPress={handleToggleSelfDrive}
             pressScale={0.98}
-            className={`mb-6 rounded-2xl border p-4 shadow-sm ${
-              isSelfDrive ? 'border-[#FF5722] bg-[#FF5722]/10' : 'border-border bg-card'
+            className={`mb-6 rounded-2xl border p-4 ${
+              isSelfDrive ? 'border-[#FF5722] bg-[#FF5722]/10' : 'border-border bg-card shadow-sm'
             }`}
           >
             <AppView row className="items-center justify-between">

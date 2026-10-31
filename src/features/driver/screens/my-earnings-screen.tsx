@@ -32,9 +32,11 @@ function StatCard({ label, value, accent }: { label: string; value: string; acce
 export function MyEarningsScreen() {
   const router = useRouter();
   const [period, setPeriod] = useState<EarningsPeriod>('week');
-  const { data: summary } = useEarnings(period);
+  const summaryQuery = useEarnings(period);
+  const { data: summary } = summaryQuery;
   const { data: wallet } = useWallet();
-  const { data: trips = [] } = useTrips();
+  const tripsQuery = useTrips();
+  const trips = tripsQuery.data ?? [];
 
   return (
     <SetupScreenLayout title="My earnings" subtitle="Trips, incentives and online time">
@@ -61,9 +63,7 @@ export function MyEarningsScreen() {
             </AppPressable>
           </AppView>
           <AppText className="mt-4 border-t border-neutral-800 pt-4 text-[12px] text-neutral-400">
-            {wallet?.bankLabel
-              ? `Payouts to ${wallet.bankLabel}`
-              : 'Add a bank account to withdraw'}
+            Withdrawals are sent to your verified bank account.
           </AppText>
         </AppView>
 
@@ -73,27 +73,34 @@ export function MyEarningsScreen() {
           <AppView row className="gap-2.5">
             <StatCard
               label="Total earned"
-              value={formatRupees(summary?.totalEarnings ?? 0)}
+              value={summary ? formatRupees(summary.totalEarnings) : '—'}
               accent
             />
-            <StatCard label="Trips" value={String(summary?.trips ?? 0)} />
+            <StatCard label="Trips" value={summary ? String(summary.trips) : '—'} />
           </AppView>
           <AppView row className="gap-2.5">
-            <StatCard label="Trip earnings" value={formatRupees(summary?.tripEarnings ?? 0)} />
-            <StatCard label="Incentives" value={formatRupees(summary?.incentives ?? 0)} />
+            <StatCard
+              label="Trip earnings"
+              value={summary ? formatRupees(summary.tripEarnings) : '—'}
+            />
+            <StatCard label="Incentives" value={summary ? formatRupees(summary.incentives) : '—'} />
           </AppView>
           <AppView row className="gap-2.5">
-            <StatCard label="Online time" value={formatMinutes(summary?.onlineMinutes ?? 0)} />
-            <StatCard label="Cash collected" value={formatRupees(summary?.cashCollected ?? 0)} />
+            <StatCard
+              label="Online time"
+              value={summary?.onlineMinutes != null ? formatMinutes(summary.onlineMinutes) : '—'}
+            />
+            <StatCard
+              label="Cash collected"
+              value={summary ? formatRupees(summary.cashCollected) : '—'}
+            />
           </AppView>
         </AppView>
 
-        {summary ? (
-          <EarningsTrendChart
-            title={period === 'month' ? 'By week' : 'Last 7 days'}
-            buckets={summary.buckets}
-          />
+        {summaryQuery.isError ? (
+          <AppText className="text-muted">Could not load earnings. Try again later.</AppText>
         ) : null}
+        {summary ? <EarningsTrendChart title="Daily earnings" buckets={summary.buckets} /> : null}
 
         <AppView className="gap-3">
           <AppView row className="items-center justify-between px-1">
@@ -104,7 +111,11 @@ export function MyEarningsScreen() {
               </AppPressable>
             ) : null}
           </AppView>
-          {trips.length === 0 ? (
+          {tripsQuery.isError ? (
+            <AppText className="px-1 text-muted">Could not load recent trips.</AppText>
+          ) : tripsQuery.isLoading ? (
+            <AppText className="px-1 text-muted">Loading trips…</AppText>
+          ) : trips.length === 0 ? (
             <AppText className="px-1 text-[13px] text-muted">
               Completed trips will appear here.
             </AppText>

@@ -36,7 +36,6 @@ export const driverProfileSchema = z.object({
     .regex(/^[6-9][0-9]{9}$/, 'Enter your 10-digit mobile number')
     .transform((digits) => `+91${digits}`),
   dob: z.string().trim().regex(DOB_PATTERN, 'Enter your date of birth as DD / MM / YYYY'),
-  city: z.string().trim().min(2, 'Select your city'),
 });
 
 export type DriverProfileInput = z.infer<typeof driverProfileSchema>;

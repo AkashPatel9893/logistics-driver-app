@@ -1,113 +1,98 @@
+import { getUser } from '@/lib/auth/utils';
+import { storage } from '@/lib/storage';
+
+import { ApiError } from './api-error';
 import { request } from './client';
-import type {
-  DriverTransaction,
-  DriverWallet,
-  EarningsPeriod,
-  EarningsSummary,
-  TripSummary,
-} from './models';
+import type { DriverWallet, EarningsPeriod, EarningsSummary, TripSummary } from './models';
 
 export const earningsApi = {
   getSummary: async (period: EarningsPeriod, signal?: AbortSignal): Promise<EarningsSummary> => {
-    try {
-      const res = await request<any>({ url: '/partner/earnings', signal });
-      const items = res?.items ?? [];
-      const total = items.reduce((acc: number, item: any) => acc + Number(item.net_amount ?? 0), 0);
-      return {
-        period,
-        from: new Date().toISOString(),
-        to: new Date().toISOString(),
-        trips: items.length,
-        totalEarnings: total,
-        tripEarnings: total,
-        incentives: 0,
-        cashCollected: 0,
-        onlineMinutes: 0,
-        buckets: [{ label: 'This Week', amount: total }],
-      };
-    } catch {
-      return {
-        period,
-        from: new Date().toISOString(),
-        to: new Date().toISOString(),
-        trips: 0,
-        totalEarnings: 0,
-        tripEarnings: 0,
-        incentives: 0,
-        cashCollected: 0,
-        onlineMinutes: 0,
-        buckets: [],
-      };
-    }
+    const res = await request<any>({ url: '/partner/earnings', params: { period }, signal });
+    const summary = res.summary;
+    return {
+      period,
+      from: summary.from_date,
+      to: summary.to_date,
+      trips: summary.trips_count,
+      totalEarnings: Number(summary.total_net_earnings),
+      tripEarnings: Number(summary.total_net_earnings) - Number(summary.incentives),
+      incentives: Number(summary.incentives),
+      cashCollected: Number(summary.cash_collected),
+      onlineMinutes: summary.online_minutes,
+      buckets: summary.daily.map((day: { date: string; amount: string | number }) => ({
+        label: day.date.slice(5),
+        amount: Number(day.amount),
+      })),
+    };
   },
 
   getWallet: async (signal?: AbortSignal): Promise<DriverWallet> => {
-    try {
-      const res = await request<any>({ url: '/wallet', signal });
-      let transactions: DriverTransaction[] = [];
-      try {
-        const txs = await request<any[]>({ url: '/wallet/transactions', signal });
-        if (Array.isArray(txs)) {
-          transactions = txs.map((t: any) => ({
-            id: t.id,
-            kind: 'trip_earning',
-            title: t.title ?? t.kind ?? 'Wallet Transfer',
-            amount: Number(t.amount ?? 0),
-            createdAt: t.created_at ?? new Date().toISOString(),
-            orderNumber: t.order_id ? `ORD-${String(t.order_id).slice(0, 6)}` : null,
-          }));
-        }
-      } catch {}
-      return {
-        balance: Number(res.balance ?? 0),
-        minPayout: Math.abs(Number(res.minimum_balance ?? 100)),
-        bankLabel: 'Verified Bank Account',
-        transactions,
-      };
-    } catch {
-      return {
-        balance: 0,
-        minPayout: 100,
-        bankLabel: null,
-        transactions: [],
-      };
-    }
+    const [res, txs] = await Promise.all([
+      request<any>({ url: '/wallet', signal }),
+      request<any[]>({ url: '/wallet/transactions', signal }),
+    ]);
+    return {
+      balance: Number(res.balance),
+      transactions: txs.map((t: any) => ({
+        id: t.id,
+        kind: t.kind,
+        title: t.title,
+        amount: Number(t.amount),
+        createdAt: t.created_at,
+        orderNumber: t.order_id ? `ORD-${String(t.order_id).slice(0, 6)}` : null,
+      })),
+    };
   },
 
-  requestPayout: async (amount: number): Promise<DriverWallet> => {
+  requestPayout: async (amount: number): Promise<void> => {
+    const user = getUser();
+    if (!user) throw new ApiError('Please sign in again before withdrawing.', 'unknown');
+    const storageKey = `pending_payout:${user.id}`;
+    const saved = storage.getString(storageKey);
+    const pending = saved ? (JSON.parse(saved) as { amount: number; key: string }) : null;
+    if (pending && pending.amount !== amount) {
+      throw new ApiError(
+        'A previous withdrawal has an unknown status. Contact support before trying again.',
+        'unknown',
+      );
+    }
+    const key =
+      pending?.key ??
+      `payout-${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    if (!pending) storage.set(storageKey, JSON.stringify({ amount, key }));
     try {
       await request<any>({
         method: 'POST',
         url: '/partner/payouts',
         data: { amount },
+        headers: { 'Idempotency-Key': key },
       });
-    } catch {
-      // Fallback
+      storage.remove(storageKey);
+    } catch (error) {
+      // Preserve the key for uncertain outcomes so a retry cannot pay twice.
+      if (
+        error instanceof ApiError &&
+        error.status !== null &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        ![408, 409, 429].includes(error.status)
+      ) {
+        storage.remove(storageKey);
+      }
+      throw error;
     }
-    return earningsApi.getWallet();
   },
 
   getTrips: async (signal?: AbortSignal): Promise<TripSummary[]> => {
-    try {
-      const res = await request<any>({ url: '/partner/earnings', signal });
-      const items = res?.items ?? [];
-      return items.map((i: any) => ({
-        id: i.trip_id ?? i.id,
-        number: `TRP-${String(i.trip_id ?? i.id)
-          .slice(0, 6)
-          .toUpperCase()}`,
-        status: i.status === 'SETTLED' ? 'delivered' : 'cancelled',
-        pickupLabel: 'Pickup Location',
-        dropLabel: 'Drop Location',
-        vehicle: { id: 'truck', name: 'Mini Truck', imageKey: 'truck' },
-        tripDistanceKm: 5.2,
-        fare: Number(i.gross_amount ?? i.net_amount ?? 0),
-        driverEarning: Number(i.net_amount ?? 0),
-        paymentMode: 'prepaid',
-        endedAt: i.calculated_at ?? new Date().toISOString(),
-      }));
-    } catch {
-      return [];
-    }
+    const res = await request<any>({ url: '/partner/earnings', signal });
+    return res.items.map((item: any) => ({
+      id: item.trip_id,
+      number: String(item.trip_id).slice(0, 6).toUpperCase(),
+      status: item.status,
+      driverEarning: Number(item.net_amount),
+      endedAt: item.calculated_at,
+      paidTo: item.paid_to,
+      fleetName: item.fleet_name,
+    }));
   },
 };

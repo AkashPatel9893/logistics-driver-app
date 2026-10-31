@@ -184,7 +184,7 @@ export function VehicleDetailsScreen() {
                       : 'text-amber-700 dark:text-amber-400'
                   }`}
                 >
-                  {vehicle.documents?.rc?.label || 'Pending'}
+                  {vehicle.documents?.rc?.label || '—'}
                 </AppText>
               </AppView>
             </AppView>
@@ -209,7 +209,7 @@ export function VehicleDetailsScreen() {
                       : 'text-amber-700 dark:text-amber-400'
                   }`}
                 >
-                  {vehicle.documents?.insurance?.label || 'Pending'}
+                  {vehicle.documents?.insurance?.label || '—'}
                 </AppText>
               </AppView>
             </AppView>
@@ -236,7 +236,7 @@ export function VehicleDetailsScreen() {
                       : 'text-amber-700 dark:text-amber-400'
                   }`}
                 >
-                  {vehicle.documents?.pollution?.label || 'Pending'}
+                  {vehicle.documents?.pollution?.label || '—'}
                 </AppText>
               </AppView>
             </AppView>

@@ -60,10 +60,10 @@ export function LoginScreen() {
                 onPress={form.handleContinue}
                 disabled={!form.isPhoneValid || form.isLoading}
                 pressScale={0.97}
-                className={`w-full items-center justify-center rounded-2xl py-4 shadow-sm ${
+                className={`w-full items-center justify-center rounded-2xl py-4 ${
                   !form.isPhoneValid || form.isLoading
                     ? 'bg-neutral-300 dark:bg-neutral-700 opacity-60'
-                    : 'bg-[#1A1A1A] dark:bg-white active:bg-neutral-800'
+                    : 'bg-[#1A1A1A] dark:bg-white shadow-sm active:bg-neutral-800'
                 }`}
               >
                 <AppText className="text-[16px] font-bold text-white dark:text-[#1A1A1A]">

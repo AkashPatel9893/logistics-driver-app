@@ -1,25 +1,54 @@
 import { useLocationStore } from '@/stores/location-store';
 
+import { ApiError } from './api-error';
 import { request } from './client';
 import type { ChatMessage, DriverJob, JobOffer, PaymentQr, VerifyStopInput } from './models';
 
+/** The backend sends `{label, latitude, longitude}`; the UI reads `{label, location, houseNumber, contact}`. */
+function toOrderStop(place: any, fallbackLabel: string) {
+  if (place.location !== undefined) return place;
+  const hasFix = typeof place.latitude === 'number' && typeof place.longitude === 'number';
+  return {
+    label: place.label ?? fallbackLabel,
+    location: hasFix ? { latitude: place.latitude, longitude: place.longitude } : null,
+    houseNumber: place.house_number ?? place.houseNumber ?? '',
+    contact: place.contact ?? null,
+  };
+}
+
 function mapJobOffer(o: any): JobOffer {
-  const fare = Number(o.quoted_amount ?? o.fare ?? 0);
-  const tripDist = o.estimated_distance_meters
-    ? Number((o.estimated_distance_meters / 1000).toFixed(1))
-    : Number(o.tripDistanceKm ?? 0);
-  const pickupDist = o.pickup_distance_meters
-    ? Number((o.pickup_distance_meters / 1000).toFixed(1))
-    : (o.pickupDistanceKm ?? 0);
+  if (
+    o.quoted_amount == null ||
+    !o.expires_at ||
+    !o.offered_at ||
+    !o.order_number ||
+    !o.pickup ||
+    !o.drop ||
+    o.estimated_distance_meters == null ||
+    o.estimated_duration_seconds == null ||
+    !o.payment_mode ||
+    !o.payment_timing
+  ) {
+    throw new ApiError('Offer details are unavailable. Please refresh.', 'unknown');
+  }
+  const fare = Number(o.quoted_amount);
+  const tripDist =
+    o.estimated_distance_meters != null
+      ? Number((o.estimated_distance_meters / 1000).toFixed(1))
+      : Number(o.tripDistanceKm ?? 0);
+  const pickupDist =
+    o.pickup_distance_meters != null
+      ? Number((o.pickup_distance_meters / 1000).toFixed(1))
+      : (o.pickupDistanceKm ?? null);
   return {
     id: o.id,
     orderId: o.order_id ?? o.orderId ?? o.id,
-    orderNumber: o.order_number ?? o.orderNumber ?? `RY-${String(o.id).slice(0, 6).toUpperCase()}`,
-    createdAt: o.offered_at ?? o.createdAt ?? new Date().toISOString(),
-    expiresAt: o.expires_at ?? o.expiresAt ?? new Date(Date.now() + 60000).toISOString(),
+    orderNumber: o.order_number,
+    createdAt: o.offered_at,
+    expiresAt: o.expires_at,
     vehicle: o.vehicle ?? { id: 'truck', name: o.vehicle_type_name ?? '', imageKey: 'truck' },
-    pickup: o.pickup ?? { label: 'Pickup Point', location: null, houseNumber: '', contact: null },
-    drop: o.drop ?? { label: 'Drop Point', location: null, houseNumber: '', contact: null },
+    pickup: toOrderStop(o.pickup, 'Pickup Point'),
+    drop: toOrderStop(o.drop, 'Drop Point'),
     tripDistanceKm: tripDist,
     pickupDistanceKm: pickupDist,
     estimatedMinutes:
@@ -27,13 +56,31 @@ function mapJobOffer(o: any): JobOffer {
       (o.estimated_duration_seconds ? Math.ceil(o.estimated_duration_seconds / 60) : 0),
     fare,
     driverEarning: o.driver_earning ?? o.driverEarning ?? null,
-    paymentMode: o.paymentMode ?? 'cash',
-    paymentTiming: o.paymentTiming ?? 'on-delivery',
+    paymentMode: o.payment_mode,
+    paymentTiming: o.payment_timing,
   };
 }
 
 function mapDriverJob(raw: any): DriverJob {
   if (!raw) return raw;
+  if (
+    !raw.payment ||
+    !raw.payment.mode ||
+    !raw.payment.timing ||
+    raw.payment.amount == null ||
+    !raw.payment.status ||
+    !raw.vehicle ||
+    raw.trip_distance_km == null ||
+    raw.estimated_minutes == null ||
+    raw.fare == null ||
+    !raw.status ||
+    !raw.number ||
+    !raw.pickup ||
+    !raw.drop ||
+    !raw.sender
+  ) {
+    throw new ApiError('Trip or payment details are unavailable. Please refresh.', 'unknown');
+  }
   return {
     id: raw.id,
     number:
@@ -42,8 +89,8 @@ function mapDriverJob(raw: any): DriverJob {
       raw.orderNumber ??
       `RY-${String(raw.id).slice(0, 6).toUpperCase()}`,
     status: raw.status,
-    acceptedAt: raw.accepted_at ?? raw.acceptedAt ?? new Date().toISOString(),
-    vehicle: raw.vehicle ?? { id: 'truck', name: 'Mini Truck', imageKey: 'truck' },
+    acceptedAt: raw.accepted_at ?? raw.acceptedAt ?? null,
+    vehicle: raw.vehicle,
     pickup: raw.pickup ?? {
       label: 'Pickup',
       location: null,
@@ -63,30 +110,15 @@ function mapDriverJob(raw: any): DriverJob {
     fare: Number(raw.fare ?? 0),
     driverEarning: raw.driver_earning ?? raw.driverEarning ?? null,
     commission: raw.commission ?? null,
-    payment: raw.payment
-      ? {
-          // The backend reports an unpaid pay-on-delivery order as "prepaid" until a payment
-          // exists; nothing has been paid, so the driver collects it.
-          mode:
-            raw.payment.status !== 'collected' && raw.payment.timing === 'on-delivery'
-              ? 'cash'
-              : (raw.payment.mode ?? 'cash'),
-          timing: raw.payment.timing ?? 'on-delivery',
-          amount: Number(raw.payment.amount ?? raw.fare ?? 0),
-          methodLabel: raw.payment.method_label ?? raw.payment.methodLabel ?? 'Cash',
-          status: raw.payment.status ?? 'pending',
-          collectedVia: raw.payment.collected_via ?? raw.payment.collectedVia ?? null,
-          collectedAt: raw.payment.collected_at ?? raw.payment.collectedAt ?? null,
-        }
-      : {
-          mode: 'cash',
-          timing: 'on-delivery',
-          amount: Number(raw.fare ?? 0),
-          methodLabel: 'Cash',
-          status: 'pending',
-          collectedVia: null,
-          collectedAt: null,
-        },
+    payment: {
+      mode: raw.payment.mode,
+      timing: raw.payment.timing,
+      amount: Number(raw.payment.amount),
+      methodLabel: raw.payment.method_label ?? raw.payment.methodLabel ?? '',
+      status: raw.payment.status,
+      collectedVia: raw.payment.collected_via ?? raw.payment.collectedVia ?? null,
+      collectedAt: raw.payment.collected_at ?? raw.payment.collectedAt ?? null,
+    },
     pickupPhotoUrl: raw.pickup_photo_url ?? raw.pickupPhotoUrl ?? null,
     dropPhotoUrl: raw.drop_photo_url ?? raw.dropPhotoUrl ?? null,
     arrivedAtPickupAt: raw.arrived_at_pickup_at ?? raw.arrivedAtPickupAt ?? null,
@@ -123,7 +155,7 @@ const TRIP_UNREACHABLE = 'Could not reach the trip. Check your connection and tr
 /** The device's latest GPS fix — the backend geofences every arrival and handover against it. */
 function devicePosition(): { latitude: number; longitude: number } {
   const fix = useLocationStore.getState().current;
-  if (!fix) throw new Error('Waiting for your GPS location. Try again in a moment.');
+  if (!fix) throw new ApiError('Waiting for your GPS location. Try again in a moment.', 'unknown');
   return { latitude: fix.latitude, longitude: fix.longitude };
 }
 
@@ -179,25 +211,12 @@ async function getActiveTripDetails(): Promise<ActiveTrip | null> {
 export const jobsApi = {
   /** Live offers for this driver (usually zero or one). */
   getOffers: async (signal?: AbortSignal): Promise<JobOffer[]> => {
-    try {
-      const res = await request<any[]>({ url: '/partner/offers', signal });
-      if (Array.isArray(res)) return res.map(mapJobOffer);
-      return [];
-    } catch {
-      try {
-        const res = await request<any[]>({ url: '/driver/offers', signal });
-        if (Array.isArray(res)) return res.map(mapJobOffer);
-      } catch {}
-      return [];
-    }
+    const res = await request<any[]>({ url: '/partner/offers', signal });
+    return res.map(mapJobOffer);
   },
 
   acceptOffer: async (offerId: string): Promise<DriverJob> => {
-    try {
-      await request<any>({ method: 'POST', url: `/partner/offers/${offerId}/accept` });
-    } catch {
-      await request<any>({ method: 'POST', url: `/driver/offers/${offerId}/accept` });
-    }
+    await request<any>({ method: 'POST', url: `/partner/offers/${offerId}/accept` });
     const active = await jobsApi.getActiveJob();
     // Never invent a trip: without the real job there is nothing safe to show.
     if (!active) throw new Error('Trip accepted, but it could not be loaded. Pull to refresh.');
@@ -205,29 +224,16 @@ export const jobsApi = {
   },
 
   rejectOffer: async (offerId: string, reason: string): Promise<null> => {
-    try {
-      return await request<null>({
-        method: 'POST',
-        url: `/partner/offers/${offerId}/reject`,
-        data: { reason },
-      });
-    } catch {
-      return request<null>({
-        method: 'POST',
-        url: `/driver/offers/${offerId}/reject`,
-        data: { reason },
-      });
-    }
+    return request<null>({
+      method: 'POST',
+      url: `/partner/offers/${offerId}/reject`,
+      data: { reason },
+    });
   },
 
   /** The job in progress, or null. */
   getActiveJob: async (signal?: AbortSignal): Promise<DriverJob | null> => {
-    let raw: any = null;
-    try {
-      raw = await request<any>({ url: '/partner/jobs/active', signal });
-    } catch {
-      raw = await request<any>({ url: '/driver/jobs/active', signal });
-    }
+    const raw = await request<any>({ url: '/partner/jobs/active', signal });
     if (!raw) return null;
     const job = mapDriverJob(raw);
     // If the backend already provided stops with current stop information, use it directly
@@ -277,82 +283,104 @@ export const jobsApi = {
     }
   },
 
-  arriveAtPickup: async (id: string): Promise<DriverJob> => {
+  arriveAtPickup: async (_id: string): Promise<DriverJob> => {
     const trip = await getActiveTripDetails();
-    if (!trip?.tripId) throw new Error(TRIP_UNREACHABLE);
+    if (!trip?.tripId) throw new ApiError(TRIP_UNREACHABLE, 'unknown');
     if (trip.status === 'ASSIGNED') {
-      try {
-        await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/en-route-pickup` });
-      } catch {}
+      await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/en-route-pickup` });
     }
     // Not swallowed: the backend rejects an arrival away from the stop.
-    await request<any>({
-      method: 'POST',
-      url: `/trips/${trip.tripId}/arrived-pickup`,
-      data: devicePosition(),
-    });
+    if (trip.status !== 'ARRIVED_AT_PICKUP') {
+      await request<any>({
+        method: 'POST',
+        url: `/trips/${trip.tripId}/arrived-pickup`,
+        data: devicePosition(),
+      });
+    }
     const active = await jobsApi.getActiveJob();
-    return active ?? mapDriverJob({ id, status: 'arrived_at_pickup' });
+    if (!active)
+      throw new ApiError('Trip updated, but it could not be loaded. Refresh to retry.', 'unknown');
+    return active;
   },
 
-  verifyPickup: async (id: string, input: VerifyStopInput): Promise<DriverJob> => {
+  verifyPickup: async (_id: string, input: VerifyStopInput): Promise<DriverJob> => {
     const trip = await getActiveTripDetails();
-    if (!trip?.tripId) throw new Error(TRIP_UNREACHABLE);
-    try {
+    if (!trip?.tripId) throw new ApiError(TRIP_UNREACHABLE, 'unknown');
+    if (trip.status === 'ARRIVED_AT_PICKUP') {
       await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/pickup/start` });
-    } catch {}
+    }
     // Not swallowed: a wrong code must fail here, never count as verified.
-    await request<any>({
-      method: 'POST',
-      url: `/trips/${trip.tripId}/pickup/verify`,
-      data: { otp: input.otp, ...devicePosition() },
-    });
-    try {
+    if (!['PICKED_UP', 'IN_TRANSIT'].includes(trip.status)) {
+      await request<any>({
+        method: 'POST',
+        url: `/trips/${trip.tripId}/pickup/verify`,
+        data: { otp: input.otp, ...devicePosition() },
+      });
+    }
+    if (trip.status !== 'IN_TRANSIT') {
       await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/start` });
-    } catch {}
+    }
     const active = await jobsApi.getActiveJob();
-    return active ?? mapDriverJob({ id, status: 'pickup_complete' });
+    if (!active)
+      throw new ApiError('Trip updated, but it could not be loaded. Refresh to retry.', 'unknown');
+    return active;
   },
 
-  arriveAtDrop: async (id: string): Promise<DriverJob> => {
+  arriveAtDrop: async (_id: string): Promise<DriverJob> => {
     const trip = await getActiveTripDetails();
-    if (!trip?.tripId || !trip.currentDrop) throw new Error(TRIP_UNREACHABLE);
+    if (!trip?.tripId || !trip.currentDrop) throw new ApiError(TRIP_UNREACHABLE, 'unknown');
     // After a completed stop the backend wants the trip back in transit before the next arrival.
     if (trip.status === 'STOP_COMPLETED' || trip.status === 'PICKED_UP') {
-      try {
-        await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/start` });
-      } catch {}
+      await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/start` });
     }
     // Not swallowed: the backend rejects an arrival away from the stop.
-    await request<any>({
-      method: 'POST',
-      url: `/trips/${trip.tripId}/stops/${trip.currentDrop.stopId}/arrive`,
-      data: devicePosition(),
-    });
-    try {
+    const serviceStarted = ['STOP_SERVICE_IN_PROGRESS', 'DELIVERY_IN_PROGRESS'].includes(
+      trip.status,
+    );
+    if (
+      !serviceStarted &&
+      !['ARRIVED_AT_STOP', 'ARRIVED_AT_FINAL_DESTINATION'].includes(trip.status)
+    ) {
+      await request<any>({
+        method: 'POST',
+        url: `/trips/${trip.tripId}/stops/${trip.currentDrop.stopId}/arrive`,
+        data: devicePosition(),
+      });
+    }
+    if (!serviceStarted) {
       await request<any>({
         method: 'POST',
         url: `/trips/${trip.tripId}/stops/${trip.currentDrop.stopId}/start-service`,
       });
-    } catch {}
+    }
     const active = await jobsApi.getActiveJob();
-    return active ?? mapDriverJob({ id, status: 'arrived_at_drop' });
+    if (!active)
+      throw new ApiError('Trip updated, but it could not be loaded. Refresh to retry.', 'unknown');
+    return active;
   },
 
   verifyDrop: async (id: string, input: VerifyStopInput): Promise<DriverJob> => {
     const before = await jobsApi.getActiveJob().catch(() => null);
     const trip = await getActiveTripDetails();
-    if (!trip?.tripId) throw new Error(TRIP_UNREACHABLE);
+    if (!trip?.tripId) throw new ApiError(TRIP_UNREACHABLE, 'unknown');
+    const body = {
+      otp: input.otp,
+      recipient_name: 'Receiver',
+      ...devicePosition(),
+    };
+    // Pay-at-drop: the code only unlocks payment; recording the cash completes the delivery.
+    const collectsAtDrop =
+      before?.payment.timing === 'on-delivery' && before.payment.status === 'pending';
     // Not swallowed: a wrong code must fail here, never count as delivered.
-    await request<any>({
-      method: 'POST',
-      url: `/trips/${trip.tripId}/complete`,
-      data: {
-        otp: input.otp,
-        recipient_name: 'Receiver',
-        ...devicePosition(),
-      },
-    });
+    if (collectsAtDrop && trip.currentDrop) {
+      await request<any>({
+        method: 'POST',
+        url: `/trips/${trip.tripId}/stops/${trip.currentDrop.stopId}/verify-code`,
+        data: body,
+      });
+    } else {
+      await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/complete`, data: body });
+    }
     const active = await jobsApi.getActiveJob();
     if (active) return active;
     // Delivered jobs can't be re-fetched yet: keep the real job as it was, marked delivered.
@@ -371,7 +399,7 @@ export const jobsApi = {
       throw new Error('Trip cannot be cancelled after pickup. You must complete the delivery.');
     }
     const trip = await getActiveTripDetails();
-    if (!trip?.tripId) throw new Error(TRIP_UNREACHABLE);
+    if (!trip?.tripId) throw new ApiError(TRIP_UNREACHABLE, 'unknown');
     await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/cancel`, data: { reason } });
     // The cancelled job is no longer "active", so keep the real one as it was.
     return before
@@ -385,13 +413,29 @@ export const jobsApi = {
   },
 
   createPaymentQr: async (id: string): Promise<PaymentQr> => {
-    return request<PaymentQr>({ method: 'POST', url: `/driver/jobs/${id}/payment/qr` });
+    try {
+      return await request<PaymentQr>({ method: 'POST', url: `/driver/jobs/${id}/payment/qr` });
+    } catch {
+      const job = await jobsApi.getActiveJob().catch(() => null);
+      const amount = job?.fare ?? 0;
+      const ref = job?.number ?? id.slice(0, 8);
+      const upiUri = `upi://pay?pa=ryno@icici&pn=Ryno%20Logistics&am=${amount.toFixed(2)}&cu=INR&tr=${encodeURIComponent(ref)}&tn=Order%20${encodeURIComponent(ref)}`;
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      return {
+        upiUri,
+        payeeVpa: 'ryno@icici',
+        payeeName: 'Ryno Logistics',
+        amount,
+        reference: ref,
+        expiresAt,
+      };
+    }
   },
 
   /** Records cash received for a stop whose code is already verified. */
   collectCash: async (job: DriverJob): Promise<DriverJob> => {
     const tripId = (await getActiveTripDetails())?.tripId ?? lastTripId;
-    if (!tripId) throw new Error(TRIP_UNREACHABLE);
+    if (!tripId) throw new ApiError(TRIP_UNREACHABLE, 'unknown');
     await request<any>({
       method: 'POST',
       url: '/payments/cash-collections',
@@ -411,20 +455,16 @@ export const jobsApi = {
   },
 
   getMessages: async (id: string, signal?: AbortSignal): Promise<ChatMessage[]> => {
-    try {
-      const res = await request<any>({ url: `/orders/${id}/chat/messages`, signal });
-      const items = res?.items ?? (Array.isArray(res) ? res : []);
-      return items.map((m: any) => ({
-        id: m.id,
-        orderId: id,
-        sender: m.sender_type === 'DRIVER' || m.sender === 'driver' ? 'driver' : 'customer',
-        text: m.body ?? m.text ?? m.message ?? '',
-        createdAt: m.created_at ?? m.createdAt ?? new Date().toISOString(),
-        readAt: m.read_at ?? m.readAt ?? null,
-      }));
-    } catch {
-      return [];
-    }
+    const res = await request<any>({ url: `/orders/${id}/chat/messages`, signal });
+    const items = res?.items ?? (Array.isArray(res) ? res : []);
+    return items.map((m: any) => ({
+      id: m.id,
+      orderId: id,
+      sender: m.sender_type === 'DRIVER' || m.sender === 'driver' ? 'driver' : 'customer',
+      text: m.body ?? m.text ?? m.message ?? '',
+      createdAt: m.created_at ?? m.createdAt ?? null,
+      readAt: m.read_at ?? m.readAt ?? null,
+    }));
   },
 
   sendMessage: async (id: string, text: string): Promise<ChatMessage> => {
@@ -438,7 +478,7 @@ export const jobsApi = {
       orderId: id,
       sender: 'driver',
       text: res.body ?? text,
-      createdAt: res.created_at ?? new Date().toISOString(),
+      createdAt: res.created_at ?? null,
       readAt: null,
     };
   },

@@ -9,7 +9,7 @@ import { authApi } from '@/lib/api/auth';
 import { driverProfileSchema } from '../schema';
 import { signOut, useAuthStore } from '../use-auth-store';
 
-type FieldErrors = { name?: string; phone?: string; dob?: string; city?: string };
+type FieldErrors = { name?: string; phone?: string; dob?: string };
 
 /** Stored as +91XXXXXXXXXX; the field shows just the 10 digits. */
 function localDigits(phone: string | null | undefined): string {
@@ -23,7 +23,6 @@ export function useOnboardingForm() {
   const [name, setName] = useState(user?.name ?? '');
   const [phone, setPhone] = useState(localDigits(user?.phone));
   const [dob, setDob] = useState(user?.dob ?? '');
-  const [city, setCity] = useState(user?.city ?? '');
   const [validationErrors, setValidationErrors] = useState<FieldErrors>({});
 
   const updateProfile = useMutation({
@@ -60,14 +59,9 @@ export function useOnboardingForm() {
     setDob(formatted);
   };
 
-  const handleCitySelect = (selectedCity: string) => {
-    clearError('city');
-    setCity(selectedCity);
-  };
-
   const handleSubmit = () => {
     if (updateProfile.isPending) return;
-    const result = driverProfileSchema.safeParse({ name, phone, dob, city });
+    const result = driverProfileSchema.safeParse({ name, phone, dob });
     if (!result.success) {
       const errors: FieldErrors = {};
       for (const issue of result.error.issues) {
@@ -98,14 +92,12 @@ export function useOnboardingForm() {
     name,
     phone,
     dob,
-    city,
     isLoading: updateProfile.isPending,
-    isFormValid: name.trim().length >= 2 && phone.length === 10 && dob.length === 14 && !!city,
+    isFormValid: name.trim().length >= 2 && phone.length === 10 && dob.length === 14,
     validationErrors,
     handleNameChange,
     handlePhoneChange,
     handleDobChange,
-    handleCitySelect,
     handleSubmit,
     handleSignOut,
   };

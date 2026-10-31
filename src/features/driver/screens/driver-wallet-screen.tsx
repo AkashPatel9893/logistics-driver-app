@@ -10,14 +10,6 @@ import { formatDayTime, formatRupees } from '@/lib/format';
 
 import { SetupScreenLayout } from '../components/setup-screen-layout';
 
-const KIND_LABEL: Record<DriverTransaction['kind'], string> = {
-  trip_earning: 'Trip earning',
-  cash_commission: 'Commission',
-  incentive: 'Incentive',
-  bonus: 'Bonus',
-  payout: 'Bank payout',
-};
-
 function TransactionRow({ txn }: { txn: DriverTransaction }) {
   const isCredit = txn.amount >= 0;
   return (
@@ -36,9 +28,7 @@ function TransactionRow({ txn }: { txn: DriverTransaction }) {
           <AppText className="text-[14px] font-bold text-foreground" numberOfLines={1}>
             {txn.title}
           </AppText>
-          <AppText className="text-[11px] text-muted">
-            {formatDayTime(txn.createdAt)} · {KIND_LABEL[txn.kind]}
-          </AppText>
+          <AppText className="text-[11px] text-muted">{formatDayTime(txn.createdAt)}</AppText>
         </AppView>
       </AppView>
       <AppText
@@ -68,23 +58,21 @@ export function DriverWalletScreen() {
       ]);
       return;
     }
-    if (wallet.balance < wallet.minPayout) {
-      Alert.alert(
-        'Balance too low',
-        `You can withdraw once you have ${formatRupees(wallet.minPayout)}.`,
-      );
+    if (wallet.balance <= 0) {
+      Alert.alert('Balance too low', 'You need a positive balance to withdraw.');
       return;
     }
     Alert.alert(
       'Withdraw to bank',
-      `Transfer ${formatRupees(wallet.balance)} to ${wallet.bankLabel}? It reaches your account within 2 hours.`,
+      `Transfer ${formatRupees(wallet.balance)} to your verified bank account?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Withdraw',
           onPress: () =>
             payout.mutate(wallet.balance, {
-              onSuccess: () => Alert.alert('Withdrawal initiated', `Sent to ${wallet.bankLabel}.`),
+              onSuccess: () =>
+                Alert.alert('Withdrawal initiated', 'Your withdrawal request was submitted.'),
               onError: (e) => Alert.alert('Withdrawal failed', getErrorMessage(e)),
             }),
         },
@@ -153,7 +141,9 @@ export function DriverWalletScreen() {
                 <Icon name="banknote" size={20} tone="brand" />
               </AppView>
               <AppText className="flex-1 text-[14px] font-bold text-foreground">
-                {wallet?.bankLabel ?? 'No bank account yet'}
+                {profile?.bank
+                  ? `${profile.bank.bankName} · ${profile.bank.accountLast4}`
+                  : 'No bank account yet'}
               </AppText>
             </AppView>
             {profile?.bank ? (
@@ -175,6 +165,9 @@ export function DriverWalletScreen() {
             Transactions
           </AppText>
           {walletQuery.isLoading ? <AppSpinner /> : null}
+          {walletQuery.isError ? (
+            <AppText className="text-muted">Could not load wallet. Pull to retry.</AppText>
+          ) : null}
           {wallet && wallet.transactions.length === 0 ? (
             <AppView className="items-center rounded-2xl border border-dashed border-border p-6">
               <AppText className="text-center text-[13px] text-muted">

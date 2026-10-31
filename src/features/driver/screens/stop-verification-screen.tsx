@@ -107,14 +107,17 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
     verify
       .mutateAsync({ id: job.id, otp, photoUrl: photo.url ?? undefined })
       .then((updated) => {
+        // Payment is collected only once the code is verified, never before.
+        if (paymentDue) {
+          onPaymentDue({ ...job, status: updated.status });
+          return;
+        }
         // More stops to deliver: back to the trip for the next one.
         if (stop === 'drop' && updated.status !== 'delivered') {
           router.replace('/active-delivery');
           return;
         }
-        // Payment is collected only once the code is verified, never before.
-        if (paymentDue) onPaymentDue({ ...job, status: updated.status });
-        else leaveStop(router, stop, updated.id);
+        leaveStop(router, stop, updated.id);
       })
       .catch((error: unknown) => {
         const message = getErrorMessage(error);
@@ -307,6 +310,10 @@ function StopVerificationScreen({ stop }: { stop: Stop }) {
 
   // Verifying moves the job past this stop, so the payment step works from its own copy.
   if (awaitingPayment) return <PaymentStep job={awaitingPayment} stop={stop} />;
+  // Code already verified earlier (e.g. the app was reopened): go straight to collecting payment.
+  if (stop === 'drop' && job?.status === 'awaiting_payment') {
+    return <PaymentStep job={job} stop={stop} />;
+  }
 
   if (!job || job.status !== expected) {
     return (

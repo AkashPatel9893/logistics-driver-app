@@ -12,7 +12,7 @@ import {
   Icon,
   TextField,
 } from '@/components/ui';
-import { useDriverProfile, useSaveVehicle, useVehicleTypes } from '@/hooks/use-driver';
+import { useDriverProfile, useVehicleTypes } from '@/hooks/use-driver';
 import { useAddFleetVehicle, useFleetCompany, useRequestFleetLink } from '@/hooks/use-fleet';
 import type { FleetDriver } from '@/features/fleet/types';
 import type { FuelType } from '@/lib/api/models';
@@ -32,7 +32,6 @@ export function SetupVehicleScreen() {
   const router = useRouter();
   const { data: profile } = useDriverProfile();
   const { data: vehicleTypes = [] } = useVehicleTypes();
-  const saveVehicle = useSaveVehicle();
   const addFleetVehicle = useAddFleetVehicle();
   const requestFleetLink = useRequestFleetLink();
   const { data: company } = useFleetCompany();
@@ -46,20 +45,18 @@ export function SetupVehicleScreen() {
   const [typeId, setTypeId] = useState(current?.vehicleTypeId ?? (vehicleTypes[0]?.id || ''));
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [plateNumber, setPlateNumber] = useState(current?.plateNumber ?? '');
-  const [capacityKg, setCapacityKg] = useState(600);
+  const [capacityKg, setCapacityKg] = useState<number | null>(null);
   const [showCapacityPicker, setShowCapacityPicker] = useState(false);
-  const [fuelType] = useState<FuelType>('DIESEL');
-
-  // Documents
-  const [rcUploaded, setRcUploaded] = useState(false);
-  const [vehiclePhotoUploaded, setVehiclePhotoUploaded] = useState(false);
+  const [fuelType, setFuelType] = useState<FuelType | null>(null);
+  const [make, setMake] = useState('');
+  const [model, setModel] = useState('');
 
   // Driver Assignment
   const [assignedDriver, setAssignedDriver] = useState<FleetDriver | null>(null);
   const [showDriverChoiceModal, setShowDriverChoiceModal] = useState(false);
   const [error, setError] = useState<string>();
 
-  const selectedType = vehicleTypes.find((t) => t.id === typeId) || vehicleTypes[0];
+  const selectedType = vehicleTypes.find((t) => t.id === typeId);
 
   const handleLinkOwner = async () => {
     const clean = ownerPhone.replace(/[^0-9]/g, '');
@@ -113,41 +110,22 @@ export function SetupVehicleScreen() {
     if (cleanPlate.length < 6) {
       return setError('Enter the registration number as printed on your RC.');
     }
+    if (!selectedType || !make.trim() || !model.trim() || !fuelType) {
+      return setError('Choose a vehicle type and fuel type, and enter the make and model.');
+    }
     setError(undefined);
-
-    const make = 'Tata';
-    const model = 'Tata Ace Gold';
-    const vehicleTypeCode = selectedType?.code || 'MINI_TRUCK';
+    const vehicleTypeCode = selectedType.code;
 
     try {
       await addFleetVehicle.mutateAsync({
         registration_number: cleanPlate,
         vehicle_type_code: vehicleTypeCode,
-        make,
-        model,
-        capacity_kg: capacityKg,
+        make: make.trim(),
+        model: model.trim(),
+        capacity_kg: capacityKg ?? undefined,
         fuel_type: fuelType,
         assign_driver: assignedDriver?.isOwnerSelf ? { is_owner_self: true } : undefined,
       });
-
-      // Also update personal driver vehicle if individual setup
-      if (selectedType) {
-        saveVehicle.mutate(
-          {
-            vehicleTypeId: selectedType.id,
-            make,
-            model,
-            plateNumber: cleanPlate,
-            fuelType,
-            rcPhotoUri: 'local://rc.jpg',
-            insurancePhotoUri: 'local://insurance.jpg',
-            insuranceExpiry: '2027-10-15',
-            pucPhotoUri: 'local://puc.jpg',
-            pucExpiry: '2027-10-15',
-          },
-          { onError: () => undefined },
-        );
-      }
 
       Alert.alert('Vehicle saved', `Your ${model} (${cleanPlate}) has been added to your fleet.`, [
         {
@@ -297,20 +275,12 @@ export function SetupVehicleScreen() {
 
                 {showTypePicker ? (
                   <AppView className="mt-2 rounded-2xl border border-border bg-card p-2 shadow-md">
-                    {(vehicleTypes.length > 0
-                      ? vehicleTypes
-                      : [
-                          { id: '1', name: 'Mini truck', capacityKg: 600, code: 'MINI_TRUCK' },
-                          { id: '2', name: 'Tata Ace', capacityKg: 750, code: 'TATA_ACE' },
-                          { id: '3', name: '3 Wheeler', capacityKg: 500, code: 'THREE_WHEELER' },
-                          { id: '4', name: 'Pickup 8ft', capacityKg: 1000, code: 'PICKUP_8FT' },
-                        ]
-                    ).map((type) => (
+                    {vehicleTypes.map((type) => (
                       <AppPressable
                         key={type.id}
                         onPress={() => {
                           setTypeId(type.id);
-                          setCapacityKg(type.capacityKg || 600);
+                          setCapacityKg(type.capacityKg);
                           setShowTypePicker(false);
                         }}
                         className={`flex-row items-center justify-between rounded-xl px-3 py-2.5 ${
@@ -328,7 +298,9 @@ export function SetupVehicleScreen() {
                         >
                           {type.name}
                         </AppText>
-                        <AppText className="text-[12px] text-muted">{type.capacityKg} kg</AppText>
+                        <AppText className="text-[12px] text-muted">
+                          {type.capacityKg == null ? '—' : `${type.capacityKg} kg`}
+                        </AppText>
                       </AppPressable>
                     ))}
                   </AppView>
@@ -409,80 +381,65 @@ export function SetupVehicleScreen() {
                 ) : null}
               </AppView>
 
-              {/* Vehicle documents */}
+              <TextField
+                variant="outlined"
+                label="Make"
+                required
+                value={make}
+                onChangeText={setMake}
+                placeholder="Enter vehicle make"
+              />
+              <TextField
+                variant="outlined"
+                label="Model"
+                required
+                value={model}
+                onChangeText={setModel}
+                placeholder="Enter vehicle model"
+              />
+              <AppView className="gap-2">
+                <AppText className="text-[13px] font-semibold text-foreground-secondary">
+                  Fuel type
+                </AppText>
+                <AppView row className="flex-wrap gap-2">
+                  {(['PETROL', 'DIESEL', 'CNG', 'ELECTRIC'] as FuelType[]).map((fuel) => (
+                    <AppPressable
+                      key={fuel}
+                      onPress={() => setFuelType(fuel)}
+                      className={`rounded-xl border border-border px-3 py-2 ${fuelType === fuel ? 'bg-surface-muted' : 'bg-card'}`}
+                    >
+                      <AppText>{fuel}</AppText>
+                    </AppPressable>
+                  ))}
+                </AppView>
+              </AppView>
               <AppView className="gap-3">
                 <AppText className="text-[15px] font-bold text-foreground">
                   Vehicle documents
                 </AppText>
-
-                {/* Upload registration certificate */}
-                <AppView className="rounded-2xl border border-dashed border-[#FF5722]/50 bg-card p-4">
-                  <AppView row className="items-center justify-between">
+                {[
+                  { title: 'Upload registration certificate', icon: 'arrow.up.doc' as const },
+                  { title: 'Add vehicle photo', icon: 'camera' as const },
+                ].map((document) => (
+                  <AppView
+                    key={document.title}
+                    row
+                    className="items-center justify-between rounded-2xl border border-dashed border-border bg-card p-4"
+                  >
                     <AppView row className="flex-1 items-center gap-3">
-                      <AppView className="h-10 w-10 items-center justify-center rounded-xl bg-[#FF5722]/10">
-                        <Icon name="arrow.up.doc" size={20} tone="brand" />
+                      <AppView className="h-10 w-10 items-center justify-center rounded-xl bg-brand/10">
+                        <Icon name={document.icon} size={20} tone="brand" />
                       </AppView>
-                      <AppView className="flex-1 pr-2">
+                      <AppView className="flex-1">
                         <AppText className="text-[14px] font-bold text-foreground">
-                          Upload registration certificate
+                          {document.title}
                         </AppText>
-                        <AppText className="text-[12px] text-muted">
-                          PDF, JPG or PNG · Max 5 MB
-                        </AppText>
+                        <AppText className="text-[12px] text-muted">Unavailable</AppText>
                       </AppView>
                     </AppView>
-                    <AppPressable
-                      onPress={() => setRcUploaded((prev) => !prev)}
-                      className={`rounded-xl px-4 py-2 ${
-                        rcUploaded ? 'bg-emerald-500/15' : 'bg-surface-muted'
-                      }`}
-                    >
-                      <AppText
-                        className={`text-[12px] font-bold ${
-                          rcUploaded ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'
-                        }`}
-                      >
-                        {rcUploaded ? 'Uploaded' : 'Upload'}
-                      </AppText>
-                    </AppPressable>
+                    <AppText className="text-[12px] font-bold text-muted">—</AppText>
                   </AppView>
-                </AppView>
-
-                {/* Add vehicle photo */}
-                <AppView className="rounded-2xl border border-dashed border-[#FF5722]/50 bg-card p-4">
-                  <AppView row className="items-center justify-between">
-                    <AppView row className="flex-1 items-center gap-3">
-                      <AppView className="h-10 w-10 items-center justify-center rounded-xl bg-[#FF5722]/10">
-                        <Icon name="camera" size={20} tone="brand" />
-                      </AppView>
-                      <AppView className="flex-1 pr-2">
-                        <AppText className="text-[14px] font-bold text-foreground">
-                          Add vehicle photo
-                        </AppText>
-                        <AppText className="text-[12px] text-muted">
-                          Show the full vehicle and number plate
-                        </AppText>
-                      </AppView>
-                    </AppView>
-                    <AppPressable
-                      onPress={() => setVehiclePhotoUploaded((prev) => !prev)}
-                      className={`rounded-xl px-4 py-2 ${
-                        vehiclePhotoUploaded ? 'bg-emerald-500/15' : 'bg-surface-muted'
-                      }`}
-                    >
-                      <AppText
-                        className={`text-[12px] font-bold ${
-                          vehiclePhotoUploaded
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-foreground'
-                        }`}
-                      >
-                        {vehiclePhotoUploaded ? 'Uploaded' : 'Upload'}
-                      </AppText>
-                    </AppPressable>
-                  </AppView>
-                </AppView>
-
+                ))}
                 {/* Add a driver card matching screenshot 1 screen 5 */}
                 <AppView className="rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
                   <AppView row className="items-center justify-between">

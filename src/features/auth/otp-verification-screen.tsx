@@ -88,10 +88,10 @@ export function OtpVerificationScreen() {
               onPress={() => otp.handleVerify()}
               disabled={otp.code.length < otp.otpLength || otp.isVerifying}
               pressScale={0.97}
-              className={`w-full items-center justify-center rounded-2xl py-4 shadow-sm ${
+              className={`w-full items-center justify-center rounded-2xl py-4 ${
                 otp.code.length < otp.otpLength || otp.isVerifying
                   ? 'bg-neutral-300 dark:bg-neutral-700 opacity-60'
-                  : 'bg-[#1A1A1A] dark:bg-white active:bg-neutral-800'
+                  : 'bg-[#1A1A1A] dark:bg-white shadow-sm active:bg-neutral-800'
               }`}
             >
               <AppText className="text-[16px] font-bold text-white dark:text-[#1A1A1A]">

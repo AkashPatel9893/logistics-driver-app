@@ -4,9 +4,9 @@ import { AppPressable, AppText, AppView } from '@/components/ui';
 import { formatRupees } from '@/lib/format';
 
 export interface DriverStatsRowProps {
-  tripsToday: number;
-  earningsToday: number;
-  walletBalance: number;
+  tripsToday?: number;
+  earningsToday?: number;
+  walletBalance?: number;
   className?: string;
 }
 
@@ -19,16 +19,21 @@ export function DriverStatsRow({
   const router = useRouter();
 
   const stats = [
-    { label: 'TRIPS', value: String(tripsToday), note: 'Today', route: '/(tabs)/orders' as const },
+    {
+      label: 'TRIPS',
+      value: tripsToday == null ? '—' : String(tripsToday),
+      note: 'Today',
+      route: '/(tabs)/orders' as const,
+    },
     {
       label: 'EARNED',
-      value: formatRupees(earningsToday),
+      value: earningsToday == null ? '—' : formatRupees(earningsToday),
       note: 'Today',
       route: '/earnings' as const,
     },
     {
       label: 'BALANCE',
-      value: formatRupees(walletBalance),
+      value: walletBalance == null ? '—' : formatRupees(walletBalance),
       note: 'Wallet',
       route: '/wallet' as const,
     },
@@ -42,12 +47,17 @@ export function DriverStatsRow({
           onPress={() => router.push(stat.route)}
           pressScale={0.96}
           accessibilityLabel={`${stat.label} ${stat.value}, ${stat.note}`}
-          className="flex-1 rounded-[22px] border border-border/80 bg-card p-4 shadow-sm"
+          className="flex-1 rounded-[22px] border border-border/80 bg-card px-3 py-4 shadow-sm"
         >
           <AppText className="text-[11px] font-bold uppercase tracking-wider text-muted">
             {stat.label}
           </AppText>
-          <AppText className="mt-1.5 text-[20px] font-black text-foreground" numberOfLines={1}>
+          <AppText
+            className="mt-1.5 text-[20px] font-black text-foreground"
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+          >
             {stat.value}
           </AppText>
           <AppText className="mt-0.5 text-[11px] font-medium text-foreground-secondary">

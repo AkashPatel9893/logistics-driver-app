@@ -14,7 +14,7 @@ export interface FleetDriver {
 }
 
 export interface DocumentVerificationInfo {
-  verified: boolean;
+  verified: boolean | null;
   label: string;
   expiryDays?: number;
   isExpiringSoon?: boolean;
@@ -76,18 +76,18 @@ export function toFleetVehicle(res: FleetVehicleResponse): FleetVehicle {
       : null,
     documents: {
       rc: {
-        verified: res.documents?.rc?.verified ?? false,
-        label: res.documents?.rc?.label ?? 'Pending',
+        verified: res.documents?.rc?.verified ?? null,
+        label: res.documents?.rc?.label ?? '—',
         isExpiringSoon: res.documents?.rc?.is_expiring_soon,
       },
       insurance: {
-        verified: res.documents?.insurance?.verified ?? false,
-        label: res.documents?.insurance?.label ?? 'Pending',
+        verified: res.documents?.insurance?.verified ?? null,
+        label: res.documents?.insurance?.label ?? '—',
         isExpiringSoon: res.documents?.insurance?.is_expiring_soon,
       },
       pollution: {
-        verified: res.documents?.pollution?.verified ?? false,
-        label: res.documents?.pollution?.label ?? 'Pending',
+        verified: res.documents?.pollution?.verified ?? null,
+        label: res.documents?.pollution?.label ?? '—',
         isExpiringSoon: res.documents?.pollution?.is_expiring_soon,
       },
     },
@@ -101,7 +101,7 @@ export function toCompanyDetails(res: CompanyResponse): CompanyDetails {
     ownerName: res.owner_name ?? '',
     phone: res.phone ?? '',
     email: res.email ?? '',
-    companyType: res.company_type ?? 'Fleet Owner / Transport',
+    companyType: res.company_type ?? '',
     registeredAddress: res.registered_address ?? '',
     gstin: res.gstin ?? '',
     isRegistered: res.is_registered,

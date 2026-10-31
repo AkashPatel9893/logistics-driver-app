@@ -11,7 +11,8 @@ export interface EarningsTrendChartProps {
 
 export function EarningsTrendChart({ title, buckets, className = '' }: EarningsTrendChartProps) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const activeIdx = selectedIdx ?? buckets.length - 1;
+  const activeIdx =
+    selectedIdx !== null && selectedIdx < buckets.length ? selectedIdx : buckets.length - 1;
   const selected = buckets[activeIdx];
   const maxAmount = Math.max(1, ...buckets.map((b) => b.amount));
 

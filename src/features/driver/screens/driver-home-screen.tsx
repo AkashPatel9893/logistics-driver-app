@@ -14,7 +14,7 @@ import {
   Icon,
 } from '@/components/ui';
 import { useDriverProfile, useMarkWelcomeBonusSeen, useSetOnline } from '@/hooks/use-driver';
-import { useEarnings } from '@/hooks/use-earnings';
+import { useEarnings, useWallet } from '@/hooks/use-earnings';
 import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import { useActiveJob, useOffers } from '@/hooks/use-jobs';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
@@ -25,7 +25,6 @@ import { canDrawOverlays, isBubbleSupported, openOverlaySettings } from '@/lib/d
 import { greetingFor } from '@/lib/format';
 
 import { ActiveDeliveryCard } from '../components/active-delivery-card';
-import { DailyCheckBanner } from '../components/daily-check-banner';
 import { DeliveryRequestCard } from '../components/delivery-request-card';
 import { DriverOnlineToggle } from '../components/driver-online-toggle';
 import { DriverSetupChecklist } from '../components/driver-setup-checklist';
@@ -69,6 +68,7 @@ export function DriverHomeScreen() {
   const offersQuery = useOffers(Boolean(profile?.isOnline) && !activeJob);
   const offers = offersQuery.data ?? [];
   const todayQuery = useEarnings('today');
+  const walletQuery = useWallet();
   const setOnline = useSetOnline();
   const markBonusSeen = useMarkWelcomeBonusSeen();
 
@@ -229,18 +229,14 @@ export function DriverHomeScreen() {
             />
 
             <DriverStatsRow
-              tripsToday={todayQuery.data?.trips ?? 0}
-              earningsToday={todayQuery.data?.totalEarnings ?? 0}
-              walletBalance={profile.walletBalance || 1000}
+              tripsToday={todayQuery.data?.trips}
+              earningsToday={todayQuery.data?.totalEarnings}
+              walletBalance={walletQuery.data?.balance}
             />
 
             {activeJob ? <ActiveDeliveryCard job={activeJob} /> : null}
 
-            {!profile.canGoOnline ? (
-              <DriverSetupChecklist profile={profile} />
-            ) : (
-              <DailyCheckBanner check={profile.dailyCheck} />
-            )}
+            {!profile.canGoOnline ? <DriverSetupChecklist profile={profile} /> : null}
 
             {profile.isOnline && !activeJob ? (
               offers.length > 0 ? (
@@ -270,8 +266,6 @@ export function DriverHomeScreen() {
           <>
             <FleetStatsRow
               vehiclesCount={vehicles.length}
-              totalEarnings={todayQuery.data?.totalEarnings ?? 0}
-              walletBalance={profile.walletBalance}
               onPressVehicles={() => router.push('/driver-profile')}
             />
 

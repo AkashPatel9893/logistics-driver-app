@@ -1,3 +1,4 @@
+import { useWallet } from '@/hooks/use-earnings';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { Alert } from 'react-native';
@@ -31,14 +32,12 @@ export function DriverAccountScreen() {
 
   const { data: profile } = useDriverProfile();
   const setOnline = useSetOnline();
+  const { data: wallet } = useWallet();
   const { data: company } = useFleetCompany();
   const { data: vehicles = [] } = useFleetVehicles();
 
-  const name = company?.ownerName || profile?.name || 'Partner';
-  const ratingLabel =
-    profile?.rating != null
-      ? `${profile.rating.toFixed(1)} · ${profile.lifetimeTrips} trips`
-      : `${profile?.lifetimeTrips ?? 0} trips`;
+  const name = company?.ownerName || profile?.name || '—';
+  const ratingLabel = profile?.rating != null ? profile.rating.toFixed(1) : '—';
 
   const MENU_ITEMS: MenuItem[] = [
     {
@@ -86,13 +85,8 @@ export function DriverAccountScreen() {
     {
       icon: 'calendar',
       label: 'Daily Vehicle Check',
-      sublabel: profile?.dailyCheck.completedToday
-        ? 'Done for today'
-        : `Earn ${formatRupees(profile?.dailyCheck.reward ?? 0)} with a vehicle selfie`,
+      sublabel: 'Unavailable',
       route: '/daily-check',
-      badge: profile?.dailyCheck.completedToday
-        ? undefined
-        : `+${formatRupees(profile?.dailyCheck.reward ?? 0)}`,
     },
     {
       icon: 'questionmark.circle',
@@ -203,7 +197,7 @@ export function DriverAccountScreen() {
             </AppView>
             <AppText className="mt-2.5 text-[14px] font-bold text-foreground">My Wallet</AppText>
             <AppText className="mt-0.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-              {formatRupees(profile?.walletBalance ?? 0)}
+              {wallet ? formatRupees(wallet.balance) : '—'}
             </AppText>
           </AppPressable>
         </AppView>
@@ -213,7 +207,11 @@ export function DriverAccountScreen() {
           {MENU_ITEMS.map((item, idx) => (
             <AppPressable
               key={item.label}
-              onPress={() => router.push(item.route as any)}
+              onPress={() =>
+                item.route === '/daily-check'
+                  ? Alert.alert('Unavailable', 'Daily vehicle checks are not available yet.')
+                  : router.push(item.route as any)
+              }
               pressScale={0.98}
               className={`flex-row items-center justify-between p-4 ${
                 idx !== MENU_ITEMS.length - 1 ? 'border-b border-border/60' : ''

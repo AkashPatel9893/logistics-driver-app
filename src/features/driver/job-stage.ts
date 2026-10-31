@@ -7,6 +7,7 @@ export const JOB_STAGE_LABEL: Record<OrderStatus, string> = {
   arrived_at_pickup: 'At pickup',
   pickup_complete: 'Heading to drop',
   arrived_at_drop: 'At drop',
+  awaiting_payment: 'Collect payment',
   delivered: 'Delivered',
   cancelled: 'Cancelled',
 };

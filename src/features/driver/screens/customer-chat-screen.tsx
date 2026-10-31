@@ -139,7 +139,7 @@ function Chat({ job }: { job: DriverJob }) {
                 <AppText
                   className={`mt-1.5 text-[11px] ${isDriver ? 'self-end text-white/80' : 'text-muted'}`}
                 >
-                  {formatTime(msg.createdAt)}
+                  {msg.createdAt ? formatTime(msg.createdAt) : '—'}
                 </AppText>
               </AppView>
             );
@@ -188,8 +188,8 @@ function Chat({ job }: { job: DriverJob }) {
               onPress={() => sendText(inputText)}
               disabled={send.isPending || !inputText.trim()}
               pressScale={0.94}
-              className={`rounded-full px-6 py-3.5 shadow-md shadow-brand/25 ${
-                inputText.trim() ? 'bg-brand' : 'bg-brand/50'
+              className={`rounded-full px-6 py-3.5 ${
+                inputText.trim() ? 'bg-brand shadow-md shadow-brand/25' : 'bg-brand/50'
               }`}
             >
               <AppText className="text-[14px] font-black text-white">Send</AppText>

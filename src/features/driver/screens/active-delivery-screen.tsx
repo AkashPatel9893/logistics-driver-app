@@ -17,7 +17,7 @@ import {
 import { useActiveJob, useArriveAtDrop, useArriveAtPickup, useCancelJob } from '@/hooks/use-jobs';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverJob } from '@/lib/api/models';
-import { formatEarning, formatDistance, formatMinutes } from '@/lib/format';
+import { formatDistance, formatEarning, formatMinutes, formatRupees } from '@/lib/format';
 import { distanceKm } from '@/lib/geo';
 import { openNavigationChooser } from '@/lib/navigation-apps';
 import { useLocationStore } from '@/stores/location-store';
@@ -64,7 +64,10 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
 
   const isPickup = leg.stop === 'pickup';
   const contact = isPickup ? job.sender : (job.drop.contact ?? job.sender);
-  const hasArrived = job.status === 'arrived_at_pickup' || job.status === 'arrived_at_drop';
+  const hasArrived =
+    job.status === 'arrived_at_pickup' ||
+    job.status === 'arrived_at_drop' ||
+    job.status === 'awaiting_payment';
   const busy = arriveAtPickup.isPending || arriveAtDrop.isPending;
 
   const markArrived = () => {
@@ -120,7 +123,9 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
   const primaryLabel = hasArrived
     ? isPickup
       ? 'Verify pickup'
-      : 'Verify delivery'
+      : job.status === 'awaiting_payment'
+        ? 'Collect payment'
+        : 'Verify delivery'
     : isPickup
       ? "I've arrived at pickup"
       : "I've arrived at drop";
@@ -147,7 +152,7 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
 
       <AppView
         style={{ top: insets.top + 8 }}
-        className="absolute left-4 right-4 z-20 overflow-hidden rounded-3xl border border-border bg-neutral-950/90 p-4 shadow-xl"
+        className="absolute left-4 right-4 z-20 overflow-hidden rounded-3xl border border-border bg-neutral-950 p-4 shadow-xl"
       >
         <AppView row className="items-center justify-between">
           <LiquidGlassBackButton onPress={() => router.replace('/home')} />
@@ -254,7 +259,9 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
             {paymentNote}
           </AppText>
           <AppText className="text-[16px] font-black text-foreground">
-            {formatEarning(job.driverEarning, job.fare)}
+            {payment.mode === 'cash' && payment.status !== 'collected'
+              ? formatRupees(payment.amount)
+              : formatEarning(job.driverEarning, job.fare)}
           </AppText>
         </AppView>
 

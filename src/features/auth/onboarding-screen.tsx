@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useRouter } from 'expo-router';
 import { Alert, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -15,19 +16,13 @@ import {
   TextField,
 } from '@/components/ui';
 import { useRegisterCompany } from '@/hooks/use-fleet';
+import { authApi } from '@/lib/api/auth';
+import { fleetApi } from '@/lib/api/fleet';
+import { getErrorMessage } from '@/lib/api/api-error';
+import { useAuthStore } from './use-auth-store';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 
 import { useOnboardingForm } from './hooks/use-onboarding-form';
-
-const POPULAR_CITIES = [
-  'Delhi NCR',
-  'Mumbai',
-  'Bengaluru',
-  'Hyderabad',
-  'Pune',
-  'Chennai',
-  'Kolkata',
-];
 
 const COMPANY_TYPES = [
   'Fleet Owner / Transport',
@@ -40,15 +35,14 @@ const COMPANY_TYPES = [
 
 export function OnboardingScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const form = useOnboardingForm();
   const registerCompany = useRegisterCompany();
   const setDashboardRole = useFleetStore.use.setDashboardRole();
 
   // Registration type choice: individual driver vs company / fleet owner
+  const [companySubmitting, setCompanySubmitting] = useState(false);
   const [onboardingType, setOnboardingType] = useState<'driver' | 'owner'>('driver');
-
-  // Individual driver fields
-  const [showCityPicker, setShowCityPicker] = useState(false);
 
   // Company details fields
   const [companyName, setCompanyName] = useState('');
@@ -71,7 +65,8 @@ export function OnboardingScreen() {
     companyEmail.trim().includes('@') &&
     Boolean(companyType) &&
     registeredAddress.trim().length >= 5 &&
-    isValidGstin;
+    isValidGstin &&
+    form.dob.length === 14;
 
   const handleCompanySubmit = async () => {
     if (!isCompanyValid) {
@@ -85,26 +80,39 @@ export function OnboardingScreen() {
       return;
     }
 
+    if (companySubmitting) return;
+    setCompanySubmitting(true);
     try {
-      await registerCompany.mutateAsync({
-        company_name: companyName.trim(),
-        owner_name: ownerName.trim(),
-        phone: `+91 ${companyPhone.trim().slice(-10)}`,
-        email: companyEmail.trim(),
-        company_type: companyType,
-        registered_address: registeredAddress.trim(),
-        gstin: gstin.trim().toUpperCase(),
-      });
+      // The company endpoint requires a partner profile. Keep the form open until both
+      // steps succeed, so the user can retry if the second request fails.
+      const profile = await authApi.updateProfile({ name: ownerName, dob: form.dob });
+      const company = await fleetApi.getCompany();
+      if (company.is_registered && company.gstin?.toUpperCase() !== gstin.trim().toUpperCase()) {
+        throw new Error('A different company is already registered to this account.');
+      }
+      if (!company.is_registered) {
+        await registerCompany.mutateAsync({
+          company_name: companyName.trim(),
+          owner_name: ownerName.trim(),
+          phone: `+91${companyPhone.trim().slice(-10)}`,
+          email: companyEmail.trim(),
+          company_type: companyType,
+          registered_address: registeredAddress.trim(),
+          gstin: gstin.trim().toUpperCase(),
+        });
+      }
       setDashboardRole('owner');
-
-      // Also update driver profile with owner's name and phone
-      form.handleNameChange(ownerName);
-      form.handlePhoneChange(companyPhone);
-      form.handleCitySelect('Bengaluru');
-      form.handleSubmit();
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Failed to register company.';
-      Alert.alert('Registration Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
+      useAuthStore.getState().setUser(profile);
+      router.replace('/home');
+    } catch (error) {
+      const message =
+        error instanceof Error &&
+        error.message === 'A different company is already registered to this account.'
+          ? error.message
+          : getErrorMessage(error);
+      Alert.alert('Registration error', message);
+    } finally {
+      setCompanySubmitting(false);
     }
   };
 
@@ -219,67 +227,22 @@ export function OnboardingScreen() {
                   inputClassName="ml-2 text-[15px]"
                 />
 
-                {/* Location / City */}
-                <AppView>
-                  <AppText className="mb-2 text-[13px] font-semibold text-foreground-secondary">
+                <AppView className="gap-2">
+                  <AppText className="text-[13px] font-semibold text-foreground-secondary">
                     Location
                   </AppText>
-                  <AppPressable
-                    onPress={() => {
-                      Keyboard.dismiss();
-                      setShowCityPicker((prev) => !prev);
-                    }}
-                    className="flex-row items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
+                  <AppView
+                    row
+                    className="items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5"
                   >
-                    <AppView row className="items-center gap-3">
-                      <Icon name="location" size={20} tone="brand" />
-                      <AppText className="text-[15px] font-semibold text-foreground">
-                        {form.city || 'Choose your city'}
-                      </AppText>
-                    </AppView>
-                    <Icon
-                      name={showCityPicker ? 'chevron.up' : 'chevron.down'}
-                      size={18}
-                      tone="icon-subtle"
-                    />
-                  </AppPressable>
-
-                  {showCityPicker ? (
-                    <AppView className="mt-2 rounded-2xl border border-border bg-card p-2 shadow-md">
-                      {POPULAR_CITIES.map((cityItem) => (
-                        <AppPressable
-                          key={cityItem}
-                          onPress={() => {
-                            form.handleCitySelect(cityItem);
-                            setShowCityPicker(false);
-                          }}
-                          className={`flex-row items-center justify-between rounded-xl px-3 py-2.5 ${
-                            form.city === cityItem
-                              ? 'bg-brand/10'
-                              : 'active:bg-neutral-100 dark:active:bg-neutral-800'
-                          }`}
-                        >
-                          <AppText
-                            className={`text-[14px] ${
-                              form.city === cityItem
-                                ? 'font-bold text-brand'
-                                : 'font-medium text-foreground'
-                            }`}
-                          >
-                            {cityItem}
-                          </AppText>
-                          {form.city === cityItem ? (
-                            <Icon name="check" size={16} tone="brand" />
-                          ) : null}
-                        </AppPressable>
-                      ))}
-                    </AppView>
-                  ) : null}
-                  {form.validationErrors.city ? (
-                    <AppText className="mt-1.5 text-[12px] font-medium text-error">
-                      {form.validationErrors.city}
+                    <Icon name="location" size={20} tone="brand" />
+                    <AppText className="text-[15px] font-semibold text-foreground">
+                      Current location
                     </AppText>
-                  ) : null}
+                  </AppView>
+                  <AppText className="text-[13px] text-muted">
+                    Your operating area is determined when you continue.
+                  </AppText>
                 </AppView>
               </AppView>
 
@@ -339,6 +302,22 @@ export function OnboardingScreen() {
                   leading={<Icon name="person" size={20} tone="icon-subtle" />}
                   inputClassName="ml-2 text-[15px]"
                 />
+
+                <TextField
+                  variant="outlined"
+                  label="Date of birth"
+                  required
+                  value={form.dob}
+                  onChangeText={form.handleDobChange}
+                  placeholder="DD / MM / YYYY"
+                  keyboardType="number-pad"
+                  maxLength={14}
+                  leading={<Icon name="calendar" size={20} tone="icon-subtle" />}
+                  inputClassName="ml-2 text-[15px]"
+                />
+                <AppText className="text-[13px] text-muted">
+                  We use your current location to find your operating area when you continue.
+                </AppText>
 
                 {/* Phone number */}
                 <TextField
@@ -470,10 +449,10 @@ export function OnboardingScreen() {
               <AppView className="mt-10">
                 <Button
                   variant="brand"
-                  label={form.isLoading ? 'Saving...' : 'Continue'}
+                  label={companySubmitting ? 'Saving...' : 'Continue'}
                   onPress={handleCompanySubmit}
-                  disabled={!isCompanyValid || form.isLoading}
-                  loading={form.isLoading}
+                  disabled={!isCompanyValid || companySubmitting}
+                  loading={companySubmitting}
                   size="lg"
                   textClassName="font-extrabold text-base"
                 />

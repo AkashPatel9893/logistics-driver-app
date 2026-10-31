@@ -22,8 +22,8 @@ export function useRequestPayout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (amount: number) => earningsApi.requestPayout(amount),
-    onSuccess: (wallet) => {
-      queryClient.setQueryData(queryKeys.wallet, wallet);
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.wallet });
       queryClient.invalidateQueries({ queryKey: queryKeys.profile });
     },
   });

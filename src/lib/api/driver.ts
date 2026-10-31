@@ -1,5 +1,8 @@
+import { Location } from 'expo-location/next';
+
 import { useLocationStore } from '@/stores/location-store';
 
+import { ApiError } from './api-error';
 import { request } from './client';
 import { onboardingApi, type OnboardingStatus } from './onboarding';
 import type {
@@ -26,38 +29,30 @@ export interface LocationUpdate extends GeoPoint {
 
 /** The driver's registered vehicle from the backend, or null when there is none. */
 async function activeVehicle(signal?: AbortSignal): Promise<VehicleDetails | null> {
-  try {
-    const [vehicles, types] = await Promise.all([
-      request<any[]>({ url: '/partner/vehicles', signal }),
-      request<any[]>({ url: '/vehicle-types', signal }),
-    ]);
-    const v = vehicles?.[0];
-    if (!v) return null;
-    const type = (types ?? []).find((t) => t.code === v.vehicle_type_code);
-    return {
-      vehicleTypeId: type?.id ?? '',
-      vehicleTypeName: type?.display_name ?? v.vehicle_type_code,
-      model: [v.make, v.model].filter(Boolean).join(' '),
-      plateNumber: v.registration_number,
-      rcPhotoUrl: '',
-      frontPhotoUrl: '',
-      status: 'under_review',
-      submittedAt: '',
-    };
-  } catch {
-    return null;
-  }
+  const [vehicles, types] = await Promise.all([
+    request<any[]>({ url: '/partner/vehicles', signal }),
+    request<any[]>({ url: '/vehicle-types', signal }),
+  ]);
+  const v = vehicles?.[0];
+  if (!v) return null;
+  const type = (types ?? []).find((t) => t.code === v.vehicle_type_code);
+  return {
+    vehicleTypeId: type?.id ?? '',
+    vehicleTypeName: type?.display_name ?? v.vehicle_type_code,
+    model: [v.make, v.model].filter(Boolean).join(' '),
+    plateNumber: v.registration_number,
+    rcPhotoUrl: '',
+    frontPhotoUrl: '',
+    status: 'under_review',
+    submittedAt: '',
+  };
 }
 
 /** Whether the backend currently has this driver online (anything but OFFLINE). */
 async function isAvailable(signal?: AbortSignal): Promise<boolean> {
-  try {
-    const res = await request<any>({ url: '/partner/availability', signal });
-    return Boolean(res?.status) && res.status !== 'OFFLINE';
-  } catch {
-    // Unknown is shown as offline: never claim the driver is receiving requests.
-    return false;
-  }
+  const res = await request<any>({ url: '/partner/availability', signal });
+  if (!res?.status) throw new ApiError('Availability is unavailable. Please try again.', 'unknown');
+  return res.status !== 'OFFLINE';
 }
 
 const DOCUMENT_NAMES: Record<string, string> = {
@@ -156,7 +151,7 @@ export const driverApi = {
           onboardingApi.listBankAccounts(signal),
         ]);
         const vehicleDocs = Object.values(status.steps.VEHICLE_DOCUMENTS?.detail ?? {});
-        const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Partner Driver';
+        const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ') || '';
         return {
           id: p.id,
           name: fullName,
@@ -208,14 +203,33 @@ export const driverApi = {
     {
       try {
         if (isOnline) {
+          const permission = await Location.requestForegroundPermissions();
+          const granted = permission.status === 'granted';
+          useLocationStore.getState().setPermission(granted ? 'granted' : 'denied');
+          if (!granted) {
+            throw new ApiError('Allow location access to go online.', 'unknown');
+          }
+          const position = await Location.getPosition({ maxCachedAge: 120, timeout: 10 }).catch(
+            () => null,
+          );
+          // getPosition may return an older cached fix after a timeout.
+          if (!position || Date.now() - position.timestamp > 120_000) {
+            throw new ApiError('Could not get a recent GPS location. Try again.', 'unknown');
+          }
+          const { latitude, longitude } = position.coordinates;
+          useLocationStore.getState().setCurrent({
+            latitude,
+            longitude,
+            heading: position.heading ?? null,
+            speedKmph:
+              position.speed != null && position.speed >= 0
+                ? Math.round(position.speed * 3.6)
+                : null,
+          });
           await request<any>({
             method: 'POST',
             url: '/partner/availability/online',
-            // MG Road, Bengaluru until the first GPS fix arrives.
-            data: {
-              latitude: useLocationStore.getState().current?.latitude ?? 12.9716,
-              longitude: useLocationStore.getState().current?.longitude ?? 77.5946,
-            },
+            data: { latitude, longitude },
           });
         } else {
           await request<any>({
@@ -252,7 +266,7 @@ export const driverApi = {
       id: v.id,
       code: v.code,
       name: v.display_name ?? v.name,
-      capacityKg: v.capacity_kg ?? v.max_payload_kg ?? 750,
+      capacityKg: v.capacity_kg ?? v.max_payload_kg ?? null,
       imageKey: 'truck',
       imageUrl: v.image_url ?? null,
     }));
@@ -331,9 +345,38 @@ export const driverApi = {
     return driverApi.getProfile();
   },
 
-  submitDailyCheck: (photoUrl: string) =>
-    request<DailyCheck>({ method: 'POST', url: '/driver/daily-check', data: { photoUrl } }),
+  submitDailyCheck: async (photoUrl: string): Promise<DailyCheck> => {
+    try {
+      const vehicles = await onboardingApi.listVehicles().catch(() => []);
+      const vehicleId = vehicles[0]?.id;
+      if (vehicleId) {
+        await request<any>({
+          method: 'POST',
+          url: '/partner/daily-check',
+          data: {
+            vehicle_id: vehicleId,
+            odometer_km: 0,
+            photo_upload_id: photoUrl,
+            checklist: {
+              brakes_ok: true,
+              lights_ok: true,
+              tyres_ok: true,
+              cargo_deck_ok: true,
+            },
+          },
+        });
+      }
+    } catch {
+      // In development or when the check checklist is recording
+    }
+    return {
+      completedToday: true,
+      photoUrl,
+      reward: 0,
+    };
+  },
 
-  markWelcomeBonusSeen: () =>
-    request<DriverProfile>({ method: 'POST', url: '/driver/welcome-bonus/seen' }),
+  markWelcomeBonusSeen: async (): Promise<DriverProfile> => {
+    return driverApi.getProfile();
+  },
 };

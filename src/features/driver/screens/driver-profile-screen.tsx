@@ -55,13 +55,13 @@ export function DriverProfileScreen() {
     {
       name: 'Driving licence',
       id: kyc?.dlNumber,
-      status: kyc?.status ?? 'verified',
+      status: kyc?.status ?? 'missing',
       route: '/setup-kyc' as const,
     },
     {
       name: 'PAN card',
       id: kyc?.panNumber,
-      status: kyc?.status ?? 'verified',
+      status: kyc?.status ?? 'missing',
       route: '/setup-kyc' as const,
     },
     {

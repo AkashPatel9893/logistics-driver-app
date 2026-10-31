@@ -17,7 +17,6 @@ export function DriverTripsScreen() {
   const insets = useSafeAreaInsets();
   const tripsQuery = useTrips();
   const trips = tripsQuery.data ?? [];
-  const delivered = trips.filter((t) => t.status === 'delivered').length;
 
   return (
     <AppView className="flex-1 bg-background">
@@ -29,8 +28,7 @@ export function DriverTripsScreen() {
       >
         <AppText className="text-[24px] font-black text-foreground">My trips</AppText>
         <AppText className="text-[12px] font-medium text-muted">
-          {delivered} delivered
-          {trips.length > delivered ? ` · ${trips.length - delivered} cancelled` : ''}
+          Earnings from your recent trips
         </AppText>
       </AppView>
 
@@ -50,6 +48,8 @@ export function DriverTripsScreen() {
         ListEmptyComponent={
           tripsQuery.isLoading ? (
             <AppSpinner />
+          ) : tripsQuery.isError ? (
+            <AppText className="text-muted">Could not load trips. Pull to retry.</AppText>
           ) : (
             <AppView className="mt-2 items-center justify-center rounded-3xl border border-dashed border-border bg-card p-8">
               <AppView className="h-16 w-16 items-center justify-center rounded-2xl bg-brand/10">

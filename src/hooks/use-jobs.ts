@@ -9,8 +9,8 @@ export function useOffers(enabled: boolean) {
     queryKey: queryKeys.offers,
     queryFn: ({ signal }) => jobsApi.getOffers(signal),
     enabled,
-    // The socket pushes offers; polling is the safety net if a frame is lost.
-    refetchInterval: enabled ? 20_000 : false,
+    // Nothing pushes offers to the app (see driver-socket), so poll fast: an offer lives ~30 s.
+    refetchInterval: enabled ? 4_000 : false,
   });
 }
 
@@ -18,6 +18,8 @@ export function useActiveJob() {
   return useQuery({
     queryKey: queryKeys.activeJob,
     queryFn: ({ signal }) => jobsApi.getActiveJob(signal),
+    // Picks up a customer cancellation or ops change while the driver is on the trip.
+    refetchInterval: 10_000,
   });
 }
 

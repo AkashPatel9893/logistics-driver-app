@@ -3,6 +3,8 @@ import type { GeoPoint } from '@/lib/api/models';
 import { useRoadRoute } from '@/hooks/use-road-route';
 import { computeBounds, distanceKm } from '@/lib/geo';
 
+import { DropMarker, PickupMarker, SelfMarker } from './map-markers';
+
 export interface RouteMapProps {
   pickup: GeoPoint | null;
   drop: GeoPoint | null;
@@ -28,7 +30,7 @@ export function RouteMap({
   const target = focus === 'pickup' ? pickup : focus === 'drop' ? drop : null;
   const leg =
     focus === 'route' ? [pickup, drop] : [driver ?? (focus === 'drop' ? pickup : null), target];
-  const ends = leg.filter((p): p is GeoPoint => p !== null);
+  const ends = leg.filter((p): p is GeoPoint => p != null);
   // One road route per leg, fetched from where the driver was when the leg began.
   const road = useRoadRoute(
     `${focus}:${ends.at(-1)?.latitude},${ends.at(-1)?.longitude}`,
@@ -46,7 +48,7 @@ export function RouteMap({
     line = [from, ...road.data.slice(Math.min(nearest + 1, road.data.length - 1))];
   }
   const fit = [...line, ...(focus === 'route' ? [] : [pickup, drop])].filter(
-    (p): p is GeoPoint => p !== null,
+    (p): p is GeoPoint => p != null,
   );
 
   return (
@@ -59,20 +61,18 @@ export function RouteMap({
           <AppMapPolyline coordinates={line} strokeColor={ROUTE_COLOR} strokeWidth={4} />
         ) : null}
         {pickup ? (
-          <AppMapMarker coordinate={pickup}>
-            <AppView className="h-5 w-5 rounded-full border-[3px] border-white bg-emerald-500 shadow-sm" />
+          <AppMapMarker coordinate={pickup} title="Pickup">
+            <PickupMarker />
           </AppMapMarker>
         ) : null}
         {drop ? (
-          <AppMapMarker coordinate={drop}>
-            <AppView className="h-5 w-5 rounded-full border-[3px] border-white bg-brand shadow-sm" />
+          <AppMapMarker coordinate={drop} title="Drop">
+            <DropMarker />
           </AppMapMarker>
         ) : null}
         {driver ? (
-          <AppMapMarker coordinate={driver}>
-            <AppView className="h-6 w-6 items-center justify-center rounded-full bg-sky-500/25">
-              <AppView className="h-3.5 w-3.5 rounded-full border-2 border-white bg-sky-500" />
-            </AppView>
+          <AppMapMarker coordinate={driver} title="You">
+            <SelfMarker />
           </AppMapMarker>
         ) : null}
       </AppMapView>

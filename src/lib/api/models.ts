@@ -57,6 +57,7 @@ export type OrderStatus =
   | 'arrived_at_pickup'
   | 'pickup_complete'
   | 'arrived_at_drop'
+  | 'awaiting_payment'
   | 'delivered'
   | 'cancelled';
 
@@ -89,7 +90,7 @@ export interface VehicleTypeOption {
   name: string;
   /** Backend vehicle type code, needed to register a vehicle. */
   code: string;
-  capacityKg: number;
+  capacityKg: number | null;
   imageKey: string;
   /** Picture served by the backend; null shows the app's one fallback image. */
   imageUrl: string | null;
@@ -257,7 +258,7 @@ export interface DriverJob {
   id: string;
   number: string;
   status: OrderStatus;
-  acceptedAt: string;
+  acceptedAt: string | null;
   vehicle: VehicleRef;
   pickup: OrderStop;
   drop: OrderStop;
@@ -310,7 +311,7 @@ export interface ChatMessage {
   orderId: string;
   sender: 'driver' | 'customer';
   text: string;
-  createdAt: string;
+  createdAt: string | null;
   readAt: string | null;
 }
 
@@ -326,8 +327,7 @@ export interface PaymentQr {
 
 // ─── Earnings & wallet ──────────────────────────────────────────────────────
 
-export type DriverTransactionKind =
-  'trip_earning' | 'cash_commission' | 'incentive' | 'bonus' | 'payout';
+export type DriverTransactionKind = string;
 
 export interface DriverTransaction {
   id: string;
@@ -341,8 +341,6 @@ export interface DriverTransaction {
 
 export interface DriverWallet {
   balance: number;
-  minPayout: number;
-  bankLabel: string | null;
   transactions: DriverTransaction[];
 }
 
@@ -358,7 +356,7 @@ export interface EarningsSummary {
   tripEarnings: number;
   incentives: number;
   cashCollected: number;
-  onlineMinutes: number;
+  onlineMinutes: number | null;
   /** Chart bars: the last 7 days for "today"/"week", one per week for "month". */
   buckets: { label: string; amount: number }[];
 }
@@ -366,15 +364,11 @@ export interface EarningsSummary {
 export interface TripSummary {
   id: string;
   number: string;
-  status: 'delivered' | 'cancelled';
-  pickupLabel: string;
-  dropLabel: string;
-  vehicle: VehicleRef;
-  tripDistanceKm: number;
-  fare: number;
+  status: string;
   driverEarning: number;
-  paymentMode: PaymentMode;
   endedAt: string;
+  paidTo: 'DRIVER' | 'FLEET';
+  fleetName: string | null;
 }
 
 // ─── Content ────────────────────────────────────────────────────────────────
