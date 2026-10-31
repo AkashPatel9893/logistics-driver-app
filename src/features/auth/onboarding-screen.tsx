@@ -192,25 +192,28 @@ export function OnboardingScreen() {
                   inputClassName="ml-2 text-[15px]"
                 />
 
-                <TextField
-                  variant="outlined"
-                  label="Mobile number"
-                  required
-                  value={form.phone}
-                  onChangeText={form.handlePhoneChange}
-                  placeholder="98765 43210"
-                  keyboardType="phone-pad"
-                  autoComplete="tel"
-                  maxLength={10}
-                  error={form.validationErrors.phone}
-                  hint="Customers call this number during a trip."
-                  leading={
-                    <AppText className="text-[15px] font-bold text-foreground-secondary">
-                      +91
-                    </AppText>
-                  }
-                  inputClassName="ml-2 text-[15px]"
-                />
+                <AppView className="opacity-60">
+                  <TextField
+                    variant="outlined"
+                    label="Mobile number"
+                    required
+                    value={form.phone}
+                    editable={false}
+                    accessibilityState={{ disabled: true }}
+                    placeholder="98765 43210"
+                    keyboardType="phone-pad"
+                    autoComplete="tel"
+                    maxLength={10}
+                    error={form.validationErrors.phone}
+                    hint="Your login number cannot be changed here."
+                    leading={
+                      <AppText className="text-[15px] font-bold text-foreground-secondary">
+                        +91
+                      </AppText>
+                    }
+                    inputClassName="ml-2 text-[15px]"
+                  />
+                </AppView>
 
                 {/* Date of Birth */}
                 <TextField
