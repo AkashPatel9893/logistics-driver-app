@@ -40,7 +40,8 @@ export const earningsApi = {
         title: t.title,
         amount: Number(t.amount),
         createdAt: t.created_at,
-        orderNumber: t.order_id ? `ORD-${String(t.order_id).slice(0, 6)}` : null,
+        // The backend's own transaction title already names the order; never invent a number from the id.
+        orderNumber: null,
       })),
     };
   },
