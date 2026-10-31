@@ -104,7 +104,7 @@ function Chat({ job }: { job: DriverJob }) {
           ORDER #{job.number} · {stop === 'pickup' ? 'PICKUP POINT' : 'DROP POINT'}
         </AppText>
         <AppText className="mt-1 text-[14px] font-bold text-foreground" numberOfLines={1}>
-          {stopLabel.houseNumber}, {stopLabel.label}
+          {[stopLabel.houseNumber, stopLabel.label].filter(Boolean).join(', ')}
         </AppText>
       </AppView>
 

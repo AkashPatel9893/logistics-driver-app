@@ -96,3 +96,47 @@ export function pathDistanceKm(path: GeoPoint[]): number {
   }
   return total;
 }
+
+/**
+ * The part of `path` still ahead of `point`. `point` is projected onto the nearest path
+ * segment (not just the nearest vertex, which on long straight roads can be far away), so the
+ * remaining line starts exactly where the vehicle is. Pass `fromIndex` (the `index` of the previous
+ * result) to search only forward: a vehicle never moves back along its route, so GPS jitter or a
+ * parallel road cannot make it jump to another part of the line. `offPathKm` is the distance from
+ * `point` to that segment, `snapped` the projected point, for drawing the vehicle on the road.
+ */
+export function remainingPath(
+  path: GeoPoint[],
+  point: GeoPoint,
+  fromIndex = 0,
+): { path: GeoPoint[]; offPathKm: number; snapped: GeoPoint; index: number } {
+  if (path.length < 2) return { path: [point, ...path], offPathKm: 0, snapped: point, index: 0 };
+  // Local flat approximation (km per degree) is accurate enough at city scale.
+  const kmPerLat = 111.32;
+  const kmPerLng = 111.32 * Math.cos((point.latitude * Math.PI) / 180);
+  let best = { index: 0, t: 0, km: Infinity };
+  for (let i = Math.min(Math.max(fromIndex, 0), path.length - 2); i < path.length - 1; i++) {
+    const a = path[i];
+    const b = path[i + 1];
+    const abx = (b.longitude - a.longitude) * kmPerLng;
+    const aby = (b.latitude - a.latitude) * kmPerLat;
+    const apx = (point.longitude - a.longitude) * kmPerLng;
+    const apy = (point.latitude - a.latitude) * kmPerLat;
+    const lengthSq = abx * abx + aby * aby;
+    const t = lengthSq === 0 ? 0 : Math.min(Math.max((apx * abx + apy * aby) / lengthSq, 0), 1);
+    const km = Math.hypot(apx - t * abx, apy - t * aby);
+    if (km < best.km) best = { index: i, t, km };
+  }
+  const from = path[best.index];
+  const to = path[best.index + 1];
+  const snapped = {
+    latitude: from.latitude + (to.latitude - from.latitude) * best.t,
+    longitude: from.longitude + (to.longitude - from.longitude) * best.t,
+  };
+  return {
+    path: [snapped, ...path.slice(best.index + 1)],
+    offPathKm: best.km,
+    snapped,
+    index: best.index,
+  };
+}

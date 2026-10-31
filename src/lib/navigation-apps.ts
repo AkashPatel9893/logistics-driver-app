@@ -93,6 +93,12 @@ async function availableApps(target: GeoPoint, label: string): Promise<Navigatio
   return apps.filter((_, i) => checks[i]);
 }
 
+/** Starts Google Maps driving directions to `target` (the web page when the app is missing). */
+export async function openGoogleMapsDirections(target: GeoPoint, label: string): Promise<void> {
+  const [google] = Platform.OS === 'ios' ? iosApps(target) : androidApps(target, label);
+  await launch(google);
+}
+
 /** Lets the driver choose a map app and starts driving directions to `target`. */
 export async function openNavigationChooser(target: GeoPoint, label: string): Promise<void> {
   const apps = await availableApps(target, label);

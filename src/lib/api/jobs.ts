@@ -460,7 +460,14 @@ export const jobsApi = {
     return items.map((m: any) => ({
       id: m.id,
       orderId: id,
-      sender: m.sender_type === 'DRIVER' || m.sender === 'driver' ? 'driver' : 'customer',
+      // `is_mine` is from the viewer's side; this is the driver app.
+      sender:
+        m.is_mine === true ||
+        m.sender_role === 'DRIVER' ||
+        m.sender_type === 'DRIVER' ||
+        m.sender === 'driver'
+          ? 'driver'
+          : 'customer',
       text: m.body ?? m.text ?? m.message ?? '',
       createdAt: m.created_at ?? m.createdAt ?? null,
       readAt: m.read_at ?? m.readAt ?? null,
@@ -471,7 +478,11 @@ export const jobsApi = {
     const res = await request<any>({
       method: 'POST',
       url: `/orders/${id}/chat/messages`,
-      data: { body: text },
+      // The backend de-duplicates retries by this id, so a double tap never sends two messages.
+      data: {
+        body: text,
+        client_message_id: `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+      },
     });
     return {
       id: res.id,

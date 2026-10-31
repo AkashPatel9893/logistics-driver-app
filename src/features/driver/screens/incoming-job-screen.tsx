@@ -152,12 +152,12 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
               <StopRow
                 tone="bg-emerald-500"
                 title={offer.pickup.label}
-                subtitle={`Pickup · ${offer.pickup.houseNumber}`}
+                subtitle={['Pickup', offer.pickup.houseNumber].filter(Boolean).join(' · ')}
               />
               <StopRow
                 tone="bg-brand"
                 title={offer.drop.label}
-                subtitle={`Drop · ${offer.drop.houseNumber}`}
+                subtitle={['Drop', offer.drop.houseNumber].filter(Boolean).join(' · ')}
               />
             </AppView>
 

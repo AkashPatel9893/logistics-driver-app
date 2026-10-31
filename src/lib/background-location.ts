@@ -15,8 +15,13 @@ import { useLocationStore } from '@/stores/location-store';
 
 export const DRIVER_LOCATION_TASK = 'ryno-driver-location';
 
-/** Minimum gap between location uploads; the socket fan-out to customers uses the latest. */
-const REPORT_INTERVAL_MS = 15_000;
+/**
+ * Minimum gap between location uploads. During a trip the customer watches the car move, so
+ * uploads are frequent (a little under the 5 s GPS cadence so no fix is skipped); the rest of
+ * the time a slow rate is enough to stay online for dispatch (backend drops drivers after 60 s).
+ */
+const TRIP_REPORT_INTERVAL_MS = 4_000;
+const IDLE_REPORT_INTERVAL_MS = 45_000;
 let lastReportAt = 0;
 
 export type LocationFixInput =
@@ -64,7 +69,10 @@ export function handleLocationFix(position: LocationFixInput, forceReport = fals
     .setCurrent({ latitude, longitude, heading: heading ?? null, speedKmph });
 
   const now = Date.now();
-  if (!forceReport && now - lastReportAt < REPORT_INTERVAL_MS) return;
+  const reportIntervalMs = useLocationStore.getState().tripActive
+    ? TRIP_REPORT_INTERVAL_MS
+    : IDLE_REPORT_INTERVAL_MS;
+  if (!forceReport && now - lastReportAt < reportIntervalMs) return;
   lastReportAt = now;
   driverApi
     .reportLocation({

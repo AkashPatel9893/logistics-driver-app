@@ -7,15 +7,17 @@ import {
   stopBackgroundLocation,
 } from '@/lib/background-location';
 import { driverApi } from '@/lib/api/driver';
+import { useActiveJob } from '@/hooks/use-jobs';
 import { useLocationStore } from '@/stores/location-store';
 
 /** A cached fix older than this is not trusted as the starting position (in seconds). */
 const MAX_LAST_KNOWN_AGE_SEC = 120;
 /**
  * The backend drops a driver from dispatch when their position is older than
- * 60 s, and GPS sends nothing while parked — so re-send the last fix this often.
+ * 60 s, and GPS sends nothing while parked — so re-send the last fix this often
+ * (keep it under that 60 s limit).
  */
-const HEARTBEAT_MS = 20_000;
+const HEARTBEAT_MS = 45_000;
 /** Don't let a slow first fix hold up the continuous updates (in seconds). */
 const FIRST_FIX_TIMEOUT_SEC = 10;
 
@@ -25,6 +27,11 @@ const FIRST_FIX_TIMEOUT_SEC = 10;
  * Uses next-gen expo-location/next APIs.
  */
 export function useLocationReporter(isOnline: boolean) {
+  const hasActiveJob = Boolean(useActiveJob().data);
+  useEffect(() => {
+    useLocationStore.getState().setTripActive(hasActiveJob);
+  }, [hasActiveJob]);
+
   useEffect(() => {
     if (!isOnline) {
       stopBackgroundLocation().catch(() => undefined);

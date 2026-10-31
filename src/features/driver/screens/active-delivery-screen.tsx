@@ -17,17 +17,14 @@ import {
 import { useActiveJob, useArriveAtDrop, useArriveAtPickup, useCancelJob } from '@/hooks/use-jobs';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverJob } from '@/lib/api/models';
-import { formatDistance, formatEarning, formatMinutes, formatRupees } from '@/lib/format';
+import { formatDistance, formatEarning, formatRupees } from '@/lib/format';
 import { distanceKm } from '@/lib/geo';
-import { openNavigationChooser } from '@/lib/navigation-apps';
+import { openGoogleMapsDirections } from '@/lib/navigation-apps';
 import { useLocationStore } from '@/stores/location-store';
 
 import { RouteMap } from '../components/route-map';
-import { currentStop, JOB_STAGE_LABEL } from '../job-stage';
+import { currentStop } from '../job-stage';
 
-// Road distance is ~1.3× straight-line in Indian cities; speed is a city average.
-const ROAD_FACTOR = 1.3;
-const CITY_SPEED_KMPH = 22;
 /** Beyond this, "I've arrived" asks for confirmation. */
 const ARRIVAL_RADIUS_KM = 0.5;
 const CANCEL_REASONS = [
@@ -42,15 +39,7 @@ function useLeg(job: DriverJob) {
   const stop = currentStop(job.status);
   const target = stop === 'pickup' ? job.pickup : job.drop;
   const straightKm = current && target.location ? distanceKm(current, target.location) : null;
-  const roadKm = straightKm !== null ? straightKm * ROAD_FACTOR : null;
-  return {
-    stop,
-    target,
-    driver: current,
-    straightKm,
-    roadKm,
-    etaMinutes: roadKm !== null ? (roadKm / CITY_SPEED_KMPH) * 60 : null,
-  };
+  return { stop, target, driver: current, straightKm };
 }
 
 function ActiveDelivery({ job }: { job: DriverJob }) {
@@ -147,52 +136,28 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
         drop={job.drop.location}
         driver={leg.driver}
         focus={leg.stop}
-        padding={{ top: insets.top + 170, right: 60, bottom: 60, left: 60 }}
+        padding={{ top: insets.top + 70, right: 60, bottom: 60, left: 60 }}
       />
 
       <AppView
+        row
         style={{ top: insets.top + 8 }}
-        className="absolute left-4 right-4 z-20 overflow-hidden rounded-3xl border border-border bg-neutral-950 p-4 shadow-xl"
+        className="absolute left-4 right-4 z-20 items-center justify-between"
       >
-        <AppView row className="items-center justify-between">
-          <LiquidGlassBackButton onPress={() => router.replace('/home')} />
-          <AppView className="rounded-full bg-brand px-3 py-1">
-            <AppText className="text-[11px] font-black uppercase tracking-wider text-white">
-              {JOB_STAGE_LABEL[job.status]}
-            </AppText>
-          </AppView>
-        </AppView>
-
-        <AppView row className="mt-3 items-center gap-3">
-          <AppView className="flex-1">
-            <AppText className="text-[12px] font-bold uppercase tracking-wider text-neutral-400">
-              {hasArrived ? "You've arrived" : isPickup ? 'Next: pickup' : 'Next: drop'}
-            </AppText>
-            <AppText className="mt-0.5 text-[17px] font-black text-white" numberOfLines={1}>
-              {leg.target.label.split(',')[0]}
-            </AppText>
-            <AppText className="text-[12px] font-medium text-neutral-300" numberOfLines={1}>
-              {hasArrived
-                ? `Waiting for ${contact.name.split(' ')[0]}`
-                : leg.roadKm !== null && leg.etaMinutes !== null
-                  ? `${formatDistance(leg.roadKm)} · about ${formatMinutes(leg.etaMinutes)}`
-                  : leg.target.houseNumber}
-            </AppText>
-          </AppView>
-          {!hasArrived && leg.target.location ? (
-            <AppPressable
-              onPress={() =>
-                leg.target.location && openNavigationChooser(leg.target.location, leg.target.label)
-              }
-              pressScale={0.95}
-              accessibilityLabel="Navigate with a maps app"
-              className="flex-row items-center gap-2 rounded-full bg-brand px-4 py-3"
-            >
-              <Icon name="location.north.fill" size={16} color="#ffffff" />
-              <AppText className="text-[14px] font-black text-white">Navigate</AppText>
-            </AppPressable>
-          ) : null}
-        </AppView>
+        <LiquidGlassBackButton onPress={() => router.replace('/home')} />
+        {!hasArrived && leg.target.location ? (
+          <AppPressable
+            onPress={() =>
+              leg.target.location && openGoogleMapsDirections(leg.target.location, leg.target.label)
+            }
+            pressScale={0.95}
+            accessibilityLabel="Open directions in Google Maps"
+            className="flex-row items-center gap-2 rounded-full bg-brand px-4 py-3 shadow-lg"
+          >
+            <Icon name="location.north.fill" size={16} color="#ffffff" />
+            <AppText className="text-[14px] font-black text-white">Navigate</AppText>
+          </AppPressable>
+        ) : null}
       </AppView>
 
       <AppView
@@ -251,7 +216,9 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
           <AppText className="text-[15px] font-bold text-foreground" numberOfLines={2}>
             {leg.target.label}
           </AppText>
-          <AppText className="text-[12px] text-muted">{leg.target.houseNumber}</AppText>
+          {leg.target.houseNumber ? (
+            <AppText className="text-[12px] text-muted">{leg.target.houseNumber}</AppText>
+          ) : null}
         </AppView>
 
         <AppView row className="mb-4 items-center justify-between rounded-2xl bg-surface-muted p-3">

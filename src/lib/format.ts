@@ -14,11 +14,17 @@ export function formatShortDate(iso: string): string {
 }
 
 const RUPEES = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const RUPEES_WITH_PAISE = new Intl.NumberFormat('en-IN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
-/** "₹1,250" / "−₹120" — amounts in rupees. */
+/** "₹1,250" / "₹126.70" / "−₹120" — whole rupees plain, otherwise always two decimals. */
 export function formatRupees(amount: number): string {
   const sign = amount < 0 ? '−' : '';
-  return `${sign}₹${RUPEES.format(Math.abs(amount))}`;
+  const value = Math.abs(amount);
+  const formatter = Number.isInteger(Math.round(value * 100) / 100) ? RUPEES : RUPEES_WITH_PAISE;
+  return `${sign}₹${formatter.format(value)}`;
 }
 
 /**
