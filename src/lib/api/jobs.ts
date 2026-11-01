@@ -7,10 +7,13 @@ import type { ChatMessage, DriverJob, JobOffer, PaymentQr, VerifyStopInput } fro
 /** The backend sends `{label, latitude, longitude}`; the UI reads `{label, location, houseNumber, contact}`. */
 function toOrderStop(place: any, fallbackLabel: string) {
   if (place.location !== undefined) return place;
-  const hasFix = typeof place.latitude === 'number' && typeof place.longitude === 'number';
+  // Coordinates may arrive as numbers or as decimal strings.
+  const latitude = place.latitude == null ? NaN : Number(place.latitude);
+  const longitude = place.longitude == null ? NaN : Number(place.longitude);
+  const hasFix = Number.isFinite(latitude) && Number.isFinite(longitude);
   return {
     label: place.label ?? fallbackLabel,
-    location: hasFix ? { latitude: place.latitude, longitude: place.longitude } : null,
+    location: hasFix ? { latitude, longitude } : null,
     houseNumber: place.house_number ?? place.houseNumber ?? '',
     contact: place.contact ?? null,
   };
@@ -46,6 +49,7 @@ function mapJobOffer(o: any): JobOffer {
     orderNumber: o.order_number,
     createdAt: o.offered_at,
     expiresAt: o.expires_at,
+    extraStops: Math.max(0, Number(o.stop_count ?? 2) - 2),
     vehicle: o.vehicle ?? { id: 'truck', name: o.vehicle_type_name ?? '', imageKey: 'truck' },
     pickup: toOrderStop(o.pickup, 'Pickup Point'),
     drop: toOrderStop(o.drop, 'Drop Point'),
@@ -368,11 +372,23 @@ export const jobsApi = {
       recipient_name: 'Receiver',
       ...devicePosition(),
     };
-    // Pay-at-drop: the code only unlocks payment; recording the cash completes the delivery.
+    // Pay-at-drop: on the final stop the code only unlocks payment; recording the cash completes the
+    // delivery. Stops before it (multi-stop) are simply completed with their own code.
+    // The backend only gates payment this way for a single pickup + single drop; any multi-stop trip
+    // completes every stop (the last one included) with /complete.
     const collectsAtDrop =
-      before?.payment.timing === 'on-delivery' && before.payment.status === 'pending';
+      trip.dropCount === 1 &&
+      before?.payment.timing === 'on-delivery' &&
+      before.payment.status === 'pending';
+    const isMiddleStop = trip.currentDrop != null && !trip.currentDrop.isFinal;
     // Not swallowed: a wrong code must fail here, never count as delivered.
-    if (collectsAtDrop && trip.currentDrop) {
+    if (isMiddleStop && trip.currentDrop) {
+      await request<any>({
+        method: 'POST',
+        url: `/trips/${trip.tripId}/stops/${trip.currentDrop.stopId}/complete`,
+        data: body,
+      });
+    } else if (collectsAtDrop && trip.currentDrop) {
       await request<any>({
         method: 'POST',
         url: `/trips/${trip.tripId}/stops/${trip.currentDrop.stopId}/verify-code`,

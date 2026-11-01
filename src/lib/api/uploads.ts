@@ -11,6 +11,15 @@ export type UploadKind =
   | 'kyc_aadhaar'
   | 'bank_cheque';
 
+/** The backend's names for each kind (POST /uploads takes the upper-case enum). */
+const BACKEND_KIND: Partial<Record<UploadKind, string>> = {
+  pickup_photo: 'PICKUP_PHOTO',
+  drop_photo: 'DROP_PHOTO',
+  daily_check: 'DAILY_CHECK',
+  vehicle_rc: 'RC',
+  kyc_dl: 'DL',
+};
+
 export interface UploadedFile {
   id: string;
   url: string;
@@ -23,7 +32,7 @@ export const uploadsApi = {
   uploadPhoto: async (localUri: string, kind: UploadKind): Promise<UploadedFile> => {
     // Errors propagate: a photo that didn't reach the server is never shown as saved.
     const form = new FormData();
-    form.append('kind', kind);
+    form.append('kind', BACKEND_KIND[kind] ?? kind);
     // React Native's FormData accepts { uri, name, type } file parts.
     form.append('file', { uri: localUri, name: `${kind}.jpg`, type: 'image/jpeg' } as never);
     return await request<UploadedFile>({

@@ -11,6 +11,8 @@ export function useOffers(enabled: boolean) {
     enabled,
     // Nothing pushes offers to the app (see driver-socket), so poll fast: an offer lives ~30 s.
     refetchInterval: enabled ? 4_000 : false,
+    // The floating overlay shows offers while the app is in the background, so keep polling there.
+    refetchIntervalInBackground: true,
   });
 }
 
@@ -20,6 +22,7 @@ export function useActiveJob() {
     queryFn: ({ signal }) => jobsApi.getActiveJob(signal),
     // Picks up a customer cancellation or ops change while the driver is on the trip.
     refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
   });
 }
 

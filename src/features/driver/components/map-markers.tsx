@@ -1,27 +1,14 @@
 import { AppText, AppView } from '@/components/ui';
+import { DROP_PIN_COLOR, MapPin, PICKUP_PIN_COLOR } from '@/components/map-pin';
 
-/** Pickup: a green dot in a white ring. */
+/** Pickup: a green map pin. */
 export function PickupMarker() {
-  return (
-    <AppView
-      center
-      className="size-7 rounded-full border-[3px] border-white bg-emerald-500 shadow-md"
-    >
-      <AppView className="size-2 rounded-full bg-white" />
-    </AppView>
-  );
+  return <MapPin color={PICKUP_PIN_COLOR} arrow="up" />;
 }
 
-/** Drop: a dark square in a white ring, like the destination pin of Uber and Rapido. */
+/** Drop: a red map pin. */
 export function DropMarker() {
-  return (
-    <AppView
-      center
-      className="size-7 rounded-md border-[3px] border-white bg-neutral-900 shadow-md"
-    >
-      <AppView className="size-2 bg-white" />
-    </AppView>
-  );
+  return <MapPin color={DROP_PIN_COLOR} arrow="down" />;
 }
 
 /** The moving vehicle: an emoji in a brand-ringed circle, with a soft halo. */

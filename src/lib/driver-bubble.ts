@@ -25,7 +25,7 @@ import {
   type BubbleOverlayData,
 } from '../../modules/floating-bubble';
 
-const SCHEME = 'logisticsdriverapp://';
+const SCHEME = 'ryno-driver://';
 
 const STAGE: Partial<Record<DriverJob['status'], string>> = {
   heading_to_pickup: 'To pickup',

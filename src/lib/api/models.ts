@@ -226,6 +226,8 @@ export interface JobOffer {
   orderId: string;
   orderNumber: string;
   createdAt: string;
+  /** Delivery stops before the final drop (0 for a single-drop order). */
+  extraStops: number;
   expiresAt: string;
   vehicle: VehicleRef;
   pickup: OrderStop;

@@ -33,7 +33,7 @@ private const val BG_PANEL = 0xF518181B.toInt()
 private const val BG_CARD = 0xFF27272A.toInt()
 private const val BORDER_LIGHT = 0x2AFFFFFF.toInt()
 private const val HEAD_DP = 56
-private const val PANEL_WIDTH_DP = 330
+private const val PANEL_WIDTH_DP = 300
 private const val MAX_SCROLL_HEIGHT_DP = 340
 
 /**
@@ -56,7 +56,7 @@ internal class BubbleView(
   private var isExpanded = false
   private var attached = false
   private var pulse: ObjectAnimator? = null
-  private var defaultDeepLink = "logisticsdriverapp://home"
+  private var defaultDeepLink = "ryno-driver://home"
   private var lastCollapsedX = 0
 
   // ─── Head Views (Circular Draggable Bubble) ──────────────────────────
@@ -220,20 +220,22 @@ internal class BubbleView(
     val panelFooter = LinearLayout(context).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER
-      setPadding(0, dp(10), 0, 0)
+      setPadding(0, dp(12), 0, 0)
 
       val openAppBtn = TextView(context).apply {
-        text = "Open RYNO App ↗"
-        setTextColor(0xEEFFFFFF.toInt())
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        text = "Open RYNO app"
+        setTextColor(Color.WHITE)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
         typeface = Typeface.DEFAULT_BOLD
-        setPadding(dp(14), dp(7), dp(14), dp(7))
-        background = roundRect(0xFF2C2C30.toInt(), dp(12).toFloat(), dp(1), 0x30FFFFFF.toInt())
+        gravity = Gravity.CENTER
+        setPadding(dp(14), dp(12), dp(14), dp(12))
+        background = roundRect(BRAND, dp(14).toFloat())
         setOnClickListener {
+          collapse()
           onTap(defaultDeepLink)
         }
       }
-      addView(openAppBtn)
+      addView(openAppBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
     }
     addView(panelFooter)
   }
@@ -291,7 +293,7 @@ internal class BubbleView(
       val json = JSONObject(jsonString)
       val summaryTitle = json.optString("summaryTitle", "You're online")
       val summarySubtitle = json.optString("summarySubtitle", "Finding requests")
-      defaultDeepLink = json.optString("defaultDeepLink", "logisticsdriverapp://home")
+      defaultDeepLink = json.optString("defaultDeepLink", "ryno-driver://home")
       val highlight = json.optBoolean("highlight", false)
       val autoExpand = json.optBoolean("autoExpand", false)
 
@@ -390,7 +392,7 @@ internal class BubbleView(
     if (offers.length() > 0) {
       hasItems = true
       val sectionHeader = TextView(context).apply {
-        text = "⚡ NEW DELIVERY REQUESTS (${offers.length()})"
+        text = "NEW REQUESTS (${offers.length()})"
         setTextColor(BRAND)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
         typeface = Typeface.DEFAULT_BOLD
@@ -409,7 +411,7 @@ internal class BubbleView(
     if (activeJob != null) {
       hasItems = true
       val jobHeader = TextView(context).apply {
-        text = "📦 CURRENT DELIVERY"
+        text = "CURRENT DELIVERY"
         setTextColor(0xFF38BDF8.toInt()) // Sky blue
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
         typeface = Typeface.DEFAULT_BOLD
@@ -430,8 +432,8 @@ internal class BubbleView(
     val idleCard = LinearLayout(context).apply {
       orientation = LinearLayout.VERTICAL
       gravity = Gravity.CENTER_HORIZONTAL
-      setPadding(dp(16), dp(20), dp(16), dp(20))
-      background = roundRect(BG_CARD, dp(14).toFloat(), dp(1), BORDER_LIGHT)
+      setPadding(dp(16), dp(18), dp(16), dp(18))
+      background = roundRect(BG_CARD, dp(16).toFloat(), dp(1), BORDER_LIGHT)
 
       val dot = View(context).apply {
         background = circle(GREEN)
@@ -469,121 +471,97 @@ internal class BubbleView(
     val pickupDistance = offer.optString("pickupDistance", "")
     val tripDistance = offer.optString("tripDistance", "")
 
+    fun label(text: String, sp: Float, color: Int, bold: Boolean = false) = TextView(context).apply {
+      this.text = text
+      setTextColor(color)
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+      if (bold) typeface = Typeface.DEFAULT_BOLD
+    }
+
+    fun stopRow(dotColor: Int, caption: String, address: String) = LinearLayout(context).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = Gravity.CENTER_VERTICAL
+      addView(View(context).apply { background = circle(dotColor) }, LinearLayout.LayoutParams(dp(10), dp(10)))
+      val col = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(10), 0, 0, 0)
+        addView(label(caption, 10f, 0xFF8E8E93.toInt()))
+        addView(label(address, 13f, Color.WHITE, true).apply {
+          maxLines = 1
+          ellipsize = TextUtils.TruncateAt.END
+        })
+      }
+      addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+    }
+
     val card = LinearLayout(context).apply {
       orientation = LinearLayout.VERTICAL
-      setPadding(dp(12), dp(10), dp(12), dp(10))
-      background = roundRect(BG_CARD, dp(14).toFloat(), dp(1), 0x40FF5A1F.toInt())
-      setOnClickListener { onTap(deepLink) }
+      setPadding(dp(14), dp(14), dp(14), dp(14))
+      background = roundRect(BG_CARD, dp(16).toFloat(), dp(1), 0x55FF5A1F.toInt())
+      setOnClickListener { collapse(); onTap(deepLink) }
 
-      // Top Row: Vehicle name & Order # | Earning
-      val topRow = LinearLayout(context).apply {
+      // Earning (big) and which request it is
+      val top = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-
-        val infoCol = LinearLayout(context).apply {
+        val earn = LinearLayout(context).apply {
           orientation = LinearLayout.VERTICAL
-          val titleText = TextView(context).apply {
-            text = "$vehicleName · #$orderNumber"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            typeface = Typeface.DEFAULT_BOLD
-          }
-          addView(titleText)
-          if (pickupDistance.isNotEmpty()) {
-            val distText = TextView(context).apply {
-              text = pickupDistance
-              setTextColor(0xFFA1A1AA.toInt())
-              setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            }
-            addView(distText)
-          }
+          addView(label("YOU EARN", 10f, 0xFF8E8E93.toInt(), true))
+          addView(label(earning, 26f, BRAND, true))
         }
-        addView(infoCol, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-
-        val earningText = TextView(context).apply {
-          text = earning
-          setTextColor(BRAND)
-          setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-          typeface = Typeface.DEFAULT_BOLD
+        addView(earn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        val meta = LinearLayout(context).apply {
+          orientation = LinearLayout.VERTICAL
+          gravity = Gravity.END
+          addView(label(vehicleName, 12f, Color.WHITE, true).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            maxWidth = dp(120)
+          })
+          addView(label("#$orderNumber", 10f, 0xFF8E8E93.toInt()))
         }
-        addView(earningText)
+        addView(meta)
       }
-      addView(topRow)
+      addView(top)
 
-      // Route: Pickup & Drop
-      val routeContainer = LinearLayout(context).apply {
+      // Pickup → drop, joined by a line
+      val route = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(0, dp(8), 0, dp(8))
-
-        // Pickup
-        val pickupRow = LinearLayout(context).apply {
-          orientation = LinearLayout.HORIZONTAL
-          gravity = Gravity.CENTER_VERTICAL
-          val dot = View(context).apply { background = circle(GREEN) }
-          addView(dot, LinearLayout.LayoutParams(dp(8), dp(8)))
-          val label = TextView(context).apply {
-            text = pickupAddress
-            setTextColor(0xEEFFFFFF.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setPadding(dp(6), 0, 0, 0)
-          }
-          addView(label)
-        }
-        addView(pickupRow)
-
-        // Drop
-        val dropRow = LinearLayout(context).apply {
-          orientation = LinearLayout.HORIZONTAL
-          gravity = Gravity.CENTER_VERTICAL
-          setPadding(0, dp(4), 0, 0)
-          val dot = View(context).apply { background = circle(BRAND) }
-          addView(dot, LinearLayout.LayoutParams(dp(8), dp(8)))
-          val label = TextView(context).apply {
-            text = dropAddress
-            setTextColor(0xEEFFFFFF.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setPadding(dp(6), 0, 0, 0)
-          }
-          addView(label)
-        }
-        addView(dropRow)
+        setPadding(0, dp(12), 0, dp(4))
+        addView(stopRow(GREEN, "PICKUP", pickupAddress))
+        addView(
+          View(context).apply { setBackgroundColor(0xFF48484A.toInt()) },
+          LinearLayout.LayoutParams(dp(2), dp(12)).apply { leftMargin = dp(4); topMargin = dp(2); bottomMargin = dp(2) },
+        )
+        addView(stopRow(BRAND, "DROP", dropAddress))
       }
-      addView(routeContainer)
+      addView(route)
 
-      // Action row: Trip distance & "View & Accept" button
-      val actionRow = LinearLayout(context).apply {
+      // Distance chips
+      val chips = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(0, dp(2), 0, 0)
-
-        if (tripDistance.isNotEmpty()) {
-          val distText = TextView(context).apply {
-            text = tripDistance
-            setTextColor(0xFFA1A1AA.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-          }
-          addView(distText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        } else {
-          val spacer = View(context)
-          addView(spacer, LinearLayout.LayoutParams(0, 0, 1f))
+        setPadding(0, dp(8), 0, dp(10))
+        for (text in listOf(pickupDistance, tripDistance)) {
+          if (text.isEmpty()) continue
+          addView(
+            label(text, 11f, 0xFFD1D1D6.toInt()).apply {
+              setPadding(dp(8), dp(4), dp(8), dp(4))
+              background = roundRect(0xFF38383A.toInt(), dp(8).toFloat())
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+              .apply { rightMargin = dp(6) },
+          )
         }
-
-        val viewBtn = TextView(context).apply {
-          text = "View & Accept"
-          setTextColor(Color.WHITE)
-          setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-          typeface = Typeface.DEFAULT_BOLD
-          setPadding(dp(12), dp(6), dp(12), dp(6))
-          background = roundRect(BRAND, dp(10).toFloat())
-          setOnClickListener { onTap(deepLink) }
-        }
-        addView(viewBtn)
       }
-      addView(actionRow)
+      addView(chips)
+
+      val viewBtn = label("View & Accept", 14f, Color.WHITE, true).apply {
+        gravity = Gravity.CENTER
+        setPadding(dp(12), dp(11), dp(12), dp(11))
+        background = roundRect(BRAND, dp(12).toFloat())
+        setOnClickListener { collapse(); onTap(deepLink) }
+      }
+      addView(viewBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
     }
 
     return LinearLayout(context).apply {
@@ -603,7 +581,7 @@ internal class BubbleView(
       orientation = LinearLayout.VERTICAL
       setPadding(dp(12), dp(10), dp(12), dp(10))
       background = roundRect(BG_CARD, dp(14).toFloat(), dp(1), 0x4038BDF8.toInt())
-      setOnClickListener { onTap(deepLink) }
+      setOnClickListener { collapse(); onTap(deepLink) }
 
       val title = TextView(context).apply {
         text = if (orderNumber.isNotEmpty()) "$stageTitle · #$orderNumber" else stageTitle
@@ -632,7 +610,7 @@ internal class BubbleView(
         typeface = Typeface.DEFAULT_BOLD
         setPadding(dp(10), dp(5), dp(10), dp(5))
         background = roundRect(0xFF0284C7.toInt(), dp(8).toFloat())
-        setOnClickListener { onTap(deepLink) }
+        setOnClickListener { collapse(); onTap(deepLink) }
       }
       addView(
         actionBtn,

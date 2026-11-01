@@ -61,6 +61,10 @@ function isPaymentDueAt(job: DriverJob, stop: Stop): boolean {
   const { payment } = job;
   if (payment.status !== 'pending') return false;
   if (payment.timing !== (stop === 'pickup' ? 'on-pickup' : 'on-delivery')) return false;
+  // Multi-stop: the backend completes each stop with its code and records cash after the trip.
+  if (stop === 'drop' && (job.stops ?? []).filter((s) => s.stopType === 'DROP').length > 1) {
+    return false;
+  }
   // The backend reports an unpaid pay-on-delivery order as "prepaid" until a payment exists.
   return payment.mode === 'cash' || stop === 'drop';
 }

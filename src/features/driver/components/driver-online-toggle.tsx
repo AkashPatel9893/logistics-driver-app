@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Switch } from 'react-native';
 
 import { AppText, AppView } from '@/components/ui';
@@ -18,7 +19,19 @@ export function DriverOnlineToggle({
   busy = false,
   className = '',
 }: DriverOnlineToggleProps) {
-  const hint = isOnline
+  // Flip at once and let the server catch up, so the switch never waits on the network
+  // (waiting made it snap back, then jump). It resyncs to the real state when the call ends.
+  // `pending` holds the tapped value only while the request runs; afterwards the real state wins.
+  const [pending, setPending] = useState<boolean | null>(null);
+  const shown = busy && pending !== null ? pending : isOnline;
+
+  const handleChange = (next: boolean) => {
+    if (busy) return;
+    setPending(next);
+    onToggle(next);
+  };
+
+  const hint = shown
     ? 'Receiving delivery requests nearby'
     : (blockedReason ?? 'Go online to receive delivery requests');
 
@@ -33,14 +46,14 @@ export function DriverOnlineToggle({
       <AppView className="flex-1 pr-3">
         <AppText
           className={`text-[16px] font-extrabold ${
-            isOnline ? 'text-[#147A3B] dark:text-emerald-400' : 'text-foreground'
+            shown ? 'text-[#147A3B] dark:text-emerald-400' : 'text-foreground'
           }`}
         >
-          {isOnline ? "You're online" : "You're offline"}
+          {shown ? "You're online" : "You're offline"}
         </AppText>
         <AppText
           className={`text-[12px] font-medium ${
-            isOnline ? 'text-[#2B824F] dark:text-emerald-300/80' : 'text-muted'
+            shown ? 'text-[#2B824F] dark:text-emerald-300/80' : 'text-muted'
           }`}
         >
           {hint}
@@ -48,10 +61,9 @@ export function DriverOnlineToggle({
       </AppView>
 
       <Switch
-        value={isOnline}
-        onValueChange={onToggle}
-        disabled={busy}
-        accessibilityLabel={isOnline ? 'Go offline' : 'Go online'}
+        value={shown}
+        onValueChange={handleChange}
+        accessibilityLabel={shown ? 'Go offline' : 'Go online'}
         trackColor={{ false: '#D1D5DB', true: '#22C55E' }}
         thumbColor="#FFFFFF"
       />

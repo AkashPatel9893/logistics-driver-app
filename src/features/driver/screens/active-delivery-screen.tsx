@@ -42,6 +42,40 @@ function useLeg(job: DriverJob) {
   return { stop, target, driver: current, straightKm };
 }
 
+/** Everything the sender gave for this stop, so the driver can find the door without calling. */
+function addressLines(job: DriverJob, stop: 'pickup' | 'drop', label: string, houseNumber: string) {
+  const stops = job.stops ?? [];
+  const match =
+    stop === 'pickup'
+      ? stops.find((s) => s.stopType === 'PICKUP')
+      : (stops.find((s) => s.stopId === job.currentStopId) ??
+        [...stops].reverse().find((s) => s.stopType === 'DROP'));
+  // The backend appends the city to a line that may already end with it ("Koramangala, Bengaluru, Bengaluru").
+  const dedupe = (text: string) =>
+    text
+      .split(', ')
+      .filter((part, i, parts) => part !== parts[i - 1])
+      .join(', ');
+  return [
+    houseNumber,
+    dedupe(match?.addressLine1 ?? label),
+    match?.addressLine2,
+    match?.landmark ? `Landmark: ${match.landmark}` : null,
+  ].filter((line, i, all): line is string => Boolean(line) && all.indexOf(line) === i);
+}
+
+/** Pending delivery stops before the final one, for the map. */
+function viaStops(job: DriverJob) {
+  const drops = (job.stops ?? []).filter((s) => s.stopType === 'DROP');
+  return drops
+    .slice(0, -1)
+    .filter((s) => s.status !== 'COMPLETED' && s.stopId !== job.currentStopId && s.location)
+    .map((s) => ({
+      latitude: Number(s.location?.latitude),
+      longitude: Number(s.location?.longitude),
+    }));
+}
+
 function ActiveDelivery({ job }: { job: DriverJob }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -134,6 +168,7 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
       <RouteMap
         pickup={job.pickup.location}
         drop={job.drop.location}
+        via={viaStops(job)}
         driver={leg.driver}
         focus={leg.stop}
         padding={{ top: insets.top + 70, right: 60, bottom: 60, left: 60 }}
@@ -213,12 +248,16 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
           <AppText className="text-[11px] font-bold uppercase tracking-wider text-muted">
             {isPickup ? 'Pickup address' : 'Drop address'}
           </AppText>
-          <AppText className="text-[15px] font-bold text-foreground" numberOfLines={2}>
-            {leg.target.label}
-          </AppText>
-          {leg.target.houseNumber ? (
-            <AppText className="text-[12px] text-muted">{leg.target.houseNumber}</AppText>
-          ) : null}
+          {addressLines(job, leg.stop, leg.target.label, leg.target.houseNumber).map((line, i) => (
+            <AppText
+              key={line}
+              className={
+                i === 0 ? 'text-[15px] font-bold text-foreground' : 'text-[13px] text-muted'
+              }
+            >
+              {line}
+            </AppText>
+          ))}
         </AppView>
 
         <AppView row className="mb-4 items-center justify-between rounded-2xl bg-surface-muted p-3">

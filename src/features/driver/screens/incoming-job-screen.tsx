@@ -19,7 +19,6 @@ import { getErrorMessage } from '@/lib/api/api-error';
 import type { JobOffer } from '@/lib/api/models';
 import { formatDistance, formatMinutes, formatRupees } from '@/lib/format';
 
-import { RouteMap } from '../components/route-map';
 import { goBack } from '@/lib/go-back';
 
 const DECLINE_REASONS = ['Too far from me', 'Low fare', 'Vehicle not suitable', 'Taking a break'];
@@ -55,11 +54,14 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const secondsLeft = useCountdown(offer.expiresAt);
+  // The window length isn't sent, so the first value seen on opening is the bar's full width.
+  const [windowSeconds] = useState(() => Math.max(secondsLeft, 1));
+  const isUrgent = secondsLeft <= 5;
   const accept = useAcceptOffer();
   const reject = useRejectOffer();
   const [declineSheetOpen, setDeclineSheetOpen] = useState(false);
 
-  // The offer goes to the next driver when time runs out.
+  // Not accepted in time: the offer goes to the next driver, so leave this screen.
   useEffect(() => {
     if (secondsLeft === 0 && !accept.isPending) goBack(router);
   }, [secondsLeft, accept.isPending, router]);
@@ -90,21 +92,35 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
         style={{ paddingTop: Math.max(insets.top, 12) + 8 }}
         className="rounded-b-[36px] bg-brand px-6 pb-6 shadow-md"
       >
-        <AppView row className="items-center justify-between">
-          <AppView>
+        <AppView row className="items-center justify-between gap-3">
+          {/* flex-1 lets a long vehicle name wrap instead of pushing the timer off the screen */}
+          <AppView className="flex-1">
             <AppText className="text-[24px] font-black tracking-tight text-white">
               New delivery request
             </AppText>
-            <AppText className="text-[13px] font-semibold text-white/85">
+            <AppText className="text-[13px] font-semibold text-white/85" numberOfLines={2}>
               {[offer.vehicle.name, `Order #${offer.orderNumber}`].filter(Boolean).join(' · ')}
             </AppText>
           </AppView>
           <AppView
             accessibilityLabel={`${secondsLeft} seconds left to accept`}
-            className="h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm"
+            className="min-w-[72px] items-center rounded-2xl bg-white px-3 py-2 shadow-sm"
           >
-            <AppText className="text-[22px] font-black text-brand">{secondsLeft}</AppText>
+            <AppText
+              className={`text-[26px] font-black leading-tight ${isUrgent ? 'text-red-600' : 'text-brand'}`}
+            >
+              {secondsLeft}s
+            </AppText>
+            <AppText className="text-[10px] font-bold uppercase tracking-wider text-muted">
+              to accept
+            </AppText>
           </AppView>
+        </AppView>
+        <AppView className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/30">
+          <AppView
+            style={{ width: `${Math.min(100, (secondsLeft / windowSeconds) * 100)}%` }}
+            className={`h-full rounded-full ${isUrgent ? 'bg-red-300' : 'bg-white'}`}
+          />
         </AppView>
       </AppView>
 
@@ -113,12 +129,6 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
         showsVerticalScrollIndicator={false}
       >
         <AppView className="overflow-hidden rounded-[28px] border border-border/80 bg-card shadow-sm">
-          <RouteMap
-            pickup={offer.pickup.location}
-            drop={offer.drop.location}
-            className="h-48 w-full"
-          />
-
           <AppView className="p-4">
             <AppView row className="items-end justify-between border-b border-border/40 pb-3">
               <AppView>
@@ -155,6 +165,13 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
                 title={offer.pickup.label}
                 subtitle={['Pickup', offer.pickup.houseNumber].filter(Boolean).join(' · ')}
               />
+              {offer.extraStops > 0 ? (
+                <StopRow
+                  tone="bg-neutral-500"
+                  title={`${offer.extraStops} extra ${offer.extraStops === 1 ? 'stop' : 'stops'} on the way`}
+                  subtitle="Multi-stop delivery, in order"
+                />
+              ) : null}
               <StopRow
                 tone="bg-brand"
                 title={offer.drop.label}

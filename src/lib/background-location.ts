@@ -6,11 +6,13 @@
  * reported to the backend at most every 15 s.
  */
 import * as Location from 'expo-location';
+import { AppState } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
 import type { Position } from 'expo-location/next';
 
 import { driverApi } from '@/lib/api/driver';
-import { refreshBubble } from '@/lib/driver-bubble';
+import { jobsApi } from '@/lib/api/jobs';
+import { refreshBubble, setBubbleOffers } from '@/lib/driver-bubble';
 import { useLocationStore } from '@/stores/location-store';
 
 export const DRIVER_LOCATION_TASK = 'ryno-driver-location';
@@ -95,6 +97,14 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(
     if (error || !data) return;
     const latest = data.locations.at(-1);
     if (latest) handleLocationFix(latest);
+    // The app's own polling pauses in the background, so this ~5 s tick feeds new requests to the
+    // floating overlay (an offer lives only ~30 s). While a trip is active there are no offers.
+    if (AppState.currentState !== 'active' && !useLocationStore.getState().tripActive) {
+      await jobsApi
+        .getOffers()
+        .then(setBubbleOffers)
+        .catch(() => {});
+    }
     refreshBubble();
   },
 );

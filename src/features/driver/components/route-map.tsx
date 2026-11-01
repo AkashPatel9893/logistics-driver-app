@@ -1,6 +1,13 @@
 import { useState } from 'react';
 
-import { AppMapCamera, AppMapMarker, AppMapPolyline, AppMapView, AppView } from '@/components/ui';
+import {
+  AppMapCamera,
+  AppMapMarker,
+  AppMapPolyline,
+  AppMapView,
+  AppText,
+  AppView,
+} from '@/components/ui';
 import type { GeoPoint } from '@/lib/api/models';
 import { useRoadRoute } from '@/hooks/use-road-route';
 import {
@@ -16,6 +23,8 @@ import { DropMarker, PickupMarker, SelfMarker } from './map-markers';
 export interface RouteMapProps {
   pickup: GeoPoint | null;
   drop: GeoPoint | null;
+  /** Stops between pickup and the final drop, so the preview follows the real order. */
+  via?: GeoPoint[];
   /** The driver's live position, when known. */
   driver?: GeoPoint | null;
   /** Leg to highlight; the other stop is still shown. */
@@ -32,6 +41,7 @@ const ARRIVED_KM = 0.05;
 export function RouteMap({
   pickup,
   drop,
+  via = [],
   driver,
   focus = 'route',
   padding = { top: 40, right: 40, bottom: 40, left: 40 },
@@ -51,6 +61,13 @@ export function RouteMap({
   );
   // Drop the part already driven: the line starts at the driver, then the road ahead.
   const line = road.data && ends.length >= 2 ? remainingPath(road.data, ends[0]).path : ends;
+  // While heading to pickup, the road on to the drop is previewed (dashed), like Uber's next-leg line.
+  const preview = useRoadRoute(
+    `preview:${pickup?.latitude},${pickup?.longitude}:${via.map((p) => `${p.latitude},${p.longitude}`).join('|')}:${drop?.latitude},${drop?.longitude}`,
+    focus === 'pickup' ? pickup : null,
+    focus === 'pickup' ? drop : null,
+    via,
+  );
   const fit = [...line, ...(focus === 'route' ? [] : [pickup, drop])].filter(
     (p): p is GeoPoint => p != null,
   );
@@ -70,6 +87,14 @@ export function RouteMap({
     <AppView className={className}>
       <AppMapView style={{ flex: 1 }}>
         {fitted.bounds ? <AppMapCamera bounds={fitted.bounds} padding={padding} /> : null}
+        {focus === 'pickup' && preview.data && preview.data.length >= 2 ? (
+          <AppMapPolyline
+            coordinates={preview.data}
+            strokeColor={ROUTE_COLOR}
+            strokeWidth={3}
+            dashed
+          />
+        ) : null}
         {line.length >= 2 ? (
           <AppMapPolyline coordinates={line} strokeColor={ROUTE_COLOR} strokeWidth={4} />
         ) : null}
@@ -83,7 +108,14 @@ export function RouteMap({
             <DropMarker />
           </AppMapMarker>
         ) : null}
-        {driver ? (
+        {via.map((point, i) => (
+          <AppMapMarker key={`via-${i}`} coordinate={point} title={`Stop ${i + 1}`}>
+            <AppView className="size-6 items-center justify-center rounded-full border-2 border-white bg-neutral-700">
+              <AppText className="text-[11px] font-bold text-white">{i + 1}</AppText>
+            </AppView>
+          </AppMapMarker>
+        ))}
+        {driver && !arrived ? (
           <AppMapMarker coordinate={driver} title="You">
             <SelfMarker />
           </AppMapMarker>
