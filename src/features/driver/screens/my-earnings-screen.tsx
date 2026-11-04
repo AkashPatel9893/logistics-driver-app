@@ -97,6 +97,11 @@ export function MyEarningsScreen() {
           </AppView>
         </AppView>
 
+        {summary && summary.paidToFleet > 0 ? (
+          <AppText className="text-[13px] text-muted">
+            Includes {formatRupees(summary.paidToFleet)} paid to your fleet owner.
+          </AppText>
+        ) : null}
         {summaryQuery.isError ? (
           <AppText className="text-muted">Could not load earnings. Try again later.</AppText>
         ) : null}

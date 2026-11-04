@@ -18,12 +18,20 @@ export function useWallet() {
   });
 }
 
+export function usePayouts() {
+  return useQuery({
+    queryKey: ['driver', 'payouts'],
+    queryFn: ({ signal }) => earningsApi.getPayouts(signal),
+  });
+}
+
 export function useRequestPayout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (amount: number) => earningsApi.requestPayout(amount),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.wallet });
+      queryClient.invalidateQueries({ queryKey: ['driver', 'payouts'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.profile });
     },
   });

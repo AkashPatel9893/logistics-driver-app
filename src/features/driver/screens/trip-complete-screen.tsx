@@ -13,6 +13,7 @@ import {
   Icon,
 } from '@/components/ui';
 import { useDriverProfile } from '@/hooks/use-driver';
+import { useTrips } from '@/hooks/use-earnings';
 import { useJob } from '@/hooks/use-jobs';
 import { earningsApi } from '@/lib/api/earnings';
 import type { DriverJob } from '@/lib/api/models';
@@ -31,6 +32,8 @@ export function TripCompleteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: job } = useJob(id);
   const { data: profile } = useDriverProfile();
+  const { data: trips } = useTrips();
+  const earning = trips?.find((trip) => trip.orderId === id);
   // Use a separate query so cached wallet data from before delivery is never presented as current.
   const { data: wallet } = useQuery({
     queryKey: ['trip-complete-wallet', id],
@@ -135,6 +138,15 @@ export function TripCompleteScreen() {
             <AppText className="text-[38px] font-black leading-tight text-brand">
               {job.driverEarning !== null ? formatRupees(job.driverEarning) : '—'}
             </AppText>
+            {earning ? (
+              <AppText className="mt-1 text-[13px] text-muted">
+                {earning.paidTo === 'FLEET' && earning.status === 'FLEET_SETTLED'
+                  ? `Paid to ${earning.fleetName || 'your fleet owner'}`
+                  : earning.status === 'WALLET_SETTLED'
+                    ? 'Added to your wallet'
+                    : 'Earning is being processed'}
+              </AppText>
+            ) : null}
             <AppText className="mt-1 text-[14px] text-muted">{paymentLine(job)}</AppText>
             {wallet?.transactions
               .filter((entry) => entry.orderId === job.id)

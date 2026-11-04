@@ -3,7 +3,7 @@ import { Alert, RefreshControl } from 'react-native';
 
 import { AppPressable, AppScrollView, AppSpinner, AppText, AppView, Icon } from '@/components/ui';
 import { useDriverProfile } from '@/hooks/use-driver';
-import { useRequestPayout, useWallet } from '@/hooks/use-earnings';
+import { usePayouts, useRequestPayout, useWallet } from '@/hooks/use-earnings';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverTransaction } from '@/lib/api/models';
 import { formatDayTime, formatRupees } from '@/lib/format';
@@ -47,6 +47,7 @@ export function DriverWalletScreen() {
   const wallet = walletQuery.data;
   const { data: profile } = useDriverProfile();
   const payout = useRequestPayout();
+  const payouts = usePayouts();
   const bankVerified = profile?.bank?.status === 'verified';
 
   const handleWithdraw = () => {
@@ -158,6 +159,48 @@ export function DriverWalletScreen() {
               </AppView>
             ) : null}
           </AppView>
+        </AppView>
+
+        <AppView className="gap-3">
+          <AppText className="px-1 text-[16px] font-extrabold text-foreground">Payouts</AppText>
+          {payouts.isPending ? (
+            <AppSpinner />
+          ) : payouts.isError ? (
+            <AppPressable
+              onPress={() => void payouts.refetch()}
+              className="min-h-11 justify-center"
+            >
+              <AppText className="text-muted">Could not load payouts. Tap to retry.</AppText>
+            </AppPressable>
+          ) : payouts.data.length === 0 ? (
+            <AppText className="text-[13px] text-muted">No payouts yet.</AppText>
+          ) : (
+            payouts.data.map((item) => (
+              <AppView key={item.id} className="rounded-2xl border border-border bg-card p-4">
+                <AppView row className="justify-between">
+                  <AppText className="font-bold text-foreground">
+                    {formatRupees(Number(item.net_amount))}
+                  </AppText>
+                  <AppText className="font-semibold text-foreground">
+                    {(
+                      {
+                        CREATED: 'Requested',
+                        PROCESSING: 'Processing',
+                        PAID: 'Paid',
+                        FAILED: 'Failed',
+                        NEEDS_ATTENTION: 'Needs attention',
+                        REVERSED: 'Reversed',
+                      } as Record<string, string>
+                    )[item.status] ?? item.status}
+                  </AppText>
+                </AppView>
+                <AppText className="mt-1 text-[12px] text-muted">
+                  {item.payout_reference} · {item.paid_at ? 'Paid' : 'Period ending'}{' '}
+                  {formatDayTime(item.paid_at ?? item.period_end)}
+                </AppText>
+              </AppView>
+            ))
+          )}
         </AppView>
 
         <AppView className="gap-3">

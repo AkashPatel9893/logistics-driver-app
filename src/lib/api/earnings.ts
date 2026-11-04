@@ -19,6 +19,7 @@ export const earningsApi = {
       tripEarnings: Number(summary.total_net_earnings) - Number(summary.incentives),
       incentives: Number(summary.incentives),
       cashCollected: Number(summary.cash_collected),
+      paidToFleet: Number(summary.paid_to_fleet ?? 0),
       onlineMinutes: summary.online_minutes,
       buckets: summary.daily.map((day: { date: string; amount: string | number }) => ({
         label: day.date.slice(5),
@@ -46,6 +47,18 @@ export const earningsApi = {
       })),
     };
   },
+
+  getPayouts: (signal?: AbortSignal) =>
+    request<
+      {
+        id: string;
+        payout_reference: string;
+        net_amount: string;
+        status: string;
+        paid_at: string | null;
+        period_end: string;
+      }[]
+    >({ url: '/partner/payouts', signal }),
 
   requestPayout: async (amount: number): Promise<void> => {
     const user = getUser();
@@ -98,6 +111,7 @@ export const earningsApi = {
       const job = detailed[index]?.status === 'fulfilled' ? detailed[index].value : null;
       return {
         id: item.trip_id,
+        orderId: String(item.order_id),
         number: String(item.trip_id).slice(0, 6).toUpperCase(),
         status: item.status,
         driverEarning: Number(item.net_amount),

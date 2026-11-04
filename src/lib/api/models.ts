@@ -359,6 +359,7 @@ export interface EarningsSummary {
   tripEarnings: number;
   incentives: number;
   cashCollected: number;
+  paidToFleet: number;
   onlineMinutes: number | null;
   /** Chart bars: the last 7 days for "today"/"week", one per week for "month". */
   buckets: { label: string; amount: number }[];
@@ -366,6 +367,7 @@ export interface EarningsSummary {
 
 export interface TripSummary {
   id: string;
+  orderId: string;
   number: string;
   status: string;
   driverEarning: number;
