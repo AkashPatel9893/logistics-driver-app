@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,6 +14,7 @@ import {
 } from '@/components/ui';
 import { useDriverProfile } from '@/hooks/use-driver';
 import { useJob } from '@/hooks/use-jobs';
+import { earningsApi } from '@/lib/api/earnings';
 import type { DriverJob } from '@/lib/api/models';
 import { formatDayTime, formatDistance, formatMinutes, formatRupees } from '@/lib/format';
 
@@ -20,14 +22,7 @@ function paymentLine(job: DriverJob): string {
   const { payment } = job;
   if (payment.mode === 'prepaid') return `Paid online by customer · ${payment.methodLabel}`;
   if (payment.collectedVia === 'upi') return `Collected ${formatRupees(payment.amount)} via UPI`;
-  const collected = `Cash collected ${formatRupees(payment.amount)}`;
-  if (job.driverEarning === null) return collected;
-  // The driver holds the whole fare in cash, so the wallet settles the difference from their earning.
-  // That is the commission plus any platform fee, so the two figures always add up.
-  const walletChange = job.driverEarning - payment.amount;
-  return walletChange < 0
-    ? `${collected} · ${formatRupees(-walletChange)} taken from wallet (commission and fees)`
-    : `${collected} · ${formatRupees(walletChange)} added to wallet`;
+  return `Cash collected ${formatRupees(payment.amount)}`;
 }
 
 export function TripCompleteScreen() {
@@ -36,6 +31,14 @@ export function TripCompleteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: job } = useJob(id);
   const { data: profile } = useDriverProfile();
+  // Use a separate query so cached wallet data from before delivery is never presented as current.
+  const { data: wallet } = useQuery({
+    queryKey: ['trip-complete-wallet', id],
+    queryFn: ({ signal }) => earningsApi.getWallet(signal),
+    enabled: Boolean(id),
+    staleTime: 0,
+    gcTime: 0,
+  });
 
   if (!job) {
     return (
@@ -133,6 +136,14 @@ export function TripCompleteScreen() {
               {job.driverEarning !== null ? formatRupees(job.driverEarning) : '—'}
             </AppText>
             <AppText className="mt-1 text-[14px] text-muted">{paymentLine(job)}</AppText>
+            {wallet?.transactions
+              .filter((entry) => entry.orderId === job.id)
+              .map((entry) => (
+                <AppText key={entry.id} className="mt-1 text-[14px] text-muted">
+                  {entry.title}: {entry.amount < 0 ? '−' : '+'}
+                  {formatRupees(Math.abs(entry.amount))}
+                </AppText>
+              ))}
           </AppView>
         </AppView>
 

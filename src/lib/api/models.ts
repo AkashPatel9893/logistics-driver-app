@@ -339,6 +339,7 @@ export interface DriverTransaction {
   amount: number;
   createdAt: string;
   orderNumber: string | null;
+  orderId: string | null;
 }
 
 export interface DriverWallet {

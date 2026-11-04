@@ -304,7 +304,6 @@ function PaymentStep({ job, stop }: { job: DriverJob; stop: Stop }) {
   const payer = stop === 'pickup' ? job.sender : (job.drop.contact ?? job.sender);
   const payerName = payer.name.split(' ')[0] || 'the customer';
   // Anything above the quoted fare is the waiting charge the backend added.
-  const extra = Math.round((current.payment.amount - job.fare) * 100) / 100;
 
   return (
     <AppView className="flex-1 bg-[#FBFBFC] dark:bg-background">
@@ -342,18 +341,6 @@ function PaymentStep({ job, stop }: { job: DriverJob; stop: Stop }) {
           <AppText className="mt-1 text-[40px] font-black tracking-tight text-foreground">
             {formatRupees(current.payment.amount)}
           </AppText>
-          {extra > 0 ? (
-            <AppView className="mt-3 w-full gap-1 border-t border-border/60 pt-3">
-              <AppView row className="justify-between">
-                <AppText className="text-[13px] text-muted">Trip fare</AppText>
-                <AppText className="text-[13px] text-foreground">{formatRupees(job.fare)}</AppText>
-              </AppView>
-              <AppView row className="justify-between">
-                <AppText className="text-[13px] text-muted">Waiting charge</AppText>
-                <AppText className="text-[13px] text-foreground">{formatRupees(extra)}</AppText>
-              </AppView>
-            </AppView>
-          ) : null}
           {isCollected ? null : (
             <AppText className="mt-2 text-center text-[12px] text-muted">
               Count the cash before you confirm.

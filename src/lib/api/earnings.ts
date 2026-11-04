@@ -42,6 +42,7 @@ export const earningsApi = {
         createdAt: t.created_at,
         // The backend's own transaction title already names the order; never invent a number from the id.
         orderNumber: null,
+        orderId: t.order_id ?? null,
       })),
     };
   },
