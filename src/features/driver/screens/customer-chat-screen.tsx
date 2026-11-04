@@ -52,7 +52,7 @@ function Chat({ job }: { job: DriverJob }) {
         Alert.alert('Location unavailable', 'Turn on location to share where you are.');
         return;
       }
-      text = `My live location: ${env.GOOGLE_MAPS_WEB_URL}/?q=${location.latitude.toFixed(5)},${location.longitude.toFixed(5)}`;
+      text = `My location: ${env.GOOGLE_MAPS_WEB_URL}/?q=${location.latitude.toFixed(5)},${location.longitude.toFixed(5)}`;
     }
     if (!text) return;
     send.mutate(text, {

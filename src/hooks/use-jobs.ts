@@ -123,6 +123,10 @@ export function useVerifyDrop() {
   );
 }
 
+export function useResendDeliveryCode() {
+  return useMutation({ mutationFn: (jobId: string) => jobsApi.resendDeliveryCode(jobId) });
+}
+
 export function useCancelJob() {
   return useJobMutation(({ id, reason }: { id: string; reason: string }) =>
     jobsApi.cancel(id, reason),

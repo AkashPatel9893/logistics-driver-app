@@ -176,6 +176,7 @@ function devicePosition(): { latitude: number; longitude: number } {
 
 interface ActiveTrip {
   tripId: string;
+  orderId: string;
   status: string;
   /** The delivery stop the driver must serve next (null once all are done). */
   currentDrop: {
@@ -208,6 +209,7 @@ async function getActiveTripDetails(): Promise<ActiveTrip | null> {
     const next = index >= 0 ? drops[index] : null;
     return {
       tripId: locRes.trip_id,
+      orderId: String(tripRes?.order_id ?? ''),
       status: tripRes?.status || '',
       dropCount: drops.length,
       currentDrop: next
@@ -370,6 +372,21 @@ export const jobsApi = {
     if (!active)
       throw new ApiError('Trip updated, but it could not be loaded. Refresh to retry.', 'unknown');
     return active;
+  },
+
+  resendDeliveryCode: async (jobId: string): Promise<number> => {
+    const trip = await getActiveTripDetails();
+    if (!trip || trip.orderId !== jobId || !trip.currentDrop) {
+      throw new ApiError(
+        'Could not find the current delivery stop. Refresh and try again.',
+        'unknown',
+      );
+    }
+    const response = await request<{ resends_remaining: number }>({
+      method: 'POST',
+      url: `/trips/${trip.tripId}/stops/${trip.currentDrop.stopId}/delivery-otp/resend`,
+    });
+    return response.resends_remaining;
   },
 
   verifyDrop: async (id: string, input: VerifyStopInput): Promise<DriverJob> => {

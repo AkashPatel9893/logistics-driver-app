@@ -20,6 +20,7 @@ import {
 import {
   useActiveJob,
   useClearFinishedJob,
+  useResendDeliveryCode,
   useVerifyDrop,
   useVerifyPickup,
 } from '@/hooks/use-jobs';
@@ -94,6 +95,7 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
   const photo = usePhotoUpload(stop === 'pickup' ? 'pickup_photo' : 'drop_photo');
   const verifyPickup = useVerifyPickup();
   const verifyDrop = useVerifyDrop();
+  const resend = useResendDeliveryCode();
   const verify = stop === 'pickup' ? verifyPickup : verifyDrop;
   const [otp, setOtp] = useState('');
   const [otpError, setOtpError] = useState<string>();
@@ -153,9 +155,21 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
         : 'The sender sees the delivery code on the order tracking screen and can share it with the receiver using "Share code".',
       [
         { text: 'OK', style: 'cancel' },
+        { text: 'Get help', onPress: () => router.push('/support') },
         { text: 'Call sender', onPress: () => Linking.openURL(`tel:${job.sender.phone}`) },
       ],
     );
+
+  const handleResend = () => {
+    resend.mutate(job.id, {
+      onSuccess: (remaining) =>
+        Alert.alert(
+          'Code queued',
+          `The code has been queued for SMS to the receiver. ${remaining} resends remaining in this window.`,
+        ),
+      onError: (error) => Alert.alert('Could not resend code', getErrorMessage(error)),
+    });
+  };
 
   return (
     <AppView className="flex-1 bg-[#FBFBFC] dark:bg-background">
@@ -236,6 +250,17 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
                 Customer can&apos;t find the code?
               </AppText>
             </AppPressable>
+            {stop === 'drop' ? (
+              <AppPressable
+                onPress={handleResend}
+                disabled={resend.isPending}
+                className="min-h-11 justify-center px-2"
+              >
+                <AppText className="text-[13px] font-semibold text-brand">
+                  {resend.isPending ? 'Sending…' : 'Resend code to receiver'}
+                </AppText>
+              </AppPressable>
+            ) : null}
           </AppView>
 
           <AppView className="gap-2">
@@ -303,7 +328,6 @@ function PaymentStep({ job, stop }: { job: DriverJob; stop: Stop }) {
 
   const payer = stop === 'pickup' ? job.sender : (job.drop.contact ?? job.sender);
   const payerName = payer.name.split(' ')[0] || 'the customer';
-  // Anything above the quoted fare is the waiting charge the backend added.
 
   return (
     <AppView className="flex-1 bg-[#FBFBFC] dark:bg-background">
@@ -349,6 +373,16 @@ function PaymentStep({ job, stop }: { job: DriverJob; stop: Stop }) {
         </AppView>
 
         {isCollected ? null : <PaymentCollectCard job={current} onCollected={setPaidJob} />}
+        {isCollected ? null : (
+          <AppPressable
+            onPress={() => router.push('/support')}
+            className="min-h-11 items-center justify-center"
+          >
+            <AppText className="text-[14px] font-semibold text-brand">
+              Having trouble collecting payment? Get help
+            </AppText>
+          </AppPressable>
+        )}
       </AppScrollView>
 
       {isCollected ? (
