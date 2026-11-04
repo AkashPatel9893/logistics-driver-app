@@ -291,15 +291,9 @@ export const jobsApi = {
   getJob: async (id: string, signal?: AbortSignal): Promise<DriverJob> => {
     const active = await jobsApi.getActiveJob(signal);
     if (active && (active.id === id || active.number === id)) return active;
-    try {
-      return withAmountToCollect(
-        mapDriverJob(await request<any>({ url: `/partner/jobs/${id}`, signal })),
-      );
-    } catch {
-      return withAmountToCollect(
-        mapDriverJob(await request<any>({ url: `/driver/jobs/${id}`, signal })),
-      );
-    }
+    return withAmountToCollect(
+      mapDriverJob(await request<any>({ url: `/partner/jobs/${id}`, signal })),
+    );
   },
 
   arriveAtPickup: async (_id: string): Promise<DriverJob> => {
@@ -446,26 +440,12 @@ export const jobsApi = {
       : mapDriverJob({ id, status: 'cancelled' });
   },
 
-  createPaymentQr: async (id: string): Promise<PaymentQr> => {
-    try {
-      return await request<PaymentQr>({ method: 'POST', url: `/driver/jobs/${id}/payment/qr` });
-    } catch {
-      const job = await jobsApi.getActiveJob().catch(() => null);
-      // The amount to collect, not the quoted fare: it includes any waiting charge.
-      const amount = job?.payment.amount ?? job?.fare ?? 0;
-      const ref = job?.number ?? id.slice(0, 8);
-      const upiUri = `upi://pay?pa=ryno@icici&pn=Ryno%20Logistics&am=${amount.toFixed(2)}&cu=INR&tr=${encodeURIComponent(ref)}&tn=Order%20${encodeURIComponent(ref)}`;
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-      return {
-        upiUri,
-        payeeVpa: 'ryno@icici',
-        payeeName: 'Ryno Logistics',
-        amount,
-        reference: ref,
-        expiresAt,
-      };
-    }
-  },
+  /**
+   * Payment QR from the backend. No local fallback: a QR made up in the app would send the
+   * customer's money to an account Ryno has not confirmed it owns.
+   */
+  createPaymentQr: (id: string): Promise<PaymentQr> =>
+    request<PaymentQr>({ method: 'POST', url: `/driver/jobs/${id}/payment/qr` }),
 
   /** Records cash received for a stop whose code is already verified. */
   collectCash: async (job: DriverJob): Promise<DriverJob> => {
