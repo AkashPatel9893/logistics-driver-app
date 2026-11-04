@@ -17,6 +17,7 @@ import { signOut, useAuthStore } from '@/features/auth/use-auth-store';
 import { useDriverProfile, useSetOnline } from '@/hooks/use-driver';
 import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import { formatRupees } from '@/lib/format';
+import { kvStorage, STORAGE_KEYS } from '@/lib/storage';
 
 interface MenuItem {
   icon: IconName;
@@ -109,6 +110,7 @@ export function DriverAccountScreen() {
           // Stop receiving offers before the session ends.
           if (profile?.isOnline) await setOnline.mutateAsync(false).catch(() => undefined);
           signOut();
+          kvStorage.delete(STORAGE_KEYS.CACHED_PHONE);
           router.replace('/');
         },
       },

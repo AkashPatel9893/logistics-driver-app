@@ -19,6 +19,7 @@ import { useRegisterCompany } from '@/hooks/use-fleet';
 import { authApi } from '@/lib/api/auth';
 import { fleetApi } from '@/lib/api/fleet';
 import { getErrorMessage } from '@/lib/api/api-error';
+import { getDobError } from '@/lib/dob';
 import { useAuthStore } from './use-auth-store';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 
@@ -66,7 +67,7 @@ export function OnboardingScreen() {
     Boolean(companyType) &&
     registeredAddress.trim().length >= 5 &&
     isValidGstin &&
-    form.dob.length === 14;
+    !getDobError(form.dob);
 
   const handleCompanySubmit = async () => {
     if (!isCompanyValid) {
@@ -317,6 +318,7 @@ export function OnboardingScreen() {
                   maxLength={14}
                   leading={<Icon name="calendar" size={20} tone="icon-subtle" />}
                   inputClassName="ml-2 text-[15px]"
+                  error={form.validationErrors.dob}
                 />
                 <AppText className="text-[13px] text-muted">
                   We use your current location to find your operating area when you continue.

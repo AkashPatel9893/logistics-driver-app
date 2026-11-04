@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -17,6 +17,7 @@ import {
 } from '@/components/ui';
 import { useAssignFleetDriver, useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import type { AssignDriverRequest } from '@/lib/api/fleet';
+import { getDobError } from '@/lib/dob';
 import { goBack } from '@/lib/go-back';
 
 function parseDobToIso(formatted: string): string | undefined {
@@ -79,15 +80,19 @@ export function AddDriverScreen() {
       formatted = `${cleaned.slice(0, 2)} / ${cleaned.slice(2, 4)} / ${cleaned.slice(4, 8)}`;
     }
     setDob(formatted);
+    // Keeps any age error from sitting behind the keyboard.
+    if (formatted.length === 14) Keyboard.dismiss();
   };
 
   const isoDob = parseDobToIso(dob);
+  const dobError = dob.length === 14 ? getDobError(dob) : undefined;
 
   const isValid = isSelfDrive
     ? true
     : fullName.trim().length >= 2 &&
       phone.trim().length >= 10 &&
       Boolean(isoDob) &&
+      !dobError &&
       dlNumber.trim().length >= 6;
 
   const handleContinue = async () => {
@@ -100,7 +105,7 @@ export function AddDriverScreen() {
     if (!isValid) {
       Alert.alert(
         'Incomplete details',
-        'Please enter full name, 10-digit phone number, valid DOB (DD/MM/YYYY), and DL number.',
+        'Please enter full name, 10-digit phone number, valid DOB (DD/MM/YYYY, 18 or older), and DL number.',
       );
       return;
     }
@@ -243,6 +248,7 @@ export function AddDriverScreen() {
                 maxLength={14}
                 leading={<Icon name="calendar" size={20} tone="icon-subtle" />}
                 inputClassName="ml-2 text-[15px]"
+                error={dobError}
               />
 
               {/* DL number */}

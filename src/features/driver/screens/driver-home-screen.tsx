@@ -269,11 +269,11 @@ export function DriverHomeScreen() {
               onPressVehicles={() => router.push('/driver-profile')}
             />
 
-            {/* If fleet has no vehicles yet, show finish setting up checklist */}
-            {vehicles.length === 0 ? (
+            {/* The setup checklist only while the owner's own account still needs it: once it is
+                approved, an empty fleet gets the fleet's own "add your first vehicle" prompt. */}
+            {!profile.canGoOnline && vehicles.length === 0 ? (
               <DriverSetupChecklist profile={profile} />
             ) : (
-              /* My Vehicles List matching Screenshot 1 Screen 4 */
               <FleetVehiclesSection />
             )}
           </>

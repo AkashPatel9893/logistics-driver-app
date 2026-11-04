@@ -31,6 +31,12 @@ export interface DocumentInput {
   fileUri: string;
 }
 
+/** Formats digits as DD/MM/YYYY while they are typed. */
+export function formatDateInput(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join('/');
+}
+
 /** "DD/MM/YYYY" (as typed) → "YYYY-MM-DD", or null when it isn't a real date. */
 export function toIsoDate(text: string): string | null {
   const match = /^(\d{1,2})\s*[/.-]\s*(\d{1,2})\s*[/.-]\s*(\d{4})$/.exec(text.trim());

@@ -1,7 +1,6 @@
 /**
- * Driver realtime transport. The backend has no per-driver socket: offers are an SSE stream
- * (`GET /partner/offers/stream`, not usable from React Native without a polyfill) and jobs, chat
- * and payments are refetched by polling. Subscribing is therefore a no-op, so the app does not
+ * Driver realtime transport. The backend has no per-driver socket: offers come over SSE (see
+ * offer-stream.ts) and jobs, chat and payments are refetched by polling. Subscribing is therefore a no-op, so the app does not
  * loop on a socket the server rejects.
  */
 import type { DriverEvent } from './driver-events';

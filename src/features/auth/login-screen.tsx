@@ -9,6 +9,7 @@ import {
   FocusAwareStatusBar,
   TextField,
 } from '@/components/ui';
+import { useScrollToEndOnKeyboard } from '@/hooks/use-scroll-to-end-on-keyboard';
 
 import { HeroBanner } from './components/hero-banner';
 import { LanguagePickerSheet } from './components/language-picker-sheet';
@@ -18,16 +19,21 @@ import { useLoginForm } from './hooks/use-login-form';
 export function LoginScreen() {
   const insets = useSafeAreaInsets();
   const form = useLoginForm();
+  const scrollRef = useScrollToEndOnKeyboard();
 
   return (
     <AppView className="flex-1 bg-canvas">
       <FocusAwareStatusBar />
       <AppKeyboardAvoidingView>
-        <AppScrollView style={{ paddingTop: insets.top }} contentContainerClassName="pb-6">
+        <AppScrollView
+          ref={scrollRef}
+          style={{ paddingTop: insets.top }}
+          contentContainerClassName="pb-6"
+        >
           <HeroBanner />
 
           <AppView className="px-6 pt-20">
-            <AppText className="text-2xl font-bold text-foreground">Lets get started</AppText>
+            <AppText className="text-2xl font-bold text-foreground">Let&apos;s get started</AppText>
             <AppText className="mt-1 text-sm font-normal text-muted">
               Login/ Signup with Mobile
             </AppText>
@@ -51,6 +57,7 @@ export function LoginScreen() {
               returnKeyType="done"
               onSubmitEditing={form.handleContinue}
               error={form.validationError ?? undefined}
+              hint={form.phoneHint ?? undefined}
               className="mt-4"
               inputClassName="text-[16px]"
             />

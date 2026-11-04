@@ -19,7 +19,7 @@ function toOrderStop(place: any, fallbackLabel: string) {
   };
 }
 
-function mapJobOffer(o: any): JobOffer {
+export function mapJobOffer(o: any): JobOffer {
   if (
     o.quoted_amount == null ||
     !o.expires_at ||
@@ -153,6 +153,17 @@ function mapDriverJob(raw: any): DriverJob {
 }
 /** Trip of the job last worked on — cash is recorded after delivery, when no trip is active. */
 let lastTripId: string | null = null;
+/**
+ * What verify-code says to collect (the fare plus any waiting charge), by job id. The job record
+ * still carries the quoted amount, and the job is re-fetched every few seconds, so without this the
+ * collect screen fell back to the quote and the driver under-collected.
+ */
+const amountToCollect = new Map<string, number>();
+
+function withAmountToCollect(job: DriverJob): DriverJob {
+  const amount = amountToCollect.get(job.id);
+  return amount === undefined ? job : { ...job, payment: { ...job.payment, amount } };
+}
 
 const TRIP_UNREACHABLE = 'Could not reach the trip. Check your connection and try again.';
 
@@ -239,7 +250,7 @@ export const jobsApi = {
   getActiveJob: async (signal?: AbortSignal): Promise<DriverJob | null> => {
     const raw = await request<any>({ url: '/partner/jobs/active', signal });
     if (!raw) return null;
-    const job = mapDriverJob(raw);
+    const job = withAmountToCollect(mapDriverJob(raw));
     // If the backend already provided stops with current stop information, use it directly
     if (job.stops && job.stops.length > 0 && job.currentStopId) {
       const currentStop = job.stops.find((s) => s.stopId === job.currentStopId);
@@ -281,9 +292,13 @@ export const jobsApi = {
     const active = await jobsApi.getActiveJob(signal);
     if (active && (active.id === id || active.number === id)) return active;
     try {
-      return mapDriverJob(await request<any>({ url: `/partner/jobs/${id}`, signal }));
+      return withAmountToCollect(
+        mapDriverJob(await request<any>({ url: `/partner/jobs/${id}`, signal })),
+      );
     } catch {
-      return mapDriverJob(await request<any>({ url: `/driver/jobs/${id}`, signal }));
+      return withAmountToCollect(
+        mapDriverJob(await request<any>({ url: `/driver/jobs/${id}`, signal })),
+      );
     }
   },
 
@@ -389,11 +404,14 @@ export const jobsApi = {
         data: body,
       });
     } else if (collectsAtDrop && trip.currentDrop) {
-      await request<any>({
+      const verified = await request<any>({
         method: 'POST',
         url: `/trips/${trip.tripId}/stops/${trip.currentDrop.stopId}/verify-code`,
         data: body,
       });
+      if (verified?.amount_to_collect != null) {
+        amountToCollect.set(id, Number(verified.amount_to_collect));
+      }
     } else {
       await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/complete`, data: body });
     }
@@ -433,7 +451,8 @@ export const jobsApi = {
       return await request<PaymentQr>({ method: 'POST', url: `/driver/jobs/${id}/payment/qr` });
     } catch {
       const job = await jobsApi.getActiveJob().catch(() => null);
-      const amount = job?.fare ?? 0;
+      // The amount to collect, not the quoted fare: it includes any waiting charge.
+      const amount = job?.payment.amount ?? job?.fare ?? 0;
       const ref = job?.number ?? id.slice(0, 8);
       const upiUri = `upi://pay?pa=ryno@icici&pn=Ryno%20Logistics&am=${amount.toFixed(2)}&cu=INR&tr=${encodeURIComponent(ref)}&tn=Order%20${encodeURIComponent(ref)}`;
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();

@@ -368,6 +368,10 @@ export interface TripSummary {
   number: string;
   status: string;
   driverEarning: number;
+  /** Earning before commission, and the commission taken from it. */
+  grossEarning: number;
+  commissionRate: number;
+  commission: number;
   endedAt: string;
   paidTo: 'DRIVER' | 'FLEET';
   fleetName: string | null;

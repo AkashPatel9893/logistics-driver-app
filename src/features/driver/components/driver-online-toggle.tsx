@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Switch } from 'react-native';
+import { ActivityIndicator, Switch } from 'react-native';
 
 import { AppText, AppView } from '@/components/ui';
 
@@ -31,9 +31,15 @@ export function DriverOnlineToggle({
     onToggle(next);
   };
 
-  const hint = shown
-    ? 'Receiving delivery requests nearby'
-    : (blockedReason ?? 'Go online to receive delivery requests');
+  // Going online waits for a GPS fix (up to 10 s); say so, or taps in that time look ignored.
+  const hint =
+    busy && pending !== null
+      ? pending
+        ? 'Going online… getting your location'
+        : 'Going offline…'
+      : shown
+        ? 'Receiving delivery requests nearby'
+        : (blockedReason ?? 'Go online to receive delivery requests');
 
   return (
     <AppView
@@ -60,8 +66,10 @@ export function DriverOnlineToggle({
         </AppText>
       </AppView>
 
+      {busy ? <ActivityIndicator size="small" color="#22C55E" style={{ marginRight: 8 }} /> : null}
       <Switch
         value={shown}
+        disabled={busy}
         onValueChange={handleChange}
         accessibilityLabel={shown ? 'Go offline' : 'Go online'}
         trackColor={{ false: '#D1D5DB', true: '#22C55E' }}

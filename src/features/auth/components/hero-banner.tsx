@@ -7,7 +7,8 @@ const HERO_BACKGROUND_IMAGE = require('@/assets/images/HeroBg.png');
 
 export function HeroBanner() {
   const { height } = useWindowDimensions();
-  const bannerHeight = Math.min(Math.max(height * 0.44, 320), 420);
+  // Short phones (640 pt) keep the field and Continue on screen without scrolling.
+  const bannerHeight = Math.min(Math.max(height * 0.4, 230), 420);
 
   return (
     <AppView

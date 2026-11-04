@@ -47,23 +47,16 @@ export function PaymentCollectCard({ job, onCollected }: PaymentCollectCardProps
     );
 
   return (
-    <AppView className="gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5">
-      <AppView row className="items-center justify-between">
-        <AppText className="text-[14px] font-bold text-foreground">Collect payment</AppText>
-        <AppText className="text-[20px] font-black text-foreground">
-          {formatRupees(payment.amount)}
-        </AppText>
-      </AppView>
-      {/* UPI QR returns with the payment gateway; cash is the only method today. */}
-      <Button
-        variant="brand"
-        label={collectCash.isPending ? 'Saving…' : 'Cash received'}
-        leftIcon={<Icon name="banknote" size={18} color="#ffffff" />}
-        onPress={confirmCash}
-        disabled={collectCash.isPending}
-        size="lg"
-        textClassName="font-extrabold text-[15px]"
-      />
-    </AppView>
+    // UPI QR returns with the payment gateway; cash is the only method today.
+    <Button
+      variant="brand"
+      label={collectCash.isPending ? 'Saving…' : `Cash received · ${formatRupees(payment.amount)}`}
+      leftIcon={<Icon name="banknote" size={18} color="#ffffff" />}
+      onPress={confirmCash}
+      disabled={collectCash.isPending}
+      size="lg"
+      className="rounded-full"
+      textClassName="font-extrabold text-[16px]"
+    />
   );
 }

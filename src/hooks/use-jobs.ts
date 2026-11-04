@@ -1,16 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useSyncExternalStore } from 'react';
 
 import { jobsApi } from '@/lib/api/jobs';
 import type { ChatMessage, DriverJob, JobOffer, VerifyStopInput } from '@/lib/api/models';
 import { queryKeys } from '@/lib/queries/keys';
+import {
+  isOfferStreamLive,
+  onOfferStreamLiveChange,
+  subscribeToOfferStream,
+} from '@/lib/realtime/offer-stream';
 
 export function useOffers(enabled: boolean) {
+  useEffect(() => (enabled ? subscribeToOfferStream() : undefined), [enabled]);
+  const streamLive = useSyncExternalStore(onOfferStreamLiveChange, isOfferStreamLive);
   return useQuery({
     queryKey: queryKeys.offers,
     queryFn: ({ signal }) => jobsApi.getOffers(signal),
     enabled,
-    // Nothing pushes offers to the app (see driver-socket), so poll fast: an offer lives ~30 s.
-    refetchInterval: enabled ? 4_000 : false,
+    // The offer stream pushes new offers at once; polling only backs it up. Without the stream,
+    // poll fast: an offer lives ~30 s.
+    refetchInterval: enabled ? (streamLive ? 30_000 : 4_000) : false,
     // The floating overlay shows offers while the app is in the background, so keep polling there.
     refetchIntervalInBackground: true,
   });
@@ -47,6 +56,17 @@ export function useCacheJob() {
       queryClient.invalidateQueries({ queryKey: queryKeys.profile });
       queryClient.invalidateQueries({ queryKey: ['driver', 'earnings'] });
     }
+  };
+}
+
+/** The trip just ended: drop it from Home now rather than at the next poll. */
+export function useClearFinishedJob() {
+  const queryClient = useQueryClient();
+  return (jobId: string) => {
+    queryClient.setQueryData(queryKeys.activeJob, null);
+    queryClient.invalidateQueries({ queryKey: queryKeys.activeJob });
+    // The summary screen needs the delivery time, which the cached job doesn't have yet.
+    queryClient.invalidateQueries({ queryKey: queryKeys.job(jobId) });
   };
 }
 

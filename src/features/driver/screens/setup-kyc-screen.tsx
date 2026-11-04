@@ -12,7 +12,7 @@ import {
 } from '@/components/ui';
 import { useDriverProfile, useSaveKyc } from '@/hooks/use-driver';
 import { getErrorMessage } from '@/lib/api/api-error';
-import { toIsoDate } from '@/lib/api/onboarding';
+import { formatDateInput, toIsoDate } from '@/lib/api/onboarding';
 
 import { PhotoUploadBox } from '../components/photo-upload-box';
 import { SetupScreenLayout } from '../components/setup-screen-layout';
@@ -97,9 +97,9 @@ export function SetupKycScreen() {
             label="Licence valid until"
             required
             value={dlExpiry}
-            onChangeText={setDlExpiry}
+            onChangeText={(value) => setDlExpiry(formatDateInput(value))}
             placeholder="DD/MM/YYYY"
-            keyboardType="numbers-and-punctuation"
+            keyboardType="number-pad"
             maxLength={10}
             hint="The validity date printed on your licence"
           />

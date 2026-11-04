@@ -43,6 +43,7 @@ export default function RootLayout() {
         <Stack.Screen name="wallet" />
         <Stack.Screen name="support" />
         <Stack.Screen name="earnings" />
+        <Stack.Screen name="trip-details" />
         <Stack.Screen name="incoming-job" />
         <Stack.Screen name="active-delivery" />
         <Stack.Screen name="pickup-verification" />

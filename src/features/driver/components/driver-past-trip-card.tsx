@@ -1,10 +1,19 @@
-import { AppText, AppView, Icon } from '@/components/ui';
+import { useRouter } from 'expo-router';
+
+import { AppPressable, AppText, AppView, Icon } from '@/components/ui';
 import type { TripSummary } from '@/lib/api/models';
 import { formatDayTime, formatDistance, formatRupees } from '@/lib/format';
 
 export function DriverPastTripCard({ trip }: { trip: TripSummary }) {
+  const router = useRouter();
   return (
-    <AppView className="overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <AppPressable
+      onPress={() => router.push({ pathname: '/trip-details', params: { tripId: trip.id } })}
+      accessibilityRole="button"
+      accessibilityHint="Opens trip details"
+      pressScale={0.98}
+      className="overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm"
+    >
       <AppView row className="items-center justify-between border-b border-border/60 pb-3">
         <AppView row className="flex-1 items-center gap-2">
           <AppView className="h-8 w-8 items-center justify-center rounded-xl bg-brand/10">
@@ -54,6 +63,6 @@ export function DriverPastTripCard({ trip }: { trip: TripSummary }) {
           </AppText>
         </AppView>
       </AppView>
-    </AppView>
+    </AppPressable>
   );
 }

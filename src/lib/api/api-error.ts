@@ -21,6 +21,7 @@ export class ApiError extends Error {
 }
 
 const FALLBACK_MESSAGE = 'Something went wrong. Please try again.';
+const SERVER_FAULT_MESSAGE = 'Our server is having trouble. Please try again in a minute.';
 
 export function toApiError(error: unknown): ApiError {
   if (error instanceof ApiError) return error;
@@ -38,8 +39,10 @@ export function toApiError(error: unknown): ApiError {
           : Array.isArray(detail)
             ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
             : null;
+      // A server fault's own text ("Internal server error") means nothing to a driver.
+      const serverFault = error.response.status >= 500;
       return new ApiError(
-        detailMsg ?? payload?.message ?? FALLBACK_MESSAGE,
+        serverFault ? SERVER_FAULT_MESSAGE : (detailMsg ?? payload?.message ?? FALLBACK_MESSAGE),
         'http',
         error.response.status,
         payload?.error ?? payload?.code ?? null,

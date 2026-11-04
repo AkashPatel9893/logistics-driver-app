@@ -26,7 +26,8 @@ import { RouteMap } from '../components/route-map';
 import { currentStop } from '../job-stage';
 
 /** Beyond this, "I've arrived" asks for confirmation. */
-const ARRIVAL_RADIUS_KM = 0.5;
+// Matches the backend's arrival_geofence_meters, which refuses an arrival from further away.
+const ARRIVAL_RADIUS_KM = 0.2;
 const CANCEL_REASONS = [
   'Customer not reachable',
   'Parcel not ready',
@@ -108,11 +109,11 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
     }
     if (leg.straightKm !== null && leg.straightKm > ARRIVAL_RADIUS_KM) {
       Alert.alert(
-        'Not at the location yet?',
-        `You are about ${formatDistance(leg.straightKm)} from the ${isPickup ? 'pickup' : 'drop'} point. Mark as arrived anyway?`,
+        'Not at the location yet',
+        `You are about ${formatDistance(leg.straightKm)} from the ${isPickup ? 'pickup' : 'drop'} point. Get within ${ARRIVAL_RADIUS_KM * 1000} m to mark arrival. If you are already there, contact support.`,
         [
+          { text: 'Get help', onPress: () => router.push('/support') },
           { text: 'Keep driving', style: 'cancel' },
-          { text: "I've arrived", onPress: markArrived },
         ],
       );
       return;

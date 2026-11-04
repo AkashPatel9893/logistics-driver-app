@@ -7,7 +7,6 @@ export * from './driver-setup-checklist';
 export * from './driver-stats-row';
 export * from './earnings-trend-chart';
 export * from './photo-upload-box';
-export * from './waiting-timer-ring';
 export * from './welcome-bonus-modal';
 export * from './route-map';
 export * from './payment-collect-card';

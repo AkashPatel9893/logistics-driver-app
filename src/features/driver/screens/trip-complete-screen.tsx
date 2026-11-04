@@ -21,9 +21,13 @@ function paymentLine(job: DriverJob): string {
   if (payment.mode === 'prepaid') return `Paid online by customer · ${payment.methodLabel}`;
   if (payment.collectedVia === 'upi') return `Collected ${formatRupees(payment.amount)} via UPI`;
   const collected = `Cash collected ${formatRupees(payment.amount)}`;
-  return job.commission !== null
-    ? `${collected} · ${formatRupees(job.commission)} commission from wallet`
-    : collected;
+  if (job.driverEarning === null) return collected;
+  // The driver holds the whole fare in cash, so the wallet settles the difference from their earning.
+  // That is the commission plus any platform fee, so the two figures always add up.
+  const walletChange = job.driverEarning - payment.amount;
+  return walletChange < 0
+    ? `${collected} · ${formatRupees(-walletChange)} taken from wallet (commission and fees)`
+    : `${collected} · ${formatRupees(walletChange)} added to wallet`;
 }
 
 export function TripCompleteScreen() {
@@ -41,9 +45,11 @@ export function TripCompleteScreen() {
     );
   }
 
+  // The job response may not carry the accept time; pickup to drop is then the trip.
+  const startedAt = job.acceptedAt ?? job.pickedUpAt;
   const tripMinutes =
-    job.deliveredAt && job.acceptedAt
-      ? (Date.parse(job.deliveredAt) - Date.parse(job.acceptedAt)) / 60_000
+    job.deliveredAt && startedAt
+      ? (Date.parse(job.deliveredAt) - Date.parse(startedAt)) / 60_000
       : null;
   const firstName = profile?.name.split(' ')[0];
 

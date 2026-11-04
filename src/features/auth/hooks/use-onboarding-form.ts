@@ -1,10 +1,11 @@
 import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Keyboard } from 'react-native';
 
 import { getErrorMessage } from '@/lib/api/api-error';
 import { authApi } from '@/lib/api/auth';
+import { getDobError } from '@/lib/dob';
 
 import { driverProfileSchema } from '../schema';
 import { signOut, useAuthStore } from '../use-auth-store';
@@ -57,6 +58,11 @@ export function useOnboardingForm() {
       formatted = `${cleaned.slice(0, 2)} / ${cleaned.slice(2, 4)} / ${cleaned.slice(4, 8)}`;
     }
     setDob(formatted);
+    if (formatted.length < 14) return;
+    // Tell the user as soon as the date is complete, with the keyboard out of the way of the message.
+    Keyboard.dismiss();
+    const error = getDobError(formatted);
+    if (error) setValidationErrors((current) => ({ ...current, dob: error }));
   };
 
   const handleSubmit = () => {

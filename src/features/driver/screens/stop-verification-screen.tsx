@@ -10,20 +10,26 @@ import {
   AppSpinner,
   AppText,
   AppView,
+  Avatar,
   Button,
   FocusAwareStatusBar,
   Icon,
   LiquidGlassBackButton,
   OtpInput,
 } from '@/components/ui';
-import { useActiveJob, useVerifyDrop, useVerifyPickup } from '@/hooks/use-jobs';
+import {
+  useActiveJob,
+  useClearFinishedJob,
+  useVerifyDrop,
+  useVerifyPickup,
+} from '@/hooks/use-jobs';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverJob } from '@/lib/api/models';
 import { formatRupees } from '@/lib/format';
 
 import { PaymentCollectCard } from '../components/payment-collect-card';
 import { PhotoUploadBox } from '../components/photo-upload-box';
-import { WaitingTimerRing } from '../components/waiting-timer-ring';
+import { WaitingBar } from '../components/waiting-bar';
 import { usePhotoUpload } from '../hooks/use-photo-upload';
 import { goBack } from '@/lib/go-back';
 
@@ -41,14 +47,14 @@ const COPY: Record<
   { title: string; who: 'sender' | 'receiver'; photoTitle: string; photoHint: string; cta: string }
 > = {
   pickup: {
-    title: 'Pickup verification',
+    title: 'Verify pickup',
     who: 'sender',
     photoTitle: 'Photo of the parcel',
     photoHint: 'Photograph the parcel as you receive it — it protects you in disputes.',
     cta: 'Confirm pickup',
   },
   drop: {
-    title: 'Drop verification',
+    title: 'Verify delivery',
     who: 'receiver',
     photoTitle: 'Proof of delivery',
     photoHint: 'Photograph the parcel handed over at the drop location.',
@@ -91,6 +97,7 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
   const verify = stop === 'pickup' ? verifyPickup : verifyDrop;
   const [otp, setOtp] = useState('');
   const [otpError, setOtpError] = useState<string>();
+  const [otpAttempt, setOtpAttempt] = useState(0);
 
   const contact = stop === 'pickup' ? job.sender : (job.drop.contact ?? job.sender);
   const arrivedAt = stop === 'pickup' ? job.arrivedAtPickupAt : job.arrivedAtDropAt;
@@ -126,41 +133,115 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
       })
       .catch((error: unknown) => {
         const message = getErrorMessage(error);
-        if (message.toLowerCase().includes('code')) setOtpError(message);
+        if (/invalid/i.test(message) && /otp|code/i.test(message)) {
+          // Ready to retype straight away: the boxes empty and the keyboard comes back.
+          setOtp('');
+          setOtpAttempt((attempt) => attempt + 1);
+          setOtpError(`That code is not right. Check it with the ${copy.who} and try again.`);
+        } else if (message.toLowerCase().includes('code')) setOtpError(message);
         else Alert.alert('Could not verify', message);
       });
   };
+
+  const firstName =
+    contact.name.split(' ')[0] || (stop === 'pickup' ? 'the sender' : 'the receiver');
+  const showCodeHelp = () =>
+    Alert.alert(
+      "Customer can't find the code?",
+      stop === 'pickup'
+        ? 'The sender sees the pickup code on the order tracking screen in their RYNO app, under the order number.'
+        : 'The sender sees the delivery code on the order tracking screen and can share it with the receiver using "Share code".',
+      [
+        { text: 'OK', style: 'cancel' },
+        { text: 'Call sender', onPress: () => Linking.openURL(`tel:${job.sender.phone}`) },
+      ],
+    );
 
   return (
     <AppView className="flex-1 bg-[#FBFBFC] dark:bg-background">
       <FocusAwareStatusBar />
 
-      <AppView style={{ paddingTop: Math.max(insets.top, 12) + 4 }} className="px-6 pb-2">
-        <AppView row className="items-center justify-between">
-          <AppView>
-            <AppText className="text-[28px] font-black tracking-tight text-foreground">
+      <AppView style={{ paddingTop: Math.max(insets.top, 12) + 4 }} className="px-5 pb-3">
+        <AppView row className="items-center gap-3">
+          <LiquidGlassBackButton onPress={() => goBack(router)} />
+          <AppView className="flex-1">
+            <AppText className="text-[22px] font-black tracking-tight text-foreground">
               {copy.title}
             </AppText>
-            <AppText className="text-[15px] font-medium text-muted">Order #{job.number}</AppText>
+            <AppText className="text-[13px] font-medium text-muted">Order #{job.number}</AppText>
           </AppView>
-          <LiquidGlassBackButton onPress={() => goBack(router)} />
         </AppView>
       </AppView>
 
       <AppKeyboardAvoidingView>
         <AppScrollView
-          contentContainerClassName="gap-5 px-6 pb-12 pt-2"
+          contentContainerClassName="gap-4 px-5 pb-6 pt-1"
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {arrivedAt ? <WaitingTimerRing arrivedAt={arrivedAt} contactName={contact.name} /> : null}
+          {/* Who the driver is meeting, with the call one tap away. */}
+          <AppView
+            row
+            className="items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5"
+          >
+            <Avatar name={contact.name} size="md" />
+            <AppView className="flex-1">
+              <AppText numberOfLines={1} className="text-[15px] font-bold text-foreground">
+                {contact.name}
+              </AppText>
+              <AppText numberOfLines={1} className="text-[12px] text-muted">
+                {stop === 'pickup' ? 'Sender' : 'Receiver'} ·{' '}
+                {stop === 'pickup' ? job.pickup.label : job.drop.label}
+              </AppText>
+            </AppView>
+            <AppPressable
+              onPress={() => Linking.openURL(`tel:${contact.phone}`)}
+              accessibilityLabel={`Call ${contact.name}`}
+              className="size-11 items-center justify-center rounded-full bg-brand"
+            >
+              <Icon name="phone.fill" size={18} color="#ffffff" />
+            </AppPressable>
+          </AppView>
 
-          <AppView className="gap-4 rounded-[28px] border border-border/80 bg-card p-5 shadow-sm">
-            <AppText className="text-[18px] font-black text-foreground">
-              Verify with {contact.name.split(' ')[0]}
+          {arrivedAt ? <WaitingBar arrivedAt={arrivedAt} /> : null}
+
+          <AppView className="items-center gap-3 rounded-[24px] border border-border/80 bg-card px-4 py-5 shadow-sm">
+            <AppText className="text-center text-[17px] font-black text-foreground">
+              Enter {stop === 'pickup' ? 'pickup' : 'delivery'} code
             </AppText>
+            <AppText className="text-center text-[13px] leading-5 text-muted">
+              Ask {firstName} for the 4-digit code in their RYNO{' '}
+              {stop === 'pickup' ? 'app' : 'tracking link'}.
+            </AppText>
+            {/* Above the boxes: the keyboard reopens after a wrong code and would cover it below. */}
+            {otpError ? (
+              <AppText className="text-center text-[13px] font-medium text-error">
+                {otpError}
+              </AppText>
+            ) : null}
+            <OtpInput
+              key={otpAttempt}
+              length={4}
+              value={otp}
+              onChange={(value) => {
+                setOtp(value);
+                setOtpError(undefined);
+              }}
+              // Reveal the confirm button once the code is in.
+              onComplete={() => Keyboard.dismiss()}
+            />
+            <AppPressable onPress={showCodeHelp} hitSlop={8} className="py-1">
+              <AppText className="text-[13px] font-semibold text-brand">
+                Customer can&apos;t find the code?
+              </AppText>
+            </AppPressable>
+          </AppView>
 
+          <AppView className="gap-2">
+            <AppText className="px-1 text-[12px] font-bold uppercase tracking-wider text-muted">
+              Optional · recommended
+            </AppText>
             <PhotoUploadBox
               variant="compact"
               title={copy.photoTitle}
@@ -170,83 +251,33 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
               error={photo.error}
               onSelectPhoto={photo.pick}
             />
-
-            <AppText className="text-[14px] leading-5 text-muted">
-              Ask {contact.name.split(' ')[0]} for the 4-digit{' '}
-              {stop === 'pickup' ? 'pickup' : 'delivery'} code shown in their RYNO{' '}
-              {stop === 'pickup' ? 'app' : 'tracking link'}.
-            </AppText>
-
-            <AppView className="items-center gap-2 py-1">
-              <OtpInput
-                length={4}
-                value={otp}
-                onChange={(value) => {
-                  setOtp(value);
-                  setOtpError(undefined);
-                }}
-                // Reveal the confirm button once the code is in.
-                onComplete={() => Keyboard.dismiss()}
-              />
-              {otpError ? (
-                <AppText className="text-center text-[13px] font-medium text-error">
-                  {otpError}
-                </AppText>
-              ) : null}
-            </AppView>
-
-            <AppPressable
-              onPress={() => Linking.openURL(`tel:${contact.phone}`)}
-              className="items-center py-1"
-            >
-              <AppText className="text-[14px] font-semibold text-brand">
-                Call {contact.name.split(' ')[0]} for the code
-              </AppText>
-            </AppPressable>
-            <AppPressable
-              onPress={() =>
-                Alert.alert(
-                  "Customer can't find the code?",
-                  stop === 'pickup'
-                    ? 'The sender sees the pickup code on the order tracking screen in their RYNO app, under the order number.'
-                    : 'The sender sees the delivery code on the order tracking screen and can share it with the receiver using "Share code".',
-                  [
-                    { text: 'OK', style: 'cancel' },
-                    {
-                      text: 'Call sender',
-                      onPress: () => Linking.openURL(`tel:${job.sender.phone}`),
-                    },
-                  ],
-                )
-              }
-              className="items-center py-1"
-            >
-              <AppText className="text-[13px] font-medium text-muted">
-                Customer can&apos;t find the code?
-              </AppText>
-            </AppPressable>
           </AppView>
+        </AppScrollView>
 
+        {/* Pinned, so the action is never below the fold or behind the keyboard. */}
+        <AppView
+          style={{ paddingBottom: Math.max(insets.bottom, 12) }}
+          className="gap-2 border-t border-border/60 bg-[#FBFBFC] px-5 pt-3 dark:bg-background"
+        >
           {paymentDue ? (
-            <AppView row className="items-center gap-2 rounded-2xl bg-surface-muted p-3.5">
-              <Icon name="lock.fill" size={15} tone="icon-subtle" />
-              <AppText className="flex-1 text-[13px] font-semibold text-foreground-secondary">
-                Collect {formatRupees(job.payment.amount)} after the code is verified.
+            <AppView row className="items-center justify-center gap-1.5">
+              <Icon name="banknote" size={14} tone="icon-subtle" />
+              <AppText className="text-[12px] font-semibold text-muted">
+                Next: collect {formatRupees(job.payment.amount)} in cash
               </AppText>
             </AppView>
           ) : null}
-
           <Button
             variant="brand"
             label={paymentDue ? 'Verify code' : copy.cta}
             onPress={handleConfirm}
             loading={verify.isPending}
-            disabled={photo.uploading}
+            disabled={photo.uploading || otp.length < 4}
             size="lg"
             className="rounded-full shadow-lg shadow-brand/25"
             textClassName="font-extrabold text-[16px]"
           />
-        </AppScrollView>
+        </AppView>
       </AppKeyboardAvoidingView>
     </AppView>
   );
@@ -262,47 +293,92 @@ function PaymentStep({ job, stop }: { job: DriverJob; stop: Stop }) {
   const liveJob = active?.id === job.id && active.payment.status === 'collected' ? active : null;
   const current = paidJob ?? liveJob ?? job;
   const isCollected = current.payment.status === 'collected';
+  const clearFinishedJob = useClearFinishedJob();
+
+  const handleContinue = () => {
+    // Cash at the drop ends the trip: Home must not show it as still awaiting payment.
+    if (stop === 'drop') clearFinishedJob(job.id);
+    leaveStop(router, stop, job.id);
+  };
+
+  const payer = stop === 'pickup' ? job.sender : (job.drop.contact ?? job.sender);
+  const payerName = payer.name.split(' ')[0] || 'the customer';
+  // Anything above the quoted fare is the waiting charge the backend added.
+  const extra = Math.round((current.payment.amount - job.fare) * 100) / 100;
 
   return (
     <AppView className="flex-1 bg-[#FBFBFC] dark:bg-background">
       <FocusAwareStatusBar />
 
-      <AppView style={{ paddingTop: Math.max(insets.top, 12) + 4 }} className="px-6 pb-2">
-        <AppText className="text-[28px] font-black tracking-tight text-foreground">
-          Collect payment
+      <AppView style={{ paddingTop: Math.max(insets.top, 12) + 4 }} className="px-5 pb-3">
+        <AppText className="text-[22px] font-black tracking-tight text-foreground">
+          {isCollected ? 'Payment received' : 'Collect payment'}
         </AppText>
-        <AppText className="text-[15px] font-medium text-muted">Order #{job.number}</AppText>
+        <AppText className="text-[13px] font-medium text-muted">Order #{job.number}</AppText>
       </AppView>
 
       <AppScrollView
-        contentContainerClassName="gap-5 px-6 pb-12 pt-2"
+        contentContainerClassName="gap-4 px-5 pb-6 pt-1"
         showsVerticalScrollIndicator={false}
       >
-        <AppView row className="items-center gap-2 rounded-2xl bg-emerald-500/10 p-3.5">
-          <Icon name="checkmark.circle.fill" size={18} color="#10b981" />
+        <AppView row className="items-center gap-2 rounded-2xl bg-emerald-500/10 px-3.5 py-3">
+          <Icon name="checkmark.circle.fill" size={16} color="#10b981" />
           <AppText className="text-[13px] font-bold text-emerald-700 dark:text-emerald-400">
             {stop === 'pickup' ? 'Pickup' : 'Delivery'} code verified
           </AppText>
         </AppView>
 
-        <PaymentCollectCard job={current} onCollected={setPaidJob} />
+        <AppView className="items-center rounded-[24px] border border-border/80 bg-card px-5 py-6 shadow-sm">
+          {isCollected ? (
+            <AppView className="mb-3 size-14 items-center justify-center rounded-full bg-emerald-500/15">
+              <Icon name="checkmark" size={26} color="#10b981" />
+            </AppView>
+          ) : null}
+          <AppText className="text-[13px] font-semibold text-muted">
+            {isCollected
+              ? `Received from ${payerName} in ${current.payment.collectedVia === 'upi' ? 'UPI' : 'cash'}`
+              : `Collect from ${payerName}`}
+          </AppText>
+          <AppText className="mt-1 text-[40px] font-black tracking-tight text-foreground">
+            {formatRupees(current.payment.amount)}
+          </AppText>
+          {extra > 0 ? (
+            <AppView className="mt-3 w-full gap-1 border-t border-border/60 pt-3">
+              <AppView row className="justify-between">
+                <AppText className="text-[13px] text-muted">Trip fare</AppText>
+                <AppText className="text-[13px] text-foreground">{formatRupees(job.fare)}</AppText>
+              </AppView>
+              <AppView row className="justify-between">
+                <AppText className="text-[13px] text-muted">Waiting charge</AppText>
+                <AppText className="text-[13px] text-foreground">{formatRupees(extra)}</AppText>
+              </AppView>
+            </AppView>
+          ) : null}
+          {isCollected ? null : (
+            <AppText className="mt-2 text-center text-[12px] text-muted">
+              Count the cash before you confirm.
+            </AppText>
+          )}
+        </AppView>
 
-        <Button
-          variant="brand"
-          label={
-            isCollected
-              ? stop === 'pickup'
-                ? 'Start trip'
-                : 'Finish delivery'
-              : 'Collect payment to continue'
-          }
-          onPress={() => leaveStop(router, stop, job.id)}
-          disabled={!isCollected}
-          size="lg"
-          className="rounded-full shadow-lg shadow-brand/25"
-          textClassName="font-extrabold text-[16px]"
-        />
+        {isCollected ? null : <PaymentCollectCard job={current} onCollected={setPaidJob} />}
       </AppScrollView>
+
+      {isCollected ? (
+        <AppView
+          style={{ paddingBottom: Math.max(insets.bottom, 12) }}
+          className="border-t border-border/60 px-5 pt-3"
+        >
+          <Button
+            variant="brand"
+            label={stop === 'pickup' ? 'Start trip' : 'Finish delivery'}
+            onPress={handleContinue}
+            size="lg"
+            className="rounded-full shadow-lg shadow-brand/25"
+            textClassName="font-extrabold text-[16px]"
+          />
+        </AppView>
+      ) : null}
     </AppView>
   );
 }

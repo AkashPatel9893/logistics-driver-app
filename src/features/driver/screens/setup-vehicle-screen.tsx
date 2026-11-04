@@ -15,7 +15,7 @@ import {
 import { useDriverProfile, useSaveVehicle, useVehicleTypes } from '@/hooks/use-driver';
 import { useAddFleetVehicle, useFleetCompany, useRequestFleetLink } from '@/hooks/use-fleet';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
-import { toIsoDate } from '@/lib/api/onboarding';
+import { formatDateInput, toIsoDate } from '@/lib/api/onboarding';
 import { PhotoUploadBox } from '../components/photo-upload-box';
 import { useLocalPhoto } from '../hooks/use-local-photo';
 import type { FleetDriver } from '@/features/fleet/types';
@@ -32,11 +32,6 @@ const CAPACITIES = [
   { value: 1500, label: '1.5 Ton (1500 kg)' },
   { value: 2000, label: '2 Ton (2000 kg)' },
 ];
-
-function formatExpiryDate(value: string): string {
-  const digits = value.replace(/\D/g, '').slice(0, 8);
-  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join('/');
-}
 
 export function SetupVehicleScreen() {
   const router = useRouter();
@@ -491,8 +486,8 @@ export function SetupVehicleScreen() {
                       label="Insurance expiry date"
                       placeholder="DD/MM/YYYY"
                       value={insuranceExpiry}
-                      onChangeText={(value) => setInsuranceExpiry(formatExpiryDate(value))}
-                      keyboardType="numbers-and-punctuation"
+                      onChangeText={(value) => setInsuranceExpiry(formatDateInput(value))}
+                      keyboardType="number-pad"
                       maxLength={10}
                     />
                     {fuelType !== 'ELECTRIC' ? (
@@ -508,8 +503,8 @@ export function SetupVehicleScreen() {
                           label="PUC expiry date"
                           placeholder="DD/MM/YYYY"
                           value={pucExpiry}
-                          onChangeText={(value) => setPucExpiry(formatExpiryDate(value))}
-                          keyboardType="numbers-and-punctuation"
+                          onChangeText={(value) => setPucExpiry(formatDateInput(value))}
+                          keyboardType="number-pad"
                           maxLength={10}
                         />
                       </>
