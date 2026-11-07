@@ -69,7 +69,7 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
   // mutateAsync: accepting removes this offer from the cache and unmounts the view.
   const handleAccept = async () => {
     try {
-      await accept.mutateAsync(offer.id);
+      await accept.mutateAsync(offer);
       router.replace('/active-delivery');
     } catch (error) {
       Alert.alert('Request unavailable', getErrorMessage(error));

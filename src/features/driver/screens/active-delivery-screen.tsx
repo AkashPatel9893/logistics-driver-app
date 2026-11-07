@@ -14,6 +14,7 @@ import {
   LiquidGlassBackButton,
   OptionSheet,
 } from '@/components/ui';
+import { useAppRules } from '@/hooks/use-content';
 import { useActiveJob, useArriveAtDrop, useArriveAtPickup, useCancelJob } from '@/hooks/use-jobs';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverJob } from '@/lib/api/models';
@@ -25,9 +26,6 @@ import { useLocationStore } from '@/stores/location-store';
 import { RouteMap } from '../components/route-map';
 import { currentStop } from '../job-stage';
 
-/** Beyond this, "I've arrived" asks for confirmation. */
-// Matches the backend's arrival_geofence_meters, which refuses an arrival from further away.
-const ARRIVAL_RADIUS_KM = 0.2;
 const CANCEL_REASONS = [
   'Customer not reachable',
   'Parcel not ready',
@@ -81,6 +79,7 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const leg = useLeg(job);
+  const { arrivalGeofenceMeters } = useAppRules();
   const arriveAtPickup = useArriveAtPickup();
   const arriveAtDrop = useArriveAtDrop();
   const cancelJob = useCancelJob();
@@ -107,10 +106,11 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
       router.push(isPickup ? '/pickup-verification' : '/drop-verification');
       return;
     }
-    if (leg.straightKm !== null && leg.straightKm > ARRIVAL_RADIUS_KM) {
+    // The backend refuses an arrival beyond arrival_geofence_meters, so warn before calling it.
+    if (leg.straightKm !== null && leg.straightKm * 1000 > arrivalGeofenceMeters) {
       Alert.alert(
         'Not at the location yet',
-        `You are about ${formatDistance(leg.straightKm)} from the ${isPickup ? 'pickup' : 'drop'} point. Get within ${ARRIVAL_RADIUS_KM * 1000} m to mark arrival. If you are already there, contact support.`,
+        `You are about ${formatDistance(leg.straightKm)} from the ${isPickup ? 'pickup' : 'drop'} point. Get within ${arrivalGeofenceMeters} m to mark arrival. If you are already there, contact support.`,
         [
           { text: 'Get help', onPress: () => router.push('/support') },
           { text: 'Keep driving', style: 'cancel' },

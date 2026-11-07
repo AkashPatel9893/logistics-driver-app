@@ -1,4 +1,5 @@
 import { request } from './client';
+import { filePart } from './file-part';
 
 /** Must equal the backend's current partner agreement version. */
 const AGREEMENT_VERSION = '2026-01';
@@ -50,7 +51,7 @@ export function toIsoDate(text: string): string | null {
 function uploadFile(url: string, fileUri: string) {
   const form = new FormData();
   // React Native's FormData accepts { uri, name, type } file parts.
-  form.append('file', { uri: fileUri, name: 'document.jpg', type: 'image/jpeg' } as never);
+  form.append('file', filePart(fileUri, 'document') as never);
   return request<any>({
     method: 'POST',
     url,

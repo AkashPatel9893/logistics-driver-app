@@ -65,9 +65,17 @@ export function formatDayTime(iso: string): string {
   return `${formatShortDate(iso)}, ${time}`;
 }
 
-/** First line of an address label: "Hans Bhawan, Wing-1…" → "Hans Bhawan". */
+/** A segment that is only a house/flat number, such as "11", "12B" or "#4-2". */
+const HOUSE_NUMBER_ONLY = /^#?\d[\w/-]{0,5}$/;
+
+/**
+ * First line of an address label: "Hans Bhawan, Wing-1…" → "Hans Bhawan".
+ * A bare house number keeps its street: "11, Home street, Bengaluru" → "11, Home street".
+ */
 export function placeName(label: string): string {
-  return label.split(',')[0]?.trim() || label;
+  const [first = '', second] = label.split(',').map((part) => part.trim());
+  if (second && HOUSE_NUMBER_ONLY.test(first)) return `${first}, ${second}`;
+  return first || label;
 }
 
 export function greetingFor(date = new Date()): string {

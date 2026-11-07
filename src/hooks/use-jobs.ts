@@ -50,13 +50,16 @@ export function useCacheJob() {
     queryClient.setQueryData(queryKeys.job(job.id), job);
     const isActive = job.status !== 'delivered' && job.status !== 'cancelled';
     queryClient.setQueryData(queryKeys.activeJob, isActive ? job : null);
-    if (!isActive) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.trips });
-      queryClient.invalidateQueries({ queryKey: queryKeys.wallet });
-      queryClient.invalidateQueries({ queryKey: queryKeys.profile });
-      queryClient.invalidateQueries({ queryKey: ['driver', 'earnings'] });
-    }
+    if (!isActive) invalidateTripTotals(queryClient);
   };
+}
+
+/** A finished trip changes the trip count, earnings and wallet balance shown on Home. */
+function invalidateTripTotals(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.trips });
+  queryClient.invalidateQueries({ queryKey: queryKeys.wallet });
+  queryClient.invalidateQueries({ queryKey: queryKeys.profile });
+  queryClient.invalidateQueries({ queryKey: ['driver', 'earnings'] });
 }
 
 /** The trip just ended: drop it from Home now rather than at the next poll. */
@@ -67,6 +70,7 @@ export function useClearFinishedJob() {
     queryClient.invalidateQueries({ queryKey: queryKeys.activeJob });
     // The summary screen needs the delivery time, which the cached job doesn't have yet.
     queryClient.invalidateQueries({ queryKey: queryKeys.job(jobId) });
+    invalidateTripTotals(queryClient);
   };
 }
 
@@ -80,12 +84,13 @@ export function useAcceptOffer() {
   const queryClient = useQueryClient();
   const cacheJob = useCacheJob();
   return useMutation({
-    mutationFn: (offerId: string) => jobsApi.acceptOffer(offerId),
-    onSuccess: (job, offerId) => {
-      removeOffer(queryClient, offerId);
+    mutationFn: (offer: Pick<JobOffer, 'id' | 'orderId'>) =>
+      jobsApi.acceptOffer(offer.id, offer.orderId),
+    onSuccess: (job, offer) => {
+      removeOffer(queryClient, offer.id);
       cacheJob(job);
     },
-    onError: (_error, offerId) => removeOffer(queryClient, offerId),
+    onError: (_error, offer) => removeOffer(queryClient, offer.id),
   });
 }
 

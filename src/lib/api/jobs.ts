@@ -1,6 +1,6 @@
 import { useLocationStore } from '@/stores/location-store';
 
-import { ApiError } from './api-error';
+import { ApiError, toApiError } from './api-error';
 import { request } from './client';
 import type { ChatMessage, DriverJob, JobOffer, PaymentQr, VerifyStopInput } from './models';
 
@@ -176,6 +176,8 @@ function mapDriverJob(raw: any): DriverJob {
 }
 /** Trip of the job last worked on — cash is recorded after delivery, when no trip is active. */
 let lastTripId: string | null = null;
+/** Trip states after which a remembered trip id no longer points at the driver's work. */
+const ENDED_TRIP_STATUSES = new Set(['DELIVERED', 'CANCELLED', 'FAILED']);
 /**
  * What verify-code says to collect (the fare plus any waiting charge), by job id. The job record
  * still carries the quoted amount, and the job is re-fetched every few seconds, so without this the
@@ -216,14 +218,23 @@ interface ActiveTrip {
 async function getActiveTripDetails(): Promise<ActiveTrip | null> {
   const now = new Date().toISOString();
   try {
-    const locRes = await request<any>({
-      method: 'POST',
-      url: '/tracking/location',
-      data: { ...devicePosition(), recorded_at: now },
-    });
-    if (!locRes?.trip_id) return null;
-    lastTripId = locRes.trip_id;
-    const tripRes = await request<any>({ url: `/trips/${locRes.trip_id}` });
+    // The location report names the active trip. If that one report fails (slow network, rate
+    // limit), the trip seen last is still the right one unless the backend says it has ended.
+    let tripId: string | null = null;
+    try {
+      const locRes = await request<any>({
+        method: 'POST',
+        url: '/tracking/location',
+        data: { ...devicePosition(), recorded_at: now },
+      });
+      tripId = locRes?.trip_id ?? null;
+    } catch {
+      tripId = lastTripId;
+    }
+    if (!tripId) return null;
+    lastTripId = tripId;
+    const tripRes = await request<any>({ url: `/trips/${tripId}` });
+    if (ENDED_TRIP_STATUSES.has(String(tripRes?.status ?? ''))) return null;
     const drops: any[] = ((tripRes?.stops ?? []) as any[])
       .filter((stop) => stop.stop_type === 'DROP')
       .sort((a, b) => a.sequence_number - b.sequence_number);
@@ -231,7 +242,7 @@ async function getActiveTripDetails(): Promise<ActiveTrip | null> {
     const index = drops.findIndex((stop) => stop.status !== 'COMPLETED');
     const next = index >= 0 ? drops[index] : null;
     return {
-      tripId: locRes.trip_id,
+      tripId,
       orderId: String(tripRes?.order_id ?? ''),
       status: tripRes?.status || '',
       dropCount: drops.length,
@@ -255,8 +266,17 @@ export const jobsApi = {
     return res.map(mapJobOffer);
   },
 
-  acceptOffer: async (offerId: string): Promise<DriverJob> => {
-    await request<any>({ method: 'POST', url: `/partner/offers/${offerId}/accept` });
+  /** `orderId` lets a lost response be recognised: the server may have assigned the trip anyway. */
+  acceptOffer: async (offerId: string, orderId?: string): Promise<DriverJob> => {
+    try {
+      await request<any>({ method: 'POST', url: `/partner/offers/${offerId}/accept` });
+    } catch (error) {
+      const { kind } = toApiError(error);
+      if (kind !== 'network' && kind !== 'timeout') throw error;
+      const assigned = await jobsApi.getActiveJob().catch(() => null);
+      if (assigned && orderId && assigned.id === orderId) return assigned;
+      throw error;
+    }
     const active = await jobsApi.getActiveJob();
     // Never invent a trip: without the real job there is nothing safe to show.
     if (!active) throw new Error('Trip accepted, but it could not be loaded. Pull to refresh.');

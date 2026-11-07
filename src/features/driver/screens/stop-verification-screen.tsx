@@ -236,8 +236,9 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
               Enter {stop === 'pickup' ? 'pickup' : 'delivery'} code
             </AppText>
             <AppText className="text-center text-[13px] leading-5 text-muted">
-              Ask {firstName} for the 4-digit code in their RYNO{' '}
-              {stop === 'pickup' ? 'app' : 'tracking link'}.
+              {stop === 'pickup'
+                ? `Ask ${firstName} for the 4-digit code in their RYNO app.`
+                : `Ask ${firstName} for the 4-digit delivery code. The sender shares it in their RYNO app or by message.`}
             </AppText>
             {/* Above the boxes: the keyboard reopens after a wrong code and would cover it below. */}
             {otpError ? (

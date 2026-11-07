@@ -1,4 +1,5 @@
 import { request } from './client';
+import { filePart } from './file-part';
 
 /** What a photo is for — the backend stores and retains each kind differently. */
 export type UploadKind =
@@ -34,7 +35,7 @@ export const uploadsApi = {
     const form = new FormData();
     form.append('kind', BACKEND_KIND[kind] ?? kind);
     // React Native's FormData accepts { uri, name, type } file parts.
-    form.append('file', { uri: localUri, name: `${kind}.jpg`, type: 'image/jpeg' } as never);
+    form.append('file', filePart(localUri, kind) as never);
     return await request<UploadedFile>({
       method: 'POST',
       url: '/uploads',

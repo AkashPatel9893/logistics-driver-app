@@ -15,6 +15,11 @@ import { queryKeys } from '@/lib/queries/keys';
 
 /** Waits between reconnect attempts; the last one repeats. */
 const RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 30_000];
+/**
+ * The server pings every 15 s. Silence for longer means the connection stalled without closing,
+ * so it is dropped: polling speeds up and a fresh stream is opened.
+ */
+const STALL_TIMEOUT_MS = 35_000;
 
 let subscribers = 0;
 let controller: AbortController | null = null;
@@ -126,15 +131,27 @@ async function connect() {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer = consume(buffer + decoder.decode(value, { stream: true }));
+    let stallTimer: ReturnType<typeof setTimeout> | undefined;
+    const armStallTimer = () => {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => abort.abort(), STALL_TIMEOUT_MS);
+    };
+    armStallTimer();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        armStallTimer();
+        buffer = consume(buffer + decoder.decode(value, { stream: true }));
+      }
+    } finally {
+      clearTimeout(stallTimer);
     }
   } catch {
     // Closed, offline or refused: handled below.
   }
-  if (controller === abort && !abort.signal.aborted) scheduleReconnect();
+  // A stall aborts this request while it is still the current one; a disconnect replaces it.
+  if (controller === abort && subscribers > 0) scheduleReconnect();
 }
 
 function disconnect() {

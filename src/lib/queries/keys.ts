@@ -7,6 +7,7 @@ import type { EarningsPeriod } from '@/lib/api/models';
 export const queryKeys = {
   me: ['me'] as const,
   languages: ['config', 'languages'] as const,
+  rules: ['config', 'rules'] as const,
   support: ['support'] as const,
   profile: ['driver', 'profile'] as const,
   vehicleTypes: ['driver', 'vehicle-types'] as const,
