@@ -1,4 +1,4 @@
-import { Location } from 'expo-location/next';
+import { Location, LocationProfile } from 'expo-location/next';
 
 import { useLocationStore } from '@/stores/location-store';
 
@@ -209,9 +209,12 @@ export const driverApi = {
           if (!granted) {
             throw new ApiError('Allow location access to go online.', 'unknown');
           }
-          const position = await Location.getPosition({ maxCachedAge: 120, timeout: 10 }).catch(
-            () => null,
-          );
+          const position = await Location.getPosition({
+            maxCachedAge: 120,
+            timeout: 10,
+            // High accuracy asks for real GPS; balanced priority never wakes the GPS provider.
+            profile: LocationProfile.AUTOMOTIVE_NAVIGATION,
+          }).catch(() => null);
           // getPosition may return an older cached fix after a timeout.
           if (!position || Date.now() - position.timestamp > 120_000) {
             throw new ApiError('Could not get a recent GPS location. Try again.', 'unknown');

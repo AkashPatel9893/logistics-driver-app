@@ -68,9 +68,10 @@ function isPaymentDueAt(job: DriverJob, stop: Stop): boolean {
   const { payment } = job;
   if (payment.status !== 'pending') return false;
   if (payment.timing !== (stop === 'pickup' ? 'on-pickup' : 'on-delivery')) return false;
-  // Multi-stop: the backend completes each stop with its code and records cash after the trip.
-  if (stop === 'drop' && (job.stops ?? []).filter((s) => s.stopType === 'DROP').length > 1) {
-    return false;
+  // Multi-stop: the fare is collected at the final drop only, not at the stops before it.
+  if (stop === 'drop') {
+    const finalDrop = (job.stops ?? []).filter((s) => s.stopType === 'DROP').at(-1);
+    if (finalDrop && job.currentStopId && finalDrop.stopId !== job.currentStopId) return false;
   }
   // The backend reports an unpaid pay-on-delivery order as "prepaid" until a payment exists.
   return payment.mode === 'cash' || stop === 'drop';
@@ -104,6 +105,10 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
   const contact = stop === 'pickup' ? job.sender : (job.drop.contact ?? job.sender);
   const arrivedAt = stop === 'pickup' ? job.arrivedAtPickupAt : job.arrivedAtDropAt;
   const paymentDue = isPaymentDueAt(job, stop);
+  const waitingStop =
+    stop === 'pickup'
+      ? job.stops?.find((s) => s.stopType === 'PICKUP')
+      : job.stops?.find((s) => s.stopId === job.currentStopId);
 
   const handleConfirm = () => {
     if (PROOF_PHOTO_REQUIRED && !photo.url) {
@@ -218,7 +223,13 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
             </AppPressable>
           </AppView>
 
-          {arrivedAt ? <WaitingBar arrivedAt={arrivedAt} /> : null}
+          {arrivedAt ? (
+            <WaitingBar
+              arrivedAt={arrivedAt}
+              freeWaitingUntil={waitingStop?.freeWaitingUntil}
+              ratePerMinute={waitingStop?.waitingRatePerMinute}
+            />
+          ) : null}
 
           <AppView className="items-center gap-3 rounded-[24px] border border-border/80 bg-card px-4 py-5 shadow-sm">
             <AppText className="text-center text-[17px] font-black text-foreground">

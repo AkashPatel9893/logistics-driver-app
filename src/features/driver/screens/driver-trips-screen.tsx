@@ -10,12 +10,14 @@ import {
   Icon,
 } from '@/components/ui';
 import { useTrips } from '@/hooks/use-earnings';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 
 import { DriverPastTripCard } from '../components/driver-past-trip-card';
 
 export function DriverTripsScreen() {
   const insets = useSafeAreaInsets();
   const tripsQuery = useTrips();
+  const { refreshing, refresh } = usePullToRefresh();
   const trips = tripsQuery.data ?? [];
 
   return (
@@ -39,10 +41,8 @@ export function DriverTripsScreen() {
         contentContainerClassName="gap-3 px-5 pb-32 pt-4"
         refreshControl={
           <RefreshControl
-            refreshing={tripsQuery.isRefetching}
-            onRefresh={() => {
-              void tripsQuery.refetch();
-            }}
+            refreshing={refreshing}
+            onRefresh={() => void refresh(() => tripsQuery.refetch({ throwOnError: true }))}
           />
         }
         ListEmptyComponent={

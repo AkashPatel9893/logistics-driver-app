@@ -4,15 +4,31 @@ import { ApiError } from './api-error';
 import { request } from './client';
 import type { ChatMessage, DriverJob, JobOffer, PaymentQr, VerifyStopInput } from './models';
 
+/** Avoid repeating address parts when the city is already included in the address. */
+function dedupeAddress(label: string): string {
+  const seen = new Set<string>();
+  return label
+    .split(/,\s*/)
+    .filter((part) => {
+      const normalized = part.trim().toLowerCase();
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    })
+    .join(', ');
+}
+
 /** The backend sends `{label, latitude, longitude}`; the UI reads `{label, location, houseNumber, contact}`. */
 function toOrderStop(place: any, fallbackLabel: string) {
-  if (place.location !== undefined) return place;
+  if (place.location !== undefined) {
+    return { ...place, label: dedupeAddress(place.label ?? fallbackLabel) };
+  }
   // Coordinates may arrive as numbers or as decimal strings.
   const latitude = place.latitude == null ? NaN : Number(place.latitude);
   const longitude = place.longitude == null ? NaN : Number(place.longitude);
   const hasFix = Number.isFinite(latitude) && Number.isFinite(longitude);
   return {
-    label: place.label ?? fallbackLabel,
+    label: dedupeAddress(place.label ?? fallbackLabel),
     location: hasFix ? { latitude, longitude } : null,
     houseNumber: place.house_number ?? place.houseNumber ?? '',
     contact: place.contact ?? null,
@@ -95,18 +111,22 @@ function mapDriverJob(raw: any): DriverJob {
     status: raw.status,
     acceptedAt: raw.accepted_at ?? raw.acceptedAt ?? null,
     vehicle: raw.vehicle,
-    pickup: raw.pickup ?? {
-      label: 'Pickup',
-      location: null,
-      houseNumber: '',
-      contact: null,
-    },
-    drop: raw.drop ?? {
-      label: 'Drop',
-      location: null,
-      houseNumber: '',
-      contact: null,
-    },
+    pickup: raw.pickup
+      ? toOrderStop(raw.pickup, 'Pickup')
+      : {
+          label: 'Pickup',
+          location: null,
+          houseNumber: '',
+          contact: null,
+        },
+    drop: raw.drop
+      ? toOrderStop(raw.drop, 'Drop')
+      : {
+          label: 'Drop',
+          location: null,
+          houseNumber: '',
+          contact: null,
+        },
     sender: raw.sender ?? { name: 'Customer', phone: '' },
     route: raw.route ?? [],
     tripDistanceKm: Number(raw.trip_distance_km ?? raw.tripDistanceKm ?? 0),
@@ -138,13 +158,16 @@ function mapDriverJob(raw: any): DriverJob {
           sequenceNumber: s.sequence_number ?? s.sequenceNumber ?? 1,
           stopType: s.stop_type ?? s.stopType ?? 'DROP',
           status: s.status ?? 'PENDING',
-          label: s.label ?? '',
+          label: dedupeAddress(s.label ?? ''),
           addressLine1: s.address_line_1 ?? s.addressLine1 ?? null,
           addressLine2: s.address_line_2 ?? s.addressLine2 ?? null,
           landmark: s.landmark ?? null,
           location: s.location ?? null,
           contact: s.contact ? { name: s.contact.name, phone: s.contact.phone } : null,
           arrivedAt: s.arrived_at ?? s.arrivedAt ?? null,
+          freeWaitingUntil: s.free_waiting_until ?? s.freeWaitingUntil ?? null,
+          waitingRatePerMinute:
+            s.waiting_rate_per_minute != null ? Number(s.waiting_rate_per_minute) : null,
           completedAt: s.completed_at ?? s.completedAt ?? null,
         }))
       : undefined,
@@ -400,12 +423,10 @@ export const jobsApi = {
     };
     // Pay-at-drop: on the final stop the code only unlocks payment; recording the cash completes the
     // delivery. Stops before it (multi-stop) are simply completed with their own code.
-    // The backend only gates payment this way for a single pickup + single drop; any multi-stop trip
-    // completes every stop (the last one included) with /complete.
+    // Single and multi-stop trips pay the same way: the final drop is verified, then paid.
+    // Stops before it are completed with their own code.
     const collectsAtDrop =
-      trip.dropCount === 1 &&
-      before?.payment.timing === 'on-delivery' &&
-      before.payment.status === 'pending';
+      before?.payment.timing === 'on-delivery' && before.payment.status === 'pending';
     const isMiddleStop = trip.currentDrop != null && !trip.currentDrop.isFinal;
     // Not swallowed: a wrong code must fail here, never count as delivered.
     if (isMiddleStop && trip.currentDrop) {
@@ -461,8 +482,17 @@ export const jobsApi = {
    * Payment QR from the backend. No local fallback: a QR made up in the app would send the
    * customer's money to an account Ryno has not confirmed it owns.
    */
-  createPaymentQr: (id: string): Promise<PaymentQr> =>
-    request<PaymentQr>({ method: 'POST', url: `/driver/jobs/${id}/payment/qr` }),
+  createPaymentQr: async (id: string): Promise<PaymentQr> => {
+    const res = await request<any>({ method: 'POST', url: `/partner/jobs/${id}/payment/qr` });
+    return {
+      upiUri: res.upi_uri,
+      payeeVpa: res.payee_vpa,
+      payeeName: res.payee_name,
+      amount: Number(res.amount),
+      reference: res.reference,
+      expiresAt: res.expires_at,
+    };
+  },
 
   /** Records cash received for a stop whose code is already verified. */
   collectCash: async (job: DriverJob): Promise<DriverJob> => {

@@ -6,6 +6,25 @@ import { request } from './client';
 import { jobsApi } from './jobs';
 import type { DriverWallet, EarningsPeriod, EarningsSummary, TripSummary } from './models';
 
+function tripAddress(stop: { label: string; houseNumber: string } | undefined): string | null {
+  if (!stop) return null;
+  const label = stop.label.trim();
+  const houseNumber = stop.houseNumber?.trim();
+  if (!houseNumber) return label || null;
+  const parts = label.split(',').map((part) => part.trim().toLowerCase());
+  return parts.includes(houseNumber.toLowerCase())
+    ? label
+    : [houseNumber, label].filter(Boolean).join(', ');
+}
+
+export type OrderWalletEntry = { id: string; kind: string; amount: number; createdAt: string };
+export type OrderWallet = {
+  ownerType: 'DRIVER' | 'FLEET';
+  netAmount: number;
+  complete: boolean;
+  entries: OrderWalletEntry[];
+};
+
 export const earningsApi = {
   getSummary: async (period: EarningsPeriod, signal?: AbortSignal): Promise<EarningsSummary> => {
     const res = await request<any>({ url: '/partner/earnings', params: { period }, signal });
@@ -44,6 +63,23 @@ export const earningsApi = {
         // The backend's own transaction title already names the order; never invent a number from the id.
         orderNumber: null,
         orderId: t.order_id ?? null,
+      })),
+    };
+  },
+
+  /** Every wallet movement one order caused, with the net. No balances, so it is safe to show to a fleet driver. */
+  getOrderWallet: async (orderId: string, signal?: AbortSignal): Promise<OrderWallet> => {
+    const res = await request<any>({ url: `/wallet/orders/${orderId}`, signal });
+    return {
+      ownerType: res.wallet_owner_type,
+      netAmount: Number(res.net_amount),
+      // False while the order's ledger entries are still being written.
+      complete: Boolean(res.complete),
+      entries: (res.entries as any[]).map((entry, index) => ({
+        id: `${entry.kind}-${index}`,
+        kind: entry.kind as string,
+        amount: Number(entry.amount),
+        createdAt: entry.created_at as string,
       })),
     };
   },
@@ -122,8 +158,8 @@ export const earningsApi = {
         paidTo: item.paid_to,
         fleetName: item.fleet_name,
         orderNumber: job?.number ?? null,
-        pickupLabel: job?.pickup.label ?? null,
-        dropLabel: job?.drop.label ?? null,
+        pickupLabel: tripAddress(job?.pickup),
+        dropLabel: tripAddress(job?.drop),
         distanceKm: job?.tripDistanceKm ?? null,
       };
     });

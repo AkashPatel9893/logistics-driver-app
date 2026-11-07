@@ -299,6 +299,10 @@ export interface JobStop {
   location: GeoPoint | null;
   contact: OrderContact | null;
   arrivedAt?: string | null;
+  /** When free waiting ends at this stop (from the order's plan). */
+  freeWaitingUntil?: string | null;
+  /** Charge per minute once free waiting is over, in rupees. */
+  waitingRatePerMinute?: number | null;
   completedAt?: string | null;
 }
 

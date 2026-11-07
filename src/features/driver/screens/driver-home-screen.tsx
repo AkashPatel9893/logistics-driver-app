@@ -16,6 +16,7 @@ import {
 import { useDriverProfile, useMarkWelcomeBonusSeen, useSetOnline } from '@/hooks/use-driver';
 import { useEarnings, useWallet } from '@/hooks/use-earnings';
 import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useActiveJob, useOffers } from '@/hooks/use-jobs';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { FleetStatsRow, FleetVehiclesSection, RoleSwitcher } from '@/features/fleet/components';
@@ -60,6 +61,7 @@ export function DriverHomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
+  const { refreshing, refresh } = usePullToRefresh();
 
   const profileQuery = useDriverProfile();
   const profile = profileQuery.data;
@@ -75,8 +77,10 @@ export function DriverHomeScreen() {
   // Fleet Owner state
   const dashboardRole = useFleetStore.use.dashboardRole();
   const setDashboardRole = useFleetStore.use.setDashboardRole();
-  const { data: vehicles = [] } = useFleetVehicles();
-  const { data: company } = useFleetCompany();
+  const fleetVehiclesQuery = useFleetVehicles();
+  const { data: vehicles = [] } = fleetVehiclesQuery;
+  const fleetCompanyQuery = useFleetCompany();
+  const { data: company } = fleetCompanyQuery;
   const activeDriverVehicleId = useFleetStore.use.activeDriverVehicleId();
   const setActiveDriverVehicleId = useFleetStore.use.setActiveDriverVehicleId();
 
@@ -208,13 +212,26 @@ export function DriverHomeScreen() {
         contentContainerClassName="px-4 pb-28 pt-1 gap-4"
         refreshControl={
           <RefreshControl
-            refreshing={profileQuery.isRefetching}
-            onRefresh={() => {
-              profileQuery.refetch();
-              activeJobQuery.refetch();
-              offersQuery.refetch();
-              todayQuery.refetch();
-            }}
+            refreshing={refreshing}
+            onRefresh={() =>
+              void refresh(async () => {
+                await Promise.all([
+                  profileQuery.refetch({ throwOnError: true }),
+                  activeJobQuery.refetch({ throwOnError: true }),
+                  ...(profile.isOnline && !activeJob
+                    ? [offersQuery.refetch({ throwOnError: true })]
+                    : []),
+                  todayQuery.refetch({ throwOnError: true }),
+                  walletQuery.refetch({ throwOnError: true }),
+                  ...(dashboardRole === 'owner'
+                    ? [
+                        fleetVehiclesQuery.refetch({ throwOnError: true }),
+                        fleetCompanyQuery.refetch({ throwOnError: true }),
+                      ]
+                    : []),
+                ]);
+              })
+            }
           />
         }
       >

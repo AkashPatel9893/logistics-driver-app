@@ -19,6 +19,11 @@ import { earningsApi } from '@/lib/api/earnings';
 import type { DriverJob } from '@/lib/api/models';
 import { formatDayTime, formatDistance, formatMinutes, formatRupees } from '@/lib/format';
 
+const ORDER_WALLET_LABEL: Record<string, string> = {
+  TRIP_EARNING: 'Trip earning',
+  CASH_COLLECTED: 'Cash collected',
+};
+
 function paymentLine(job: DriverJob): string {
   const { payment } = job;
   if (payment.mode === 'prepaid') return `Paid online by customer · ${payment.methodLabel}`;
@@ -34,13 +39,15 @@ export function TripCompleteScreen() {
   const { data: profile } = useDriverProfile();
   const { data: trips } = useTrips();
   const earning = trips?.find((trip) => trip.orderId === id);
-  // Use a separate query so cached wallet data from before delivery is never presented as current.
-  const { data: wallet } = useQuery({
-    queryKey: ['trip-complete-wallet', id],
-    queryFn: ({ signal }) => earningsApi.getWallet(signal),
+  // Fetched fresh so wallet data from before delivery is never presented as current.
+  const { data: orderWallet } = useQuery({
+    queryKey: ['driver', 'order-wallet', id],
+    queryFn: ({ signal }) => earningsApi.getOrderWallet(id, signal),
     enabled: Boolean(id),
     staleTime: 0,
     gcTime: 0,
+    // The ledger can lag the delivery by a moment: ask again until it says it is complete.
+    refetchInterval: (query) => (query.state.data?.complete === false ? 2_000 : false),
   });
 
   if (!job) {
@@ -148,14 +155,18 @@ export function TripCompleteScreen() {
               </AppText>
             ) : null}
             <AppText className="mt-1 text-[14px] text-muted">{paymentLine(job)}</AppText>
-            {wallet?.transactions
-              .filter((entry) => entry.orderId === job.id)
-              .map((entry) => (
-                <AppText key={entry.id} className="mt-1 text-[14px] text-muted">
-                  {entry.title}: {entry.amount < 0 ? '−' : '+'}
-                  {formatRupees(Math.abs(entry.amount))}
-                </AppText>
-              ))}
+            {orderWallet?.entries.map((entry) => (
+              <AppText key={entry.id} className="mt-1 text-[14px] text-muted">
+                {ORDER_WALLET_LABEL[entry.kind] ?? entry.kind}: {entry.amount < 0 ? '−' : '+'}
+                {formatRupees(Math.abs(entry.amount))}
+              </AppText>
+            ))}
+            {orderWallet && orderWallet.entries.length > 1 ? (
+              <AppText className="mt-1 text-[14px] font-semibold text-foreground">
+                Net to your wallet: {orderWallet.netAmount < 0 ? '−' : '+'}
+                {formatRupees(Math.abs(orderWallet.netAmount))}
+              </AppText>
+            ) : null}
           </AppView>
         </AppView>
 

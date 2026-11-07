@@ -155,12 +155,18 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
       : "I've arrived at drop";
 
   const payment = job.payment;
+  // On a multi-stop trip only the final drop takes payment; earlier drops just hand over.
+  const finalDrop = (job.stops ?? []).filter((s) => s.stopType === 'DROP').at(-1);
+  const isMiddleDrop =
+    !isPickup && !!finalDrop && !!job.currentStopId && finalDrop.stopId !== job.currentStopId;
   const paymentNote =
     payment.mode === 'prepaid'
       ? `Paid online · ${payment.methodLabel}`
       : payment.status === 'collected'
         ? `Collected via ${payment.collectedVia === 'upi' ? 'UPI' : 'cash'}`
-        : `Collect cash ${payment.timing === 'on-pickup' ? 'at pickup' : 'at drop'}`;
+        : isMiddleDrop
+          ? 'No payment at this stop · collect at the final drop'
+          : `Collect cash ${payment.timing === 'on-pickup' ? 'at pickup' : 'at drop'}`;
 
   return (
     <AppView className="flex-1 bg-background">

@@ -4,6 +4,7 @@ import { Alert, RefreshControl } from 'react-native';
 import { AppPressable, AppScrollView, AppSpinner, AppText, AppView, Icon } from '@/components/ui';
 import { useDriverProfile } from '@/hooks/use-driver';
 import { usePayouts, useRequestPayout, useWallet } from '@/hooks/use-earnings';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverTransaction } from '@/lib/api/models';
 import { formatDayTime, formatRupees } from '@/lib/format';
@@ -44,6 +45,7 @@ function TransactionRow({ txn }: { txn: DriverTransaction }) {
 export function DriverWalletScreen() {
   const router = useRouter();
   const walletQuery = useWallet();
+  const { refreshing, refresh } = usePullToRefresh();
   const wallet = walletQuery.data;
   const { data: profile } = useDriverProfile();
   const payout = useRequestPayout();
@@ -88,10 +90,8 @@ export function DriverWalletScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={walletQuery.isRefetching}
-            onRefresh={() => {
-              void walletQuery.refetch();
-            }}
+            refreshing={refreshing}
+            onRefresh={() => void refresh(() => walletQuery.refetch({ throwOnError: true }))}
           />
         }
       >

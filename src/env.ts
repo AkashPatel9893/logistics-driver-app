@@ -7,8 +7,8 @@ export const env = {
   GOOGLE_MAPS_BASE_URL:
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_BASE_URL ?? 'https://maps.googleapis.com',
   GOOGLE_MAPS_WEB_URL: process.env.EXPO_PUBLIC_GOOGLE_MAPS_WEB_URL ?? 'https://maps.google.com',
-  API_BASE_URL: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1',
-  WS_URL: process.env.EXPO_PUBLIC_WS_URL ?? null,
+  API_BASE_URL: process.env.EXPO_PUBLIC_API_URL ?? 'https://54-252-167-25.sslip.io/api/v1',
+  WS_URL: process.env.EXPO_PUBLIC_WS_URL ?? 'wss://54-252-167-25.sslip.io/api/v1/ws',
 } as const;
 
 export type Env = typeof env;
