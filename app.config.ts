@@ -78,6 +78,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       'expo-build-properties',
       {
+        android: {
+          // Room instantiates WorkManager's generated database through reflection.
+          extraProguardRules: `-keep class androidx.work.impl.WorkDatabase_Impl {
+    public <init>();
+}`,
+        },
         ios: {
           deploymentTarget: '17.0',
         },
