@@ -22,9 +22,34 @@ export const DRIVER_LOCATION_TASK = 'ryno-driver-location';
  * uploads are frequent (a little under the 5 s GPS cadence so no fix is skipped); the rest of
  * the time a slow rate is enough to stay online for dispatch (backend drops drivers after 60 s).
  */
-const TRIP_REPORT_INTERVAL_MS = 4_000;
+const MOVING_REPORT_INTERVAL_MS = 20_000;
+const WAITING_REPORT_INTERVAL_MS = 180_000;
 const IDLE_REPORT_INTERVAL_MS = 45_000;
+const MOVING_SPEED_KMPH = 5;
+const STILL_SPEED_KMPH = 2;
+const STILL_BEFORE_WAITING_MS = 60_000;
 let lastReportAt = 0;
+let stillSince: number | null = null;
+
+/**
+ * On a trip: 20 s while moving; 3 min once nearly stationary for over a minute (loading,
+ * unloading, queueing). Moving again at once drops back to 20 s. Off a trip the slow idle rate applies.
+ */
+function nextReportIntervalMs(tripActive: boolean, speedKmph: number | null, now: number): number {
+  if (!tripActive) {
+    stillSince = null;
+    return IDLE_REPORT_INTERVAL_MS;
+  }
+  if (speedKmph !== null && speedKmph > MOVING_SPEED_KMPH) {
+    stillSince = null;
+    return MOVING_REPORT_INTERVAL_MS;
+  }
+  if (speedKmph !== null && speedKmph < STILL_SPEED_KMPH) {
+    stillSince ??= now;
+    if (now - stillSince > STILL_BEFORE_WAITING_MS) return WAITING_REPORT_INTERVAL_MS;
+  }
+  return MOVING_REPORT_INTERVAL_MS;
+}
 
 export type LocationFixInput =
   | Location.LocationObject
@@ -71,10 +96,17 @@ export function handleLocationFix(position: LocationFixInput, forceReport = fals
     .setCurrent({ latitude, longitude, heading: heading ?? null, speedKmph });
 
   const now = Date.now();
-  const reportIntervalMs = useLocationStore.getState().tripActive
-    ? TRIP_REPORT_INTERVAL_MS
-    : IDLE_REPORT_INTERVAL_MS;
-  if (!forceReport && now - lastReportAt < reportIntervalMs) return;
+  const reportIntervalMs = nextReportIntervalMs(
+    useLocationStore.getState().tripActive,
+    speedKmph,
+    now,
+  );
+  // Resuming motion after a long wait reports straight away instead of waiting out the 3 min gap.
+  const resumedMoving =
+    speedKmph !== null &&
+    speedKmph > MOVING_SPEED_KMPH &&
+    now - lastReportAt > MOVING_REPORT_INTERVAL_MS;
+  if (!forceReport && !resumedMoving && now - lastReportAt < reportIntervalMs) return;
   lastReportAt = now;
   driverApi
     .reportLocation({

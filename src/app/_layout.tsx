@@ -5,6 +5,7 @@ import '@/lib/background-location';
 import { Stack, ThemeProvider } from 'expo-router';
 import type { ReactNode } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useThemeConfig } from '@/components/ui';
@@ -23,11 +24,13 @@ function Providers({ children }: { children: ReactNode }) {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <ThemeProvider value={navigationTheme}>
-          <APIProvider>{children}</APIProvider>
-        </ThemeProvider>
-      </SafeAreaProvider>
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <ThemeProvider value={navigationTheme}>
+            <APIProvider>{children}</APIProvider>
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

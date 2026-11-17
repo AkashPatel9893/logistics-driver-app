@@ -12,8 +12,6 @@ import {
 import { useScrollToEndOnKeyboard } from '@/hooks/use-scroll-to-end-on-keyboard';
 
 import { HeroBanner } from './components/hero-banner';
-import { LanguagePickerSheet } from './components/language-picker-sheet';
-import { LanguagePill } from './components/language-pill';
 import { useLoginForm } from './hooks/use-login-form';
 
 export function LoginScreen() {
@@ -32,7 +30,7 @@ export function LoginScreen() {
         >
           <HeroBanner />
 
-          <AppView className="px-6 pt-20">
+          <AppView className="px-6 pb-6 pt-20">
             <AppText className="text-2xl font-bold text-foreground">Let&apos;s get started</AppText>
             <AppText className="mt-1 text-sm font-normal text-muted">
               Login/ Signup with Mobile
@@ -78,24 +76,9 @@ export function LoginScreen() {
                 </AppText>
               </AppPressable>
             </AppView>
-
-            <AppView className="mt-6">
-              <LanguagePill
-                language={form.language}
-                onPress={() => form.setShowLanguageSheet(true)}
-              />
-            </AppView>
           </AppView>
         </AppScrollView>
       </AppKeyboardAvoidingView>
-
-      <LanguagePickerSheet
-        languages={form.languages}
-        isPresented={form.showLanguageSheet}
-        selectedLanguage={form.language}
-        onSelect={form.handleLanguageSelect}
-        onDismiss={() => form.setShowLanguageSheet(false)}
-      />
     </AppView>
   );
 }

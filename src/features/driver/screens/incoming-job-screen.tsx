@@ -21,6 +21,7 @@ import { formatDistance, formatMinutes, formatRupees } from '@/lib/format';
 
 import { goBack } from '@/lib/go-back';
 
+const IGNORED_REASON = 'Ignored';
 const DECLINE_REASONS = ['Too far from me', 'Low fare', 'Vehicle not suitable', 'Taking a break'];
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -79,6 +80,12 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
 
   const declineWithReason = (reason: string) => {
     reject.mutate({ offerId: offer.id, reason });
+    goBack(router);
+  };
+
+  // Dismisses the request with no questions; the backend records it as a rejection like any other.
+  const ignoreOffer = () => {
+    reject.mutate({ offerId: offer.id, reason: IGNORED_REASON });
     goBack(router);
   };
 
@@ -223,6 +230,14 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
             textClassName="font-extrabold text-[15px]"
           />
         </AppView>
+        <AppPressable
+          onPress={ignoreOffer}
+          disabled={accept.isPending}
+          accessibilityLabel="Ignore this request"
+          className="mt-1 items-center py-2"
+        >
+          <AppText className="text-[13px] font-semibold text-muted">Ignore ride</AppText>
+        </AppPressable>
       </AppScrollView>
 
       <OptionSheet

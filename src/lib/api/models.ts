@@ -245,7 +245,19 @@ export interface JobOffer {
   paymentTiming: PaymentTiming;
 }
 
+/** What the final amount is made of; sent once, when the final drop's code is verified. */
+export interface CollectionBreakdown {
+  fare: number;
+  waitingCharge: number;
+  otherCharges: number;
+  discount: number;
+  tax: number;
+  total: number;
+}
+
 export interface JobPayment {
+  /** Present after verify-code on the final drop; absent on a fresh app start (the backend sends it once). */
+  breakdown?: CollectionBreakdown;
   mode: PaymentMode;
   timing: PaymentTiming;
   amount: number;

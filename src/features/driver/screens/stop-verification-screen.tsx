@@ -28,6 +28,7 @@ import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverJob } from '@/lib/api/models';
 import { formatRupees } from '@/lib/format';
 
+import { CollectionBreakdownCard } from '../components/collection-breakdown';
 import { PaymentCollectCard } from '../components/payment-collect-card';
 import { PhotoUploadBox } from '../components/photo-upload-box';
 import { WaitingBar } from '../components/waiting-bar';
@@ -128,7 +129,8 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
       .then((updated) => {
         // Payment is collected only once the code is verified, never before.
         if (paymentDue) {
-          onPaymentDue({ ...job, status: updated.status });
+          // The verify response carries what to collect (and its breakdown); keep it on the job.
+          onPaymentDue({ ...job, status: updated.status, payment: updated.payment });
           return;
         }
         // More stops to deliver: back to the trip for the next one.
@@ -383,6 +385,10 @@ function PaymentStep({ job, stop }: { job: DriverJob; stop: Stop }) {
             </AppText>
           )}
         </AppView>
+
+        {isCollected || !current.payment.breakdown ? null : (
+          <CollectionBreakdownCard breakdown={current.payment.breakdown} />
+        )}
 
         {isCollected ? null : <PaymentCollectCard job={current} onCollected={setPaidJob} />}
         {isCollected ? null : (

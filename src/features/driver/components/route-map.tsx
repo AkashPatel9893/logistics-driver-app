@@ -23,7 +23,7 @@ import { DropMarker, PickupMarker, SelfMarker } from './map-markers';
 export interface RouteMapProps {
   pickup: GeoPoint | null;
   drop: GeoPoint | null;
-  /** Stops between pickup and the final drop, so the preview follows the real order. */
+  /** Stops between pickup and the final drop, shown as markers in visiting order. */
   via?: GeoPoint[];
   /** The driver's live position, when known. */
   driver?: GeoPoint | null;
@@ -61,13 +61,6 @@ export function RouteMap({
   );
   // Drop the part already driven: the line starts at the driver, then the road ahead.
   const line = road.data && ends.length >= 2 ? remainingPath(road.data, ends[0]).path : ends;
-  // While heading to pickup, the road on to the drop is previewed (dashed), like Uber's next-leg line.
-  const preview = useRoadRoute(
-    `preview:${pickup?.latitude},${pickup?.longitude}:${via.map((p) => `${p.latitude},${p.longitude}`).join('|')}:${drop?.latitude},${drop?.longitude}`,
-    focus === 'pickup' ? pickup : null,
-    focus === 'pickup' ? drop : null,
-    via,
-  );
   const fit = [...line, ...(focus === 'route' ? [] : [pickup, drop])].filter(
     (p): p is GeoPoint => p != null,
   );
@@ -87,14 +80,6 @@ export function RouteMap({
     <AppView className={className}>
       <AppMapView style={{ flex: 1 }}>
         {fitted.bounds ? <AppMapCamera bounds={fitted.bounds} padding={padding} /> : null}
-        {focus === 'pickup' && preview.data && preview.data.length >= 2 ? (
-          <AppMapPolyline
-            coordinates={preview.data}
-            strokeColor={ROUTE_COLOR}
-            strokeWidth={3}
-            dashed
-          />
-        ) : null}
         {line.length >= 2 ? (
           <AppMapPolyline coordinates={line} strokeColor={ROUTE_COLOR} strokeWidth={4} />
         ) : null}

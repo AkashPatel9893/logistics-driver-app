@@ -2,7 +2,14 @@ import { useLocationStore } from '@/stores/location-store';
 
 import { ApiError, toApiError } from './api-error';
 import { request } from './client';
-import type { ChatMessage, DriverJob, JobOffer, PaymentQr, VerifyStopInput } from './models';
+import type {
+  ChatMessage,
+  CollectionBreakdown,
+  DriverJob,
+  JobOffer,
+  PaymentQr,
+  VerifyStopInput,
+} from './models';
 
 /** Avoid repeating address parts when the city is already included in the address. */
 function dedupeAddress(label: string): string {
@@ -184,10 +191,35 @@ const ENDED_TRIP_STATUSES = new Set(['DELIVERED', 'CANCELLED', 'FAILED']);
  * collect screen fell back to the quote and the driver under-collected.
  */
 const amountToCollect = new Map<string, number>();
+/** The same response's price components, by job id, for the Collect payment screen. */
+const collectionBreakdown = new Map<string, CollectionBreakdown>();
+
+function mapBreakdown(raw: any): CollectionBreakdown | null {
+  if (!raw) return null;
+  const parts = [raw.fare, raw.waiting_charge, raw.other_charges, raw.discount, raw.tax, raw.total];
+  if (parts.some((value) => value == null || !Number.isFinite(Number(value)))) return null;
+  return {
+    fare: Number(raw.fare),
+    waitingCharge: Number(raw.waiting_charge),
+    otherCharges: Number(raw.other_charges),
+    discount: Number(raw.discount),
+    tax: Number(raw.tax),
+    total: Number(raw.total),
+  };
+}
 
 function withAmountToCollect(job: DriverJob): DriverJob {
   const amount = amountToCollect.get(job.id);
-  return amount === undefined ? job : { ...job, payment: { ...job.payment, amount } };
+  const breakdown = collectionBreakdown.get(job.id);
+  if (amount === undefined && !breakdown) return job;
+  return {
+    ...job,
+    payment: {
+      ...job.payment,
+      ...(amount === undefined ? {} : { amount }),
+      ...(breakdown ? { breakdown } : {}),
+    },
+  };
 }
 
 const TRIP_UNREACHABLE = 'Could not reach the trip. Check your connection and try again.';
@@ -464,6 +496,8 @@ export const jobsApi = {
       if (verified?.amount_to_collect != null) {
         amountToCollect.set(id, Number(verified.amount_to_collect));
       }
+      const breakdown = mapBreakdown(verified?.fare_breakdown);
+      if (breakdown) collectionBreakdown.set(id, breakdown);
     } else {
       await request<any>({ method: 'POST', url: `/trips/${trip.tripId}/complete`, data: body });
     }

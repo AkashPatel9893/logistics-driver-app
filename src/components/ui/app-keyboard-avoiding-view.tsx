@@ -1,5 +1,5 @@
 import type { ComponentPropsWithRef } from 'react';
-import { KeyboardAvoidingView } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { cn } from '@/lib/cn';
 
