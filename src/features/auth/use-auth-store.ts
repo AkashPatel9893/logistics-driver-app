@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import { authApi } from '@/lib/api/auth';
 import { setUnauthorizedHandler } from '@/lib/api/client';
 import type { AuthSession, User } from '@/lib/api/models';
 import { queryClient } from '@/lib/api/api-provider';
@@ -13,6 +14,10 @@ import {
 } from '@/lib/auth/utils';
 import { createSelectors } from '@/lib/create-selectors';
 
+import { useRegistrationStore } from '@/features/registration/use-registration-store';
+
+import { useCityStore } from './use-city-store';
+
 export const DEFAULT_USER_NAME = 'User';
 
 type AuthState = {
@@ -24,6 +29,8 @@ type AuthState = {
   setUser: (user: User) => void;
   signOut: () => void;
   hydrate: () => void;
+  /** Updates only the onboarding fields, e.g. after /auth/me or a profile load. */
+  setOnboarding: (patch: { isOnboarded?: boolean; onboardingStatus?: string | null }) => void;
 };
 
 const _useAuthStore = create<AuthState>((set, get) => ({
@@ -50,7 +57,20 @@ const _useAuthStore = create<AuthState>((set, get) => ({
     // Drop every cached server response so the next account starts clean.
     queryClient.cancelQueries();
     queryClient.clear();
+    useCityStore.getState().clear();
+    useRegistrationStore.getState().reset();
     set({ status: 'signOut', token: null, user: null });
+  },
+
+  setOnboarding: (patch) => {
+    const user = get().user;
+    if (!user) return;
+    const next = { ...user, ...patch };
+    if (next.isOnboarded === user.isOnboarded && next.onboardingStatus === user.onboardingStatus) {
+      return;
+    }
+    persistUser(next);
+    set({ user: next });
   },
 
   hydrate: () => {
@@ -64,6 +84,54 @@ const _useAuthStore = create<AuthState>((set, get) => ({
 export const useAuthStore = createSelectors(_useAuthStore);
 
 export const signOut = () => _useAuthStore.getState().signOut();
+
+/** Driver whose application is not approved yet: the app opens on Documents for them. */
+export function isAwaitingApproval(user: User | null): boolean {
+  return Boolean(
+    user?.isOnboarded && user.onboardingStatus && user.onboardingStatus !== 'APPROVED',
+  );
+}
+
+/**
+ * Keeps the saved status in step with a freshly loaded profile ('approved' | 'submitted' |
+ * 'rejected' | 'in_progress'), without another request.
+ */
+export function syncOnboardingStatus(
+  status: 'approved' | 'submitted' | 'rejected' | 'in_progress',
+) {
+  const current = _useAuthStore.getState().user?.onboardingStatus ?? null;
+  const next =
+    status === 'approved'
+      ? 'APPROVED'
+      : status === 'rejected'
+        ? 'REJECTED'
+        : status === 'submitted'
+          ? current === 'UNDER_REVIEW'
+            ? current
+            : 'SUBMITTED'
+          : 'IN_PROGRESS';
+  _useAuthStore.getState().setOnboarding({ onboardingStatus: next });
+}
+
+let refreshing = false;
+/**
+ * One light request (GET /auth/me) for the latest onboarding status, e.g. after ops approve the
+ * driver. Runs on launch and when the app returns to the foreground.
+ */
+export async function refreshOnboardingStatus(): Promise<void> {
+  if (refreshing || _useAuthStore.getState().status !== 'signIn') return;
+  refreshing = true;
+  try {
+    const me = await authApi.getMe();
+    _useAuthStore
+      .getState()
+      .setOnboarding({ isOnboarded: me.isOnboarded, onboardingStatus: me.onboardingStatus });
+  } catch {
+    // Offline or server error: keep the saved status; the next refresh tries again.
+  } finally {
+    refreshing = false;
+  }
+}
 export const hydrateAuth = () => _useAuthStore.getState().hydrate();
 
 // An expired/invalid session anywhere in the app returns the user to login.

@@ -19,6 +19,8 @@ import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useActiveJob, useOffers } from '@/hooks/use-jobs';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import { RegistrationProgressCard } from '@/features/registration/registration-progress-card';
+import { syncOnboardingStatus } from '@/features/auth/use-auth-store';
 import { FleetStatsRow, FleetVehiclesSection, RoleSwitcher } from '@/features/fleet/components';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { JobOffer, SetupStep } from '@/lib/api/models';
@@ -83,6 +85,17 @@ export function DriverHomeScreen() {
   const { data: company } = fleetCompanyQuery;
   const activeDriverVehicleId = useFleetStore.use.activeDriverVehicleId();
   const setActiveDriverVehicleId = useFleetStore.use.setActiveDriverVehicleId();
+
+  // Like Rapido, a driver whose application is not approved yet lives on the Documents
+  // screen, not Home: there is nothing to do here until then.
+  const needsRegistration =
+    dashboardRole === 'driver' && profile != null && profile.onboarding.status !== 'approved';
+  useEffect(() => {
+    if (dashboardRole !== 'driver' || !profile) return;
+    // Keep the saved status in step with the profile, so the next launch opens the right screen.
+    syncOnboardingStatus(profile.onboarding.status);
+    if (needsRegistration) router.replace('/registration');
+  }, [needsRegistration, dashboardRole, profile, router]);
 
   // A new offer takes over the screen, like a ringing call.
   const shownOfferIds = useRef(new Set<string>());
@@ -253,7 +266,7 @@ export function DriverHomeScreen() {
 
             {activeJob ? <ActiveDeliveryCard job={activeJob} /> : null}
 
-            {!profile.canGoOnline ? <DriverSetupChecklist profile={profile} /> : null}
+            {!profile.canGoOnline ? <RegistrationProgressCard profile={profile} /> : null}
 
             {profile.isOnline && !activeJob ? (
               offers.length > 0 ? (

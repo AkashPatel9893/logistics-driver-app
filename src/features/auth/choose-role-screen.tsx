@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useCanGoBack, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -18,6 +18,8 @@ export type RoleType = 'driver' | 'owner';
 
 export function ChooseRoleScreen() {
   const router = useRouter();
+  // This screen's own stack: no back button when it is the first screen (e.g. after a restart).
+  const canGoBack = useCanGoBack();
   const insets = useSafeAreaInsets();
   const setDashboardRole = useFleetStore.use.setDashboardRole();
   const currentRole = useFleetStore.use.dashboardRole();
@@ -28,11 +30,11 @@ export function ChooseRoleScreen() {
     setDashboardRole(selectedRole);
 
     if (selectedRole === 'driver') {
-      // Navigate to personal driver details onboarding
-      router.push('/(auth)/onboarding');
+      // Rider: vehicle type first, then driver details.
+      router.push('/(auth)/select-vehicle');
     } else {
-      // Navigate to company details registration
-      router.push('/company-details' as any);
+      // Fleet: owner profile and company details on the sign-up screen (creates the profile too).
+      router.push('/(auth)/onboarding');
     }
   };
 
@@ -49,7 +51,7 @@ export function ChooseRoleScreen() {
         <AppScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-6">
           {/* Header with back button */}
           <AppView row className="items-center min-h-[48px] gap-3 mb-2">
-            <LiquidGlassBackButton onPress={() => goBack(router)} />
+            {canGoBack ? <LiquidGlassBackButton onPress={() => goBack(router)} /> : null}
             <AppText className="text-[22px] font-black text-foreground">Choose your role</AppText>
           </AppView>
 
@@ -124,7 +126,7 @@ export function ChooseRoleScreen() {
           </AppPressable>
 
           <AppText className="mt-3 text-center text-[12px] text-muted">
-            {isRider ? 'Next, set up your driver profile' : 'Next, set up your company details'}
+            {isRider ? 'Next, choose your vehicle' : 'Next, set up your company details'}
           </AppText>
         </AppView>
       </AppView>

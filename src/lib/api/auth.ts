@@ -12,6 +12,35 @@ function toPhone(mobile: string): string {
   return `+91${mobile.replace(/\D/g, '').slice(-10)}`;
 }
 
+/** Operating market at the phone's current location (fallback when no city was chosen). */
+async function marketFromLocation(): Promise<string> {
+  const permission = await Location.requestForegroundPermissionsAsync();
+  if (!permission.granted) {
+    throw new ApiError('Allow location access to find your operating area.', 'unknown');
+  }
+  let location: Location.LocationObject;
+  try {
+    // Only the city is needed: a recent cached fix is enough, and avoids waiting
+    // for a fresh GPS reading that may never come indoors.
+    location =
+      (await Location.getLastKnownPositionAsync({ maxAge: 30 * 60_000 }).catch(() => null)) ??
+      (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+  } catch {
+    throw new ApiError(
+      'Could not determine your location. Check location services and try again.',
+      'unknown',
+    );
+  }
+  const serviceability = await request<{ serviceable: boolean; market_code: string | null }>({
+    url: '/serviceability',
+    params: { lat: location.coords.latitude, lng: location.coords.longitude },
+  });
+  if (!serviceability.serviceable || !serviceability.market_code) {
+    throw new ApiError('Your current location is outside our service area.', 'unknown');
+  }
+  return serviceability.market_code;
+}
+
 export const authApi = {
   sendOtp: async (identifier: string): Promise<OtpChallenge> => {
     const phone = toPhone(identifier);
@@ -40,52 +69,44 @@ export const authApi = {
       },
     });
     setToken({ accessToken: res.access_token, refreshToken: res.refresh_token });
-    // A first-time driver has no partner profile yet and must fill in their details.
-    const profile = await request<any>({ url: '/partner/profile' }).catch((error: any) => {
-      if (error?.status === 404 || error?.code === 'DRIVER_PROFILE_NOT_FOUND') return null;
-      throw error;
-    });
+    // The login response already says whether a driver profile exists and its onboarding status,
+    // so a first-time driver needs no extra request. The profile is read only for its id and DOB.
+    const authUser = res.user ?? {};
+    const hasProfile = authUser.profile_complete === true;
+    const profile = hasProfile
+      ? await request<any>({ url: '/partner/profile' }).catch(() => null)
+      : null;
     return {
       accessToken: res.access_token,
       refreshToken: res.refresh_token,
+      selectedRole: res.selected_role ?? null,
       user: {
-        id: profile?.id ?? res.user?.id ?? '',
+        id: profile?.id ?? authUser.id ?? '',
         email: '',
-        name: [profile?.first_name, profile?.last_name].filter(Boolean).join(' '),
+        name:
+          [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ||
+          authUser.name ||
+          '',
         phone,
         dob: profile?.date_of_birth ? String(profile.date_of_birth) : null,
-        city: null,
-        isOnboarded: profile !== null,
+        city: profile?.city ?? null,
+        isOnboarded: hasProfile,
+        onboardingStatus: authUser.onboarding_status ?? null,
       },
     };
   },
 
-  getMe: async (signal?: AbortSignal): Promise<User> => {
-    try {
-      const profile = await request<any>({ url: '/partner/profile', signal });
-      return {
-        id: profile.id,
-        email: '',
-        name: [profile.first_name, profile.last_name].filter(Boolean).join(' '),
-        phone: profile.phone ?? null,
-        dob: profile.date_of_birth ? String(profile.date_of_birth) : null,
-        city: profile.city ?? null,
-        isOnboarded: true,
-      };
-    } catch (error: any) {
-      if (error?.status === 404 || error?.code === 'DRIVER_PROFILE_NOT_FOUND') {
-        return {
-          id: '',
-          email: '',
-          name: '',
-          phone: null,
-          dob: null,
-          city: null,
-          isOnboarded: false,
-        };
-      }
-      throw error;
-    }
+  /** Light status check (one request): profile exists? onboarding status? */
+  getMe: async (
+    signal?: AbortSignal,
+  ): Promise<{ isOnboarded: boolean; onboardingStatus: string | null; name: string | null }> => {
+    const res = await request<any>({ url: '/auth/me', signal });
+    const me = res?.user ?? res ?? {};
+    return {
+      isOnboarded: me.profile_complete === true,
+      onboardingStatus: me.onboarding_status ?? null,
+      name: me.name ?? null,
+    };
   },
 
   updateProfile: async (input: UpdateProfileInput): Promise<User> => {
@@ -116,32 +137,13 @@ export const authApi = {
           first_name: firstName,
           last_name: lastName,
           date_of_birth: dobFormatted,
+          ...(input.gender ? { gender: input.gender } : {}),
         },
       });
     } catch (err: any) {
       if (err?.status === 404 || err?.code === 'DRIVER_PROFILE_NOT_FOUND') {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (!permission.granted) {
-          throw new ApiError('Allow location access to find your operating area.', 'unknown');
-        }
-        let location: Location.LocationObject;
-        try {
-          location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
-        } catch {
-          throw new ApiError(
-            'Could not determine your location. Check location services and try again.',
-            'unknown',
-          );
-        }
-        const serviceability = await request<{ serviceable: boolean; market_code: string | null }>({
-          url: '/serviceability',
-          params: { lat: location.coords.latitude, lng: location.coords.longitude },
-        });
-        if (!serviceability.serviceable || !serviceability.market_code) {
-          throw new ApiError('Your current location is outside our service area.', 'unknown');
-        }
+        // The city chosen on Select City; the phone's location only as a fallback.
+        const marketCode = input.marketCode ?? (await marketFromLocation());
         res = await request<any>({
           method: 'POST',
           url: '/partner/onboarding/start',
@@ -149,7 +151,8 @@ export const authApi = {
             first_name: firstName,
             last_name: lastName,
             date_of_birth: dobFormatted,
-            market_code: serviceability.market_code,
+            ...(input.gender ? { gender: input.gender } : {}),
+            market_code: marketCode,
           },
         });
       } else {
@@ -166,6 +169,7 @@ export const authApi = {
       dob: res.date_of_birth ? String(res.date_of_birth) : dobFormatted,
       city: res.city ?? null,
       isOnboarded: true,
+      onboardingStatus: res.onboarding_status ?? null,
     };
   },
 

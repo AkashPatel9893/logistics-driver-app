@@ -28,8 +28,10 @@ export interface DocumentInput {
   identifier?: string;
   /** ISO date (YYYY-MM-DD). */
   expiryDate?: string;
-  /** Local file URI of the photo. */
+  /** Local file URI of the photo (front side). */
   fileUri: string;
+  /** Local file URI of the back side, for two-sided cards (licence, Aadhaar, RC). */
+  backFileUri?: string | null;
 }
 
 /** Formats digits as DD/MM/YYYY while they are typed. */
@@ -48,13 +50,14 @@ export function toIsoDate(text: string): string | null {
   return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== iso ? null : iso;
 }
 
-function uploadFile(url: string, fileUri: string) {
+function uploadFile(url: string, fileUri: string, side: 'front' | 'back' = 'front') {
   const form = new FormData();
   // React Native's FormData accepts { uri, name, type } file parts.
   form.append('file', filePart(fileUri, 'document') as never);
   return request<any>({
     method: 'POST',
     url,
+    params: { side },
     data: form,
     headers: { 'Content-Type': 'multipart/form-data' },
   });
@@ -72,6 +75,7 @@ async function submitDocument(baseUrl: string, input: DocumentInput): Promise<vo
     },
   });
   await uploadFile(`${baseUrl}/${doc.id}/files`, input.fileUri);
+  if (input.backFileUri) await uploadFile(`${baseUrl}/${doc.id}/files`, input.backFileUri, 'back');
   const result = await request<any>({ method: 'POST', url: `${baseUrl}/${doc.id}/verify` });
   if (['FAILED', 'REJECTED', 'RESUBMISSION_REQUIRED'].includes(result.verification_status)) {
     throw new Error(`${input.type} verification failed. Please check the document and try again.`);

@@ -11,6 +11,8 @@ export const queryKeys = {
   support: ['support'] as const,
   profile: ['driver', 'profile'] as const,
   vehicleTypes: ['driver', 'vehicle-types'] as const,
+  onboardingStatus: ['driver', 'onboarding', 'status'] as const,
+  driverDocuments: ['driver', 'onboarding', 'documents'] as const,
   offers: ['driver', 'offers'] as const,
   activeJob: ['driver', 'jobs', 'active'] as const,
   job: (id: string) => ['driver', 'jobs', id] as const,

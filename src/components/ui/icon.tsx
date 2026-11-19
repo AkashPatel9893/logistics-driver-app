@@ -94,6 +94,9 @@ const ANDROID_ICON_REGISTRY = {
   'trash.fill': { set: 'ionicons', name: 'trash' },
   car: { set: 'ionicons', name: 'car-outline' },
   'car.fill': { set: 'ionicons', name: 'car' },
+  'info.circle': { set: 'ionicons', name: 'information-circle-outline' },
+  'person.text.rectangle': { set: 'ionicons', name: 'id-card-outline' },
+  'person.crop.circle': { set: 'ionicons', name: 'person-circle-outline' },
 } as const satisfies Record<string, AndroidGlyph>;
 
 export type IconName = keyof typeof ANDROID_ICON_REGISTRY;

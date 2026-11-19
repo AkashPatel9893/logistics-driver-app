@@ -8,7 +8,8 @@ import { authApi } from '@/lib/api/auth';
 import { getDobError } from '@/lib/dob';
 
 import { driverProfileSchema } from '../schema';
-import { signOut, useAuthStore } from '../use-auth-store';
+import { useAuthStore } from '../use-auth-store';
+import { useCityStore } from '../use-city-store';
 
 type FieldErrors = { name?: string; phone?: string; dob?: string };
 
@@ -30,7 +31,8 @@ export function useOnboardingForm() {
     mutationFn: authApi.updateProfile,
     onSuccess: (updated) => {
       useAuthStore.getState().setUser(updated);
-      router.replace('/home');
+      // Straight on to the documents: a driver stays there until approved (see Home).
+      router.replace('/registration');
     },
     onError: (error) => Alert.alert('Could not save profile', getErrorMessage(error)),
   });
@@ -77,21 +79,10 @@ export function useOnboardingForm() {
       setValidationErrors(errors);
       return;
     }
-    updateProfile.mutate(result.data);
-  };
-
-  const handleSignOut = () => {
-    Alert.alert('Switch Account', 'Are you sure you want to go back and use a different account?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Switch Account',
-        style: 'destructive',
-        onPress: () => {
-          signOut();
-          router.replace('/');
-        },
-      },
-    ]);
+    updateProfile.mutate({
+      ...result.data,
+      marketCode: useCityStore.getState().city?.marketCode,
+    });
   };
 
   return {
@@ -105,6 +96,5 @@ export function useOnboardingForm() {
     handlePhoneChange,
     handleDobChange,
     handleSubmit,
-    handleSignOut,
   };
 }

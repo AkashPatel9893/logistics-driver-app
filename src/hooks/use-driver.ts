@@ -4,10 +4,11 @@ import { driverApi } from '@/lib/api/driver';
 import type { BankInput, DriverProfile, KycInput, VehicleInput } from '@/lib/api/models';
 import { queryKeys } from '@/lib/queries/keys';
 
-export function useDriverProfile() {
+export function useDriverProfile(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.profile,
     queryFn: ({ signal }) => driverApi.getProfile(signal),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -16,7 +17,11 @@ function useProfileMutation<TInput>(mutationFn: (input: TInput) => Promise<Drive
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: (profile) => queryClient.setQueryData(queryKeys.profile, profile),
+    onSuccess: (profile) => {
+      queryClient.setQueryData(queryKeys.profile, profile);
+      // The Documents screen reads the light onboarding status instead of the profile.
+      queryClient.invalidateQueries({ queryKey: queryKeys.onboardingStatus });
+    },
   });
 }
 

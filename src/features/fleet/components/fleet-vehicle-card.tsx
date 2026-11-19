@@ -1,6 +1,5 @@
-import { Image } from 'react-native';
-
 import { AppPressable, AppText, AppView } from '@/components/ui';
+import { VehicleImage } from '@/features/driver/components/vehicle-image';
 
 import type { FleetVehicle } from '../types';
 
@@ -28,10 +27,10 @@ export function FleetVehicleCard({
       <AppView row className="items-center gap-3">
         {/* Vehicle Thumbnail */}
         <AppView className="h-20 w-24 items-center justify-center rounded-2xl bg-surface-muted overflow-hidden border border-border/40">
-          <Image
-            source={require('@/assets/images/vehicles/mini-truck.png')}
+          <VehicleImage
+            imageUrl={vehicle.imageUrl}
+            type={vehicle.vehicleTypeCode || vehicle.vehicleTypeName}
             style={{ width: '92%', height: '92%' }}
-            resizeMode="contain"
           />
         </AppView>
 

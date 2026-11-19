@@ -18,6 +18,12 @@ export interface User {
   dob: string | null;
   city: string | null;
   isOnboarded: boolean;
+  /**
+   * Backend onboarding status (IN_PROGRESS, SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED), from
+   * login, /auth/me and profile saves. Decides the first screen without loading the profile.
+   * Null when not known yet (e.g. a session saved by an older app version).
+   */
+  onboardingStatus?: string | null;
 }
 
 export interface UpdateProfileInput {
@@ -25,6 +31,10 @@ export interface UpdateProfileInput {
   phone?: string;
   dob?: string;
   city?: string;
+  /** Operating market picked on Select City; used when the profile is first created. */
+  marketCode?: string;
+  /** MALE / FEMALE / OTHER. The backend clears it on a save without it, so always send it. */
+  gender?: 'MALE' | 'FEMALE' | 'OTHER';
 }
 
 export interface LanguageOption {
@@ -43,6 +53,8 @@ export interface AuthSession {
   accessToken: string;
   refreshToken: string;
   user: User;
+  /** Partner role the backend has on record, e.g. FLEET_OWNER; null when none. */
+  selectedRole?: string | null;
 }
 
 // ─── Shared order primitives (same as the customer app) ─────────────────────

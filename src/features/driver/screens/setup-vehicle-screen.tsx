@@ -15,6 +15,7 @@ import {
 import { useDriverProfile, useSaveVehicle, useVehicleTypes } from '@/hooks/use-driver';
 import { useAddFleetVehicle, useFleetCompany, useRequestFleetLink } from '@/hooks/use-fleet';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import { useRegistrationStore } from '@/features/registration/use-registration-store';
 import { formatDateInput, toIsoDate } from '@/lib/api/onboarding';
 import { PhotoUploadBox } from '../components/photo-upload-box';
 import { useLocalPhoto } from '../hooks/use-local-photo';
@@ -50,11 +51,17 @@ export function SetupVehicleScreen() {
 
   const current = profile?.vehicle ?? null;
 
-  const [ownershipType, setOwnershipType] = useState<'OWN' | 'FLEET'>('OWN');
+  // Chosen on Select Vehicle ("I drive for a fleet owner"); fleet owners always add their own.
+  const fleetDriver = useRegistrationStore.use.fleetDriver();
+  const ownershipType: 'OWN' | 'FLEET' = !isFleetOwner && fleetDriver ? 'FLEET' : 'OWN';
   const [ownerPhone, setOwnerPhone] = useState('');
   const [isLinking, setIsLinking] = useState(false);
 
-  const [typeId, setTypeId] = useState(current?.vehicleTypeId ?? (vehicleTypes[0]?.id || ''));
+  // A driver picks the type first on the registration screen; prefill it here.
+  const pickedTypeId = useRegistrationStore.use.vehicleTypeId();
+  const [typeId, setTypeId] = useState(
+    current?.vehicleTypeId ?? (isFleetOwner ? null : pickedTypeId) ?? (vehicleTypes[0]?.id || ''),
+  );
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [plateNumber, setPlateNumber] = useState(current?.plateNumber ?? '');
   const [capacityKg, setCapacityKg] = useState<number | null>(null);
@@ -188,58 +195,6 @@ export function SetupVehicleScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Ownership Mode Selection */}
-          <AppView className="gap-2">
-            <AppText className="text-[13px] font-semibold text-foreground-secondary">
-              Vehicle ownership
-            </AppText>
-            <AppView row className="gap-3">
-              <AppPressable
-                onPress={() => setOwnershipType('OWN')}
-                className={`flex-1 rounded-2xl border p-3.5 ${
-                  ownershipType === 'OWN'
-                    ? 'border-[#FF5722] bg-[#FF5722]/5'
-                    : 'border-border bg-card'
-                }`}
-              >
-                <AppView row className="items-center justify-between">
-                  <Icon
-                    name="car.fill"
-                    size={20}
-                    tone={ownershipType === 'OWN' ? 'brand' : 'foreground'}
-                  />
-                  {ownershipType === 'OWN' ? <Icon name="check" size={16} tone="brand" /> : null}
-                </AppView>
-                <AppText className="mt-2 text-[14px] font-bold text-foreground">
-                  I own a vehicle
-                </AppText>
-                <AppText className="mt-0.5 text-[11px] text-muted">Register vehicle & RC</AppText>
-              </AppPressable>
-
-              <AppPressable
-                onPress={() => setOwnershipType('FLEET')}
-                className={`flex-1 rounded-2xl border p-3.5 ${
-                  ownershipType === 'FLEET'
-                    ? 'border-[#FF5722] bg-[#FF5722]/5'
-                    : 'border-border bg-card'
-                }`}
-              >
-                <AppView row className="items-center justify-between">
-                  <Icon
-                    name="building.2"
-                    size={20}
-                    tone={ownershipType === 'FLEET' ? 'brand' : 'foreground'}
-                  />
-                  {ownershipType === 'FLEET' ? <Icon name="check" size={16} tone="brand" /> : null}
-                </AppView>
-                <AppText className="mt-2 text-[14px] font-bold text-foreground">
-                  Drive for Owner
-                </AppText>
-                <AppText className="mt-0.5 text-[11px] text-muted">Link with fleet owner</AppText>
-              </AppPressable>
-            </AppView>
-          </AppView>
-
           {ownershipType === 'FLEET' ? (
             <AppView className="gap-4 rounded-3xl border border-border bg-card p-5 shadow-sm">
               <AppView row className="items-center gap-3">
@@ -286,64 +241,86 @@ export function SetupVehicleScreen() {
             </AppView>
           ) : (
             <>
-              {/* Vehicle type */}
-              <AppView>
-                <AppText className="mb-2 text-[13px] font-semibold text-foreground-secondary">
-                  Vehicle type
-                </AppText>
-                <AppPressable
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setShowTypePicker((prev) => !prev);
-                  }}
-                  className="flex-row items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
+              {/* Vehicle type: a driver already picked it on Select Vehicle */}
+              {!isFleetOwner && selectedType ? (
+                <AppView
+                  row
+                  className="items-center justify-between rounded-2xl border border-border bg-surface px-4 py-3.5"
                 >
                   <AppView row className="items-center gap-3">
                     <Icon name="box.truck" size={20} tone="brand" />
-                    <AppText className="text-[15px] font-semibold text-foreground">
-                      {selectedType?.name || 'Select vehicle type'}
-                    </AppText>
+                    <AppView>
+                      <AppText className="text-[12px] text-muted">Vehicle type</AppText>
+                      <AppText className="text-[15px] font-bold text-foreground">
+                        {selectedType.name}
+                      </AppText>
+                    </AppView>
                   </AppView>
-                  <Icon
-                    name={showTypePicker ? 'chevron.up' : 'chevron.down'}
-                    size={18}
-                    tone="icon-subtle"
-                  />
-                </AppPressable>
+                  {current ? null : (
+                    <AppPressable onPress={() => router.push('/register-vehicle-type')} hitSlop={8}>
+                      <AppText className="text-[13px] font-bold text-[#2563eb]">Change</AppText>
+                    </AppPressable>
+                  )}
+                </AppView>
+              ) : (
+                <AppView>
+                  <AppText className="mb-2 text-[13px] font-semibold text-foreground-secondary">
+                    Vehicle type
+                  </AppText>
+                  <AppPressable
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setShowTypePicker((prev) => !prev);
+                    }}
+                    className="flex-row items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
+                  >
+                    <AppView row className="items-center gap-3">
+                      <Icon name="box.truck" size={20} tone="brand" />
+                      <AppText className="text-[15px] font-semibold text-foreground">
+                        {selectedType?.name || 'Select vehicle type'}
+                      </AppText>
+                    </AppView>
+                    <Icon
+                      name={showTypePicker ? 'chevron.up' : 'chevron.down'}
+                      size={18}
+                      tone="icon-subtle"
+                    />
+                  </AppPressable>
 
-                {showTypePicker ? (
-                  <AppView className="mt-2 rounded-2xl border border-border bg-card p-2 shadow-md">
-                    {vehicleTypes.map((type) => (
-                      <AppPressable
-                        key={type.id}
-                        onPress={() => {
-                          setTypeId(type.id);
-                          setCapacityKg(type.capacityKg);
-                          setShowTypePicker(false);
-                        }}
-                        className={`flex-row items-center justify-between rounded-xl px-3 py-2.5 ${
-                          typeId === type.id
-                            ? 'bg-[#FF5722]/10'
-                            : 'active:bg-neutral-100 dark:active:bg-neutral-800'
-                        }`}
-                      >
-                        <AppText
-                          className={`text-[14px] ${
+                  {showTypePicker ? (
+                    <AppView className="mt-2 rounded-2xl border border-border bg-card p-2 shadow-md">
+                      {vehicleTypes.map((type) => (
+                        <AppPressable
+                          key={type.id}
+                          onPress={() => {
+                            setTypeId(type.id);
+                            setCapacityKg(type.capacityKg);
+                            setShowTypePicker(false);
+                          }}
+                          className={`flex-row items-center justify-between rounded-xl px-3 py-2.5 ${
                             typeId === type.id
-                              ? 'font-bold text-[#FF5722]'
-                              : 'font-medium text-foreground'
+                              ? 'bg-[#FF5722]/10'
+                              : 'active:bg-neutral-100 dark:active:bg-neutral-800'
                           }`}
                         >
-                          {type.name}
-                        </AppText>
-                        <AppText className="text-[12px] text-muted">
-                          {type.capacityKg == null ? '—' : `${type.capacityKg} kg`}
-                        </AppText>
-                      </AppPressable>
-                    ))}
-                  </AppView>
-                ) : null}
-              </AppView>
+                          <AppText
+                            className={`text-[14px] ${
+                              typeId === type.id
+                                ? 'font-bold text-[#FF5722]'
+                                : 'font-medium text-foreground'
+                            }`}
+                          >
+                            {type.name}
+                          </AppText>
+                          <AppText className="text-[12px] text-muted">
+                            {type.capacityKg == null ? '—' : `${type.capacityKg} kg`}
+                          </AppText>
+                        </AppPressable>
+                      ))}
+                    </AppView>
+                  ) : null}
+                </AppView>
+              )}
 
               {/* Registration number */}
               <AppView>
@@ -361,63 +338,65 @@ export function SetupVehicleScreen() {
                 />
               </AppView>
 
-              {/* Vehicle capacity */}
-              <AppView>
-                <AppText className="mb-2 text-[13px] font-semibold text-foreground-secondary">
-                  Vehicle capacity
-                </AppText>
-                <AppPressable
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setShowCapacityPicker((prev) => !prev);
-                  }}
-                  className="flex-row items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
-                >
-                  <AppView row className="items-center gap-3">
-                    <Icon name="scalemass" size={20} tone="icon-subtle" />
-                    <AppText className="text-[15px] font-semibold text-foreground">
-                      {capacityKg ? `${capacityKg} kg` : 'Select capacity'}
-                    </AppText>
-                  </AppView>
-                  <Icon
-                    name={showCapacityPicker ? 'chevron.up' : 'chevron.down'}
-                    size={18}
-                    tone="icon-subtle"
-                  />
-                </AppPressable>
+              {/* Vehicle capacity: fleet owners only (a driver's comes from the vehicle type) */}
+              {isFleetOwner ? (
+                <AppView>
+                  <AppText className="mb-2 text-[13px] font-semibold text-foreground-secondary">
+                    Vehicle capacity
+                  </AppText>
+                  <AppPressable
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setShowCapacityPicker((prev) => !prev);
+                    }}
+                    className="flex-row items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
+                  >
+                    <AppView row className="items-center gap-3">
+                      <Icon name="scalemass" size={20} tone="icon-subtle" />
+                      <AppText className="text-[15px] font-semibold text-foreground">
+                        {capacityKg ? `${capacityKg} kg` : 'Select capacity'}
+                      </AppText>
+                    </AppView>
+                    <Icon
+                      name={showCapacityPicker ? 'chevron.up' : 'chevron.down'}
+                      size={18}
+                      tone="icon-subtle"
+                    />
+                  </AppPressable>
 
-                {showCapacityPicker ? (
-                  <AppView className="mt-2 rounded-2xl border border-border bg-card p-2 shadow-md">
-                    {CAPACITIES.map((cap) => (
-                      <AppPressable
-                        key={cap.value}
-                        onPress={() => {
-                          setCapacityKg(cap.value);
-                          setShowCapacityPicker(false);
-                        }}
-                        className={`flex-row items-center justify-between rounded-xl px-3 py-2.5 ${
-                          capacityKg === cap.value
-                            ? 'bg-[#FF5722]/10'
-                            : 'active:bg-neutral-100 dark:active:bg-neutral-800'
-                        }`}
-                      >
-                        <AppText
-                          className={`text-[14px] ${
+                  {showCapacityPicker ? (
+                    <AppView className="mt-2 rounded-2xl border border-border bg-card p-2 shadow-md">
+                      {CAPACITIES.map((cap) => (
+                        <AppPressable
+                          key={cap.value}
+                          onPress={() => {
+                            setCapacityKg(cap.value);
+                            setShowCapacityPicker(false);
+                          }}
+                          className={`flex-row items-center justify-between rounded-xl px-3 py-2.5 ${
                             capacityKg === cap.value
-                              ? 'font-bold text-[#FF5722]'
-                              : 'font-medium text-foreground'
+                              ? 'bg-[#FF5722]/10'
+                              : 'active:bg-neutral-100 dark:active:bg-neutral-800'
                           }`}
                         >
-                          {cap.label}
-                        </AppText>
-                        {capacityKg === cap.value ? (
-                          <Icon name="check" size={16} tone="brand" />
-                        ) : null}
-                      </AppPressable>
-                    ))}
-                  </AppView>
-                ) : null}
-              </AppView>
+                          <AppText
+                            className={`text-[14px] ${
+                              capacityKg === cap.value
+                                ? 'font-bold text-[#FF5722]'
+                                : 'font-medium text-foreground'
+                            }`}
+                          >
+                            {cap.label}
+                          </AppText>
+                          {capacityKg === cap.value ? (
+                            <Icon name="check" size={16} tone="brand" />
+                          ) : null}
+                        </AppPressable>
+                      ))}
+                    </AppView>
+                  ) : null}
+                </AppView>
+              ) : null}
 
               <TextField
                 variant="outlined"

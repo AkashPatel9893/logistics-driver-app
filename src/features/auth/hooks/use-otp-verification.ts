@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react';
 import { getErrorMessage } from '@/lib/api/api-error';
 import { authApi } from '@/lib/api/auth';
 
-import { useAuthStore } from '../use-auth-store';
+import { isAwaitingApproval, useAuthStore } from '../use-auth-store';
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { goBack } from '@/lib/go-back';
 
 const DEFAULT_OTP_LENGTH = 6;
@@ -35,7 +36,20 @@ export function useOtpVerification() {
     mutationFn: (otp: string) => authApi.verifyOtp(phone, otp),
     onSuccess: (session) => {
       useAuthStore.getState().signIn(session);
-      router.replace(session.user.isOnboarded ? '/home' : ('/(auth)/choose-role' as any));
+      // The backend remembers the dashboard the partner picked (a UI hint only).
+      if (session.selectedRole === 'FLEET_OWNER')
+        useFleetStore.getState().setDashboardRole('owner');
+      if (session.selectedRole === 'RIDER') useFleetStore.getState().setDashboardRole('driver');
+      const isDriver = useFleetStore.getState().dashboardRole === 'driver';
+      // Decided from the login response alone: new partner → city first; driver awaiting
+      // approval → Documents; everyone else → Home.
+      router.replace(
+        !session.user.isOnboarded
+          ? ('/(auth)/select-city' as any)
+          : isDriver && isAwaitingApproval(session.user)
+            ? ('/registration' as any)
+            : '/home',
+      );
     },
     onError: (error) => {
       setValidationError(getErrorMessage(error));

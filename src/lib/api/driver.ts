@@ -65,7 +65,7 @@ const DOCUMENT_NAMES: Record<string, string> = {
 };
 
 /** One status for a group of documents: any problem wins, then anything still pending. */
-function groupStatus(statuses: string[]): VerificationStatus {
+export function groupStatus(statuses: string[]): VerificationStatus {
   if (statuses.some((s) => ['FAILED', 'REJECTED', 'RESUBMISSION_REQUIRED', 'EXPIRED'].includes(s)))
     return 'rejected';
   return statuses.length > 0 && statuses.every((s) => s === 'VERIFIED')
@@ -73,7 +73,7 @@ function groupStatus(statuses: string[]): VerificationStatus {
     : 'under_review';
 }
 
-function toOnboardingState(status: OnboardingStatus, blockers: string[]): OnboardingState {
+export function toOnboardingState(status: OnboardingStatus, blockers: string[]): OnboardingState {
   const raw = status.onboardingStatus;
   // The backend only reports "can submit" once the agreement is accepted, and
   // the app accepts it as part of submitting — so ignore that one step here.

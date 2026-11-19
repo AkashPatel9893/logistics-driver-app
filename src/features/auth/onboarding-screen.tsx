@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useCanGoBack, useRouter } from 'expo-router';
 import { Alert, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -20,7 +20,9 @@ import { authApi } from '@/lib/api/auth';
 import { fleetApi } from '@/lib/api/fleet';
 import { getErrorMessage } from '@/lib/api/api-error';
 import { getDobError } from '@/lib/dob';
+import { goBack } from '@/lib/go-back';
 import { useAuthStore } from './use-auth-store';
+import { useCityStore } from './use-city-store';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 
 import { useOnboardingForm } from './hooks/use-onboarding-form';
@@ -37,13 +39,16 @@ const COMPANY_TYPES = [
 export function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // This screen's own stack: no back button when it is the first screen (e.g. after a restart).
+  const canGoBack = useCanGoBack();
   const form = useOnboardingForm();
   const registerCompany = useRegisterCompany();
   const setDashboardRole = useFleetStore.use.setDashboardRole();
+  const cityName = useCityStore((state) => state.city?.name);
 
-  // Registration type choice: individual driver vs company / fleet owner
   const [companySubmitting, setCompanySubmitting] = useState(false);
-  const [onboardingType, setOnboardingType] = useState<'driver' | 'owner'>('driver');
+  // Chosen on Choose role: Rider fills in driver details, Fleet fills in company details.
+  const onboardingType = useFleetStore.use.dashboardRole();
 
   // Company details fields
   const [companyName, setCompanyName] = useState('');
@@ -86,7 +91,11 @@ export function OnboardingScreen() {
     try {
       // The company endpoint requires a partner profile. Keep the form open until both
       // steps succeed, so the user can retry if the second request fails.
-      const profile = await authApi.updateProfile({ name: ownerName, dob: form.dob });
+      const profile = await authApi.updateProfile({
+        name: ownerName,
+        dob: form.dob,
+        marketCode: useCityStore.getState().city?.marketCode,
+      });
       const company = await fleetApi.getCompany();
       if (company.is_registered && company.gstin?.toUpperCase() !== gstin.trim().toUpperCase()) {
         throw new Error('A different company is already registered to this account.');
@@ -128,44 +137,11 @@ export function OnboardingScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <AppView className="mb-4 min-h-[48px] justify-center">
-            <LiquidGlassBackButton onPress={form.handleSignOut} />
-          </AppView>
-
-          {/* Registration type selector */}
-          <AppView row className="mb-6 rounded-2xl border border-border/80 bg-surface-muted p-1">
-            <AppPressable
-              onPress={() => setOnboardingType('driver')}
-              className={`flex-1 items-center justify-center rounded-xl py-2.5 ${
-                onboardingType === 'driver' ? 'bg-[#FF5722] shadow-sm' : ''
-              }`}
-            >
-              <AppText
-                className={`text-[13px] font-bold ${
-                  onboardingType === 'driver' ? 'text-white' : 'text-foreground-secondary'
-                }`}
-              >
-                Individual Driver
-              </AppText>
-            </AppPressable>
-
-            <AppPressable
-              onPress={() => setOnboardingType('owner')}
-              className={`flex-1 items-center justify-center rounded-xl py-2.5 ${
-                onboardingType === 'owner' ? 'bg-[#FF5722] shadow-sm' : ''
-              }`}
-            >
-              <AppText
-                className={`text-[13px] font-bold ${
-                  onboardingType === 'owner' ? 'text-white' : 'text-foreground-secondary'
-                }`}
-              >
-                Fleet Owner / Company
-              </AppText>
-            </AppPressable>
+            {canGoBack ? <LiquidGlassBackButton onPress={() => goBack(router)} /> : null}
           </AppView>
 
           {onboardingType === 'driver' ? (
-            /* ================= INDIVIDUAL DRIVER ONBOARDING (SCREENSHOT 2 SCREEN 1) ================= */
+            /* Individual driver */
             <>
               <AppView className="mb-8 mt-2">
                 <AppText className="text-[28px] font-extrabold leading-8 tracking-tight text-foreground">
@@ -230,25 +206,16 @@ export function OnboardingScreen() {
                   leading={<Icon name="calendar" size={20} tone="icon-subtle" />}
                   inputClassName="ml-2 text-[15px]"
                 />
+              </AppView>
 
-                <AppView className="gap-2">
-                  <AppText className="text-[13px] font-semibold text-foreground-secondary">
-                    Location
-                  </AppText>
-                  <AppView
-                    row
-                    className="items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5"
-                  >
-                    <Icon name="location" size={20} tone="brand" />
-                    <AppText className="text-[15px] font-semibold text-foreground">
-                      Current location
-                    </AppText>
-                  </AppView>
+              {cityName ? (
+                <AppView row className="mt-5 items-center gap-2">
+                  <Icon name="location" size={15} tone="icon-subtle" />
                   <AppText className="text-[13px] text-muted">
-                    Your operating area is determined when you continue.
+                    Working in <AppText className="font-bold text-foreground">{cityName}</AppText>
                   </AppText>
                 </AppView>
-              </AppView>
+              ) : null}
 
               <AppView className="mt-10">
                 <Button
@@ -269,7 +236,7 @@ export function OnboardingScreen() {
               </AppView>
             </>
           ) : (
-            /* ================= FLEET OWNER / COMPANY ONBOARDING (SCREENSHOT 1 SCREEN 1) ================= */
+            /* Fleet owner / company */
             <>
               <AppView className="mb-8 mt-2">
                 <AppText className="text-[28px] font-extrabold leading-8 tracking-tight text-foreground">
@@ -320,14 +287,17 @@ export function OnboardingScreen() {
                   inputClassName="ml-2 text-[15px]"
                   error={form.validationErrors.dob}
                 />
-                <AppText className="text-[13px] text-muted">
-                  We use your current location to find your operating area when you continue.
-                </AppText>
+                {cityName ? (
+                  <AppText className="text-[13px] text-muted">
+                    Operating city:{' '}
+                    <AppText className="font-bold text-foreground">{cityName}</AppText>
+                  </AppText>
+                ) : null}
 
                 {/* Phone number */}
                 <TextField
                   variant="outlined"
-                  label="Phone number*"
+                  label="Phone number"
                   required
                   value={companyPhone}
                   onChangeText={(text) => setCompanyPhone(text.replace(/\D/g, '').slice(0, 10))}

@@ -2,7 +2,8 @@ import { Redirect, Tabs, useRouter, useSegments } from 'expo-router';
 
 import { FloatingTabBar, FloatingTabBarSpacer, type TabName } from '@/components/floating-tab-bar';
 import { AppView } from '@/components/ui';
-import { useAuthStore } from '@/features/auth/use-auth-store';
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import { isAwaitingApproval, useAuthStore } from '@/features/auth/use-auth-store';
 import { useEffect } from 'react';
 
 import { useDriverProfile } from '@/hooks/use-driver';
@@ -46,10 +47,18 @@ export default function TabsLayout() {
   const isOnboarded = useAuthStore((state) => state.user?.isOnboarded === true);
   const userId = useAuthStore((state) => state.user?.id);
   const lastSegment = segments.at(-1);
+  const awaitingApproval = useAuthStore((state) => isAwaitingApproval(state.user));
+  const dashboardRole = useFleetStore.use.dashboardRole();
   const activeTab: TabName = isTabName(lastSegment) ? lastSegment : 'home';
 
   if (!isSignedIn) return <Redirect href="/" />;
-  if (!isOnboarded) return <Redirect href="/onboarding" />;
+  // Unfinished sign-up restarts at its first step, so every later screen has a real back stack.
+  if (!isOnboarded) return <Redirect href={'/(auth)/select-city' as any} />;
+  // A driver awaiting approval opens on Documents. Decided from the backend status saved with the
+  // session (login, /auth/me), so Home never flashes while the profile loads.
+  if (awaitingApproval && dashboardRole === 'driver') {
+    return <Redirect href={'/registration' as any} />;
+  }
 
   return (
     <AppView className="flex-1">

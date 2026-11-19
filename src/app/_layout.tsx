@@ -3,13 +3,15 @@ import '@/global.css';
 import '@/lib/background-location';
 
 import { Stack, ThemeProvider } from 'expo-router';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { LocationPermissionGate } from '@/components/location-permission-gate';
 import { useThemeConfig } from '@/components/ui';
-import { hydrateAuth } from '@/features/auth/use-auth-store';
+import { hydrateAuth, refreshOnboardingStatus } from '@/features/auth/use-auth-store';
 import { loadSelectedTheme } from '@/hooks/use-selected-theme';
 import { useStackAnimation } from '@/hooks/use-stack-animation';
 import { APIProvider } from '@/lib/api';
@@ -18,6 +20,18 @@ export { ErrorBoundary } from 'expo-router';
 
 loadSelectedTheme();
 hydrateAuth();
+
+/** Re-reads the onboarding status (one light request) on launch and on return to the app. */
+function OnboardingStatusSync() {
+  useEffect(() => {
+    refreshOnboardingStatus();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshOnboardingStatus();
+    });
+    return () => sub.remove();
+  }, []);
+  return null;
+}
 
 function Providers({ children }: { children: ReactNode }) {
   const navigationTheme = useThemeConfig();
@@ -63,7 +77,16 @@ export default function RootLayout() {
         <Stack.Screen name="choose-role" />
         <Stack.Screen name="add-driver" />
         <Stack.Screen name="vehicle-details" />
+        <Stack.Screen name="registration" />
+        <Stack.Screen name="register-vehicle-type" />
+        <Stack.Screen name="register-licence" />
+        <Stack.Screen name="register-photo" />
+        <Stack.Screen name="register-selfie" />
+        <Stack.Screen name="register-identity" />
+        <Stack.Screen name="register-permissions" />
       </Stack>
+      <LocationPermissionGate />
+      <OnboardingStatusSync />
     </Providers>
   );
 }
