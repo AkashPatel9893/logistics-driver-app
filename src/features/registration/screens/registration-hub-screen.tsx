@@ -12,6 +12,8 @@ import {
   Icon,
 } from '@/components/ui';
 import { signOut, syncOnboardingStatus } from '@/features/auth/use-auth-store';
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import { useFleetCompany } from '@/hooks/use-fleet';
 import { SetupScreenLayout } from '@/features/driver/components/setup-screen-layout';
 import { useSubmitOnboarding, useVehicleTypes } from '@/hooks/use-driver';
 import { getErrorMessage } from '@/lib/api/api-error';
@@ -39,6 +41,14 @@ export function RegistrationHubScreen() {
   const fleetDriver = useRegistrationStore.use.fleetDriver();
   const submit = useSubmitOnboarding();
   const permissionStatus = usePermissionStatus();
+  // A fleet owner who switched to Rider lands here (their own driver application isn't approved):
+  // give them a way back to the fleet dashboard instead of trapping them in driver onboarding.
+  const { data: company } = useFleetCompany();
+  const isFleetOwner = company?.isRegistered === true;
+  const backToFleet = () => {
+    useFleetStore.getState().setDashboardRole('owner');
+    router.replace('/home');
+  };
   const snapshot = statusQuery.data ? snapshotFromStatus(statusQuery.data) : null;
   const onboardingStatus = snapshot?.onboarding.status;
   // Once approved, the app opens on Home again (see the tabs layout).
@@ -159,6 +169,25 @@ export function RegistrationHubScreen() {
         contentContainerClassName="gap-3 px-5 pb-16 pt-4"
         showsVerticalScrollIndicator={false}
       >
+        {isFleetOwner ? (
+          <AppView className="gap-3 rounded-3xl border border-border bg-surface p-4">
+            <AppView row className="items-start gap-3">
+              <Icon name="building.2" size={22} tone="brand" />
+              <AppText className="flex-1 text-[13px] leading-5 text-foreground-secondary">
+                <AppText className="font-bold text-foreground">Rider mode.</AppText> To drive trips
+                yourself, finish these steps. Your fleet keeps working meanwhile.
+              </AppText>
+            </AppView>
+            <Button
+              variant="outline"
+              label="Back to Fleet dashboard"
+              onPress={backToFleet}
+              size="md"
+              textClassName="font-bold"
+            />
+          </AppView>
+        ) : null}
+
         <AppView className={`mb-2 flex-row items-start gap-3 rounded-3xl p-5 ${banner.className}`}>
           <AppView className="flex-1">
             <AppText className="text-[17px] font-extrabold text-foreground">{banner.title}</AppText>

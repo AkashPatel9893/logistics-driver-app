@@ -53,6 +53,8 @@ export function OnboardingScreen() {
   // Company details fields
   const [companyName, setCompanyName] = useState('');
   const [ownerName, setOwnerName] = useState(form.name || '');
+  // The login number is already verified: shown read-only. Editable only if we don't have it.
+  const loginPhone = form.phone.length === 10 ? form.phone : '';
   const [companyPhone, setCompanyPhone] = useState(form.phone || '');
   const [companyEmail, setCompanyEmail] = useState('');
   const [companyType, setCompanyType] = useState('Fleet Owner / Transport');
@@ -64,15 +66,33 @@ export function OnboardingScreen() {
     gstin.trim().toUpperCase(),
   );
 
-  const isCompanyValid =
-    companyName.trim().length >= 2 &&
-    ownerName.trim().length >= 2 &&
-    companyPhone.trim().length >= 10 &&
-    companyEmail.trim().includes('@') &&
-    Boolean(companyType) &&
-    registeredAddress.trim().length >= 5 &&
-    isValidGstin &&
-    !getDobError(form.dob);
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(companyEmail.trim());
+
+  // Shown under the fields once typed, so a disabled Continue never leaves the owner guessing.
+  const gstinError =
+    gstin.length === 0
+      ? undefined
+      : gstin.length < 15
+        ? `GSTIN has 15 characters (${gstin.length} entered)`
+        : !isValidGstin
+          ? 'Not a valid GSTIN. Format: 2 digits, 5 letters, 4 digits, letter, digit/letter, Z, digit/letter (e.g. 29ABCDE1234F1Z5)'
+          : undefined;
+  const emailError =
+    companyEmail.trim().length > 0 && !isValidEmail ? 'Enter a valid email address' : undefined;
+  const phoneError =
+    companyPhone.length > 0 && companyPhone.length < 10 ? 'Enter the 10-digit number' : undefined;
+
+  // What still blocks Continue, listed above the button.
+  const missing = [
+    companyName.trim().length < 2 && 'company name',
+    ownerName.trim().length < 2 && "owner's name",
+    getDobError(form.dob) && 'date of birth',
+    companyPhone.trim().length < 10 && 'phone number',
+    !isValidEmail && 'email',
+    !isValidGstin && 'valid GSTIN',
+    registeredAddress.trim().length < 5 && 'address',
+  ].filter(Boolean) as string[];
+  const isCompanyValid = missing.length === 0 && Boolean(companyType);
 
   const handleCompanySubmit = async () => {
     if (!isCompanyValid) {
@@ -131,8 +151,10 @@ export function OnboardingScreen() {
       <FocusAwareStatusBar />
       <AppKeyboardAvoidingView>
         <AppScrollView
-          style={{ paddingTop: insets.top + 8 }}
-          contentContainerClassName="px-6 pb-16"
+          // Padding on the content, not the scroll view: padding the view itself shifts it down
+          // and cuts the bottom of the form off by the same amount.
+          contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 48 }}
+          contentContainerClassName="px-6"
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -264,11 +286,12 @@ export function OnboardingScreen() {
                 {/* Owner's name */}
                 <TextField
                   variant="outlined"
-                  label="Owners name"
+                  label="Your full name (owner)"
                   required
                   value={ownerName}
                   onChangeText={setOwnerName}
-                  placeholder="Enter your full name"
+                  placeholder="As on your PAN or ID"
+                  hint="Used for your partner profile and as the company owner"
                   autoCapitalize="words"
                   leading={<Icon name="person" size={20} tone="icon-subtle" />}
                   inputClassName="ml-2 text-[15px]"
@@ -294,22 +317,27 @@ export function OnboardingScreen() {
                   </AppText>
                 ) : null}
 
-                {/* Phone number */}
-                <TextField
-                  variant="outlined"
-                  label="Phone number"
-                  required
-                  value={companyPhone}
-                  onChangeText={(text) => setCompanyPhone(text.replace(/\D/g, '').slice(0, 10))}
-                  placeholder="Enter your phone number"
-                  keyboardType="phone-pad"
-                  leading={
-                    <AppText className="text-[15px] font-bold text-foreground-secondary">
-                      +91
-                    </AppText>
-                  }
-                  inputClassName="ml-2 text-[15px]"
-                />
+                {/* Phone number: the login number, already verified by OTP */}
+                <AppView className={loginPhone ? 'opacity-60' : ''}>
+                  <TextField
+                    variant="outlined"
+                    label="Phone number"
+                    required
+                    value={companyPhone}
+                    onChangeText={(text) => setCompanyPhone(text.replace(/\D/g, '').slice(0, 10))}
+                    editable={!loginPhone}
+                    placeholder="Enter your phone number"
+                    error={phoneError}
+                    hint={loginPhone ? 'Your login number, verified by OTP.' : undefined}
+                    keyboardType="phone-pad"
+                    leading={
+                      <AppText className="text-[15px] font-bold text-foreground-secondary">
+                        +91
+                      </AppText>
+                    }
+                    inputClassName="ml-2 text-[15px]"
+                  />
+                </AppView>
 
                 {/* Email address */}
                 <TextField
@@ -319,6 +347,7 @@ export function OnboardingScreen() {
                   value={companyEmail}
                   onChangeText={setCompanyEmail}
                   placeholder="Enter your email address"
+                  error={emailError}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   leading={<Icon name="envelope" size={20} tone="icon-subtle" />}
@@ -340,6 +369,8 @@ export function OnboardingScreen() {
                     )
                   }
                   placeholder="e.g. 29ABCDE1234F1Z5"
+                  error={gstinError}
+                  hint="15 characters, as on your GST certificate"
                   autoCapitalize="characters"
                   autoCorrect={false}
                   leading={<Icon name="document" size={20} tone="icon-subtle" />}
@@ -422,6 +453,11 @@ export function OnboardingScreen() {
               </AppView>
 
               <AppView className="mt-10">
+                {missing.length > 0 ? (
+                  <AppText className="mb-3 text-center text-[13px] text-muted">
+                    Still needed: {missing.join(', ')}
+                  </AppText>
+                ) : null}
                 <Button
                   variant="brand"
                   label={companySubmitting ? 'Saving...' : 'Continue'}
