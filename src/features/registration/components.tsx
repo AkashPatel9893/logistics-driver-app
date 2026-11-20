@@ -80,10 +80,13 @@ export function TipsCard({ title, tips }: { title: string; tips: string[] }) {
 export function DocumentStatusNote({
   state,
   masked,
+  expiry,
   reason,
 }: {
   state: StepState;
   masked?: string | null;
+  /** ISO date on file, shown as DD/MM/YYYY. */
+  expiry?: string | null;
   reason?: string | null;
 }) {
   if (state === 'todo' || state === 'selected') return null;
@@ -98,13 +101,40 @@ export function DocumentStatusNote({
       ? 'Verified. You do not need to upload this again.'
       : state === 'rejected'
         ? `Please upload again${reason ? `: ${reason}` : '.'}`
-        : 'Submitted and under verification. Uploading again replaces it.';
+        : 'Under verification. What you sent is shown below: change anything and tap Update.';
+  const onFile = [
+    masked,
+    expiry ? `valid till ${expiry.split('-').reverse().join('/')}` : null,
+  ].filter(Boolean);
   return (
     <AppView className={`rounded-2xl px-4 py-3 ${tone.box}`}>
       <AppText className={`text-[13px] font-semibold ${tone.text}`}>
-        {masked ? `${masked} · ` : ''}
+        {onFile.length > 0 ? `On file: ${onFile.join(' · ')}\n` : ''}
         {message}
       </AppText>
+    </AppView>
+  );
+}
+
+// ─── Photos sent from this phone, read-only ─────────────────────────────────
+
+/** The photos last submitted from this phone, if it still has them (the backend can't send them). */
+export function SubmittedPhotos({ uris }: { uris: (string | null)[] }) {
+  const photos = uris.filter((u): u is string => Boolean(u));
+  if (photos.length === 0) return null;
+  return (
+    <AppView className="gap-3">
+      <AppText className="text-[13px] font-bold text-foreground-secondary">Photos you sent</AppText>
+      <AppView row className="gap-3">
+        {photos.map((uri) => (
+          <AppImage
+            key={uri}
+            source={{ uri }}
+            contentFit="cover"
+            className="h-28 flex-1 rounded-2xl border border-border"
+          />
+        ))}
+      </AppView>
     </AppView>
   );
 }

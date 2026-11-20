@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 
@@ -12,9 +13,14 @@ import { SetupScreenLayout } from '@/features/driver/components/setup-screen-lay
 import { useLocalPhoto } from '@/features/driver/hooks/use-local-photo';
 import { getErrorMessage } from '@/lib/api/api-error';
 import { formatDateInput, toIsoDate } from '@/lib/api/onboarding';
-import { goBack } from '@/lib/go-back';
 
-import { DocPhotoSlot, DocumentStatusNote, StickyFooter, TipsCard } from '../components';
+import {
+  DocPhotoSlot,
+  DocumentStatusNote,
+  StickyFooter,
+  SubmittedPhotos,
+  TipsCard,
+} from '../components';
 import { DocumentPreview } from '../document-preview';
 import {
   documentState,
@@ -22,16 +28,23 @@ import {
   useDriverDocuments,
   useSubmitDriverDocument,
 } from '../use-registration';
+import { markSubmitted, useDraftText } from '../drafts';
+import { goToNextStep } from '../next-step';
 
 export function DrivingLicenceScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: docs } = useDriverDocuments();
   const current = findDocument(docs, 'DRIVING_LICENCE');
+  const state = documentState(current?.status);
+  // Verified: view only. Under review / rejected: shows what was sent, to update.
+  const locked = state === 'verified';
   const submit = useSubmitDriverDocument();
-  const front = useLocalPhoto('document');
-  const back = useLocalPhoto('document');
-  const [number, setNumber] = useState('');
-  const [expiry, setExpiry] = useState('');
+  // Kept on the phone until submitted, so closing the app mid-step loses nothing.
+  const front = useLocalPhoto('licence.front');
+  const back = useLocalPhoto('licence.back');
+  const [number, setNumber] = useDraftText('licence.number');
+  const [expiry, setExpiry] = useDraftText('licence.expiry');
   const [error, setError] = useState<string>();
 
   const expiryIso = toIsoDate(expiry);
@@ -50,7 +63,13 @@ export function DrivingLicenceScreen() {
         fileUri: front.uri!,
         backFileUri: back.uri,
       },
-      { onSuccess: () => goBack(router), onError: (e) => setError(getErrorMessage(e)) },
+      {
+        onSuccess: () => {
+          markSubmitted('licence.');
+          goToNextStep(router, queryClient, 'licence');
+        },
+        onError: (e) => setError(getErrorMessage(e)),
+      },
     );
   };
 
@@ -63,80 +82,96 @@ export function DrivingLicenceScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <DocumentStatusNote
-            state={documentState(current?.status)}
+            state={state}
             masked={current?.identifierMasked}
+            expiry={current?.expiryDate}
             reason={current?.rejectionReason}
           />
 
-          <DocPhotoSlot
-            title="Front side of your DL"
-            uri={front.uri}
-            onPick={front.pick}
-            disabled={submit.isPending}
-          />
-          <DocPhotoSlot
-            title="Back side of your DL"
-            hint="Upload the back side even if it is blank."
-            uri={back.uri}
-            onPick={back.pick}
-            disabled={submit.isPending}
-          />
+          {/* Verified: only what is on file (and the photos, if sent from this phone). */}
+          {locked ? (
+            <SubmittedPhotos uris={[front.uri, back.uri]} />
+          ) : (
+            <>
+              <DocPhotoSlot
+                title="Front side of your DL"
+                uri={front.uri}
+                onPick={front.pick}
+                disabled={locked || submit.isPending}
+              />
+              <DocPhotoSlot
+                title="Back side of your DL"
+                hint="Upload the back side even if it is blank."
+                uri={back.uri}
+                onPick={back.pick}
+                disabled={locked || submit.isPending}
+              />
 
-          <TextField
-            variant="outlined"
-            label="Enter Driving Licence number"
-            required
-            value={number}
-            onChangeText={(t) =>
-              setNumber(
-                t
-                  .toUpperCase()
-                  .replace(/[^A-Z0-9]/g, '')
-                  .slice(0, 16),
-              )
-            }
-            placeholder="KA0520190012345"
-            autoCapitalize="characters"
-            autoCorrect={false}
-            hint="Eg: KA1234567899029 · Special characters are not allowed"
-          />
+              <TextField
+                variant="outlined"
+                label="Enter Driving Licence number"
+                required
+                value={number}
+                onChangeText={(t) =>
+                  setNumber(
+                    t
+                      .toUpperCase()
+                      .replace(/[^A-Z0-9]/g, '')
+                      .slice(0, 16),
+                  )
+                }
+                placeholder="KA0520190012345"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                hint="Eg: KA1234567899029 · Special characters are not allowed"
+              />
 
-          <DocumentPreview
-            kind="dl"
-            caption="Your licence number is printed near the top, after 'DL No'. Type it without spaces or dashes. The 'Valid Till' date goes in the next field."
-          />
+              <DocumentPreview
+                kind="dl"
+                caption="Your licence number is printed near the top, after 'DL No'. Type it without spaces or dashes. The 'Valid Till' date goes in the next field."
+              />
 
-          <TextField
-            variant="outlined"
-            label="Licence valid until"
-            required
-            value={expiry}
-            onChangeText={(v) => setExpiry(formatDateInput(v))}
-            placeholder="DD/MM/YYYY"
-            keyboardType="number-pad"
-            maxLength={10}
-            hint="The 'Valid till' date printed on your licence"
-          />
+              <TextField
+                variant="outlined"
+                label="Licence valid until"
+                required
+                value={expiry}
+                onChangeText={(v) => setExpiry(formatDateInput(v))}
+                placeholder="DD/MM/YYYY"
+                keyboardType="number-pad"
+                maxLength={10}
+                hint="The 'Valid till' date printed on your licence"
+              />
 
-          <TipsCard
-            title="For quick approval"
-            tips={[
-              'Place the card on a flat, dark surface in good light',
-              'All four corners and every detail must be visible',
-              'No blur, glare or fingers covering the text',
-            ]}
-          />
+              <TipsCard
+                title="For quick approval"
+                tips={[
+                  'Place the card on a flat, dark surface in good light',
+                  'All four corners and every detail must be visible',
+                  'No blur, glare or fingers covering the text',
+                ]}
+              />
+            </>
+          )}
 
           {error ? <AppText className="text-[13px] font-medium text-error">{error}</AppText> : null}
           <AppView className="h-2" />
         </AppScrollView>
       </AppKeyboardAvoidingView>
-      <StickyFooter
-        label={submit.isPending ? 'Uploading… this may take a few seconds' : 'Submit'}
-        onPress={handleSubmit}
-        disabled={!canSubmit || submit.isPending}
-        loading={submit.isPending}
-      />
+      {locked ? null : (
+        <StickyFooter
+          label={
+            submit.isPending
+              ? 'Uploading… this may take a few seconds'
+              : state === 'todo'
+                ? 'Submit'
+                : 'Update'
+          }
+          onPress={handleSubmit}
+          disabled={!canSubmit || submit.isPending}
+          loading={submit.isPending}
+        />
+      )}
     </SetupScreenLayout>
   );
 }

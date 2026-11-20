@@ -17,7 +17,6 @@ import { SetupScreenLayout } from '@/features/driver/components/setup-screen-lay
 import { useDriverProfile } from '@/hooks/use-driver';
 import { ApiError, getErrorMessage } from '@/lib/api/api-error';
 import { authApi } from '@/lib/api/auth';
-import { goBack } from '@/lib/go-back';
 import { queryKeys } from '@/lib/queries/keys';
 
 import { DocumentStatusNote, StickyFooter, TipsCard } from '../components';
@@ -27,7 +26,9 @@ import {
   useDriverDocuments,
   useSubmitDriverDocument,
 } from '../use-registration';
+import { markSubmitted, readDraftPhoto, useDraftText } from '../drafts';
 import { useSelfieStore } from '../use-selfie-store';
+import { goToNextStep } from '../next-step';
 
 type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 
@@ -46,11 +47,15 @@ export function ProfilePhotoScreen() {
   const current = findDocument(docs, 'SELFIE');
   const submit = useSubmitDriverDocument();
   // Taken on the selfie screen (round camera frame) and handed back through this store.
-  const photo = useSelfieStore((state) => state.uri);
+  // Fresh from the selfie screen, or the one kept on the phone if the app was closed in between.
+  const [draftPhoto] = useState(() => readDraftPhoto('profile.photo'));
+  const photo = useSelfieStore((state) => state.uri) ?? draftPhoto;
   // Null until the driver taps Edit: then the name shown is the one on the profile.
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const name = nameDraft ?? profile?.name ?? '';
-  const [gender, setGender] = useState<Gender | null>(null);
+  const [genderDraft, setGenderDraft] = useDraftText('profile.gender');
+  const gender = (genderDraft || null) as Gender | null;
+  const setGender = (value: Gender) => setGenderDraft(value);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -83,7 +88,8 @@ export function ProfilePhotoScreen() {
         }
       }
       await submit.mutateAsync({ type: 'SELFIE', fileUri: photo });
-      goBack(router);
+      markSubmitted('profile.');
+      await goToNextStep(router, queryClient, 'photo');
     } catch (e) {
       setError(getErrorMessage(e));
     } finally {
@@ -216,7 +222,7 @@ export function ProfilePhotoScreen() {
         </AppScrollView>
       </AppKeyboardAvoidingView>
       <StickyFooter
-        label="Submit"
+        label={documentState(current?.status) === 'todo' ? 'Submit' : 'Update'}
         onPress={handleSubmit}
         disabled={!photo || !gender || saving}
         loading={saving}

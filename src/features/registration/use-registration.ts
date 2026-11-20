@@ -15,24 +15,30 @@ export interface DriverDocument {
   id: string;
   type: string;
   identifierMasked: string | null;
+  /** ISO date (YYYY-MM-DD), for documents that expire (e.g. the licence). */
+  expiryDate: string | null;
   status: string;
   rejectionReason: string | null;
 }
 
+export async function fetchDriverDocuments({
+  signal,
+}: {
+  signal?: AbortSignal;
+}): Promise<DriverDocument[]> {
+  const docs = await onboardingApi.listDocuments(signal);
+  return (docs ?? []).map((d) => ({
+    id: d.id,
+    type: d.document_type,
+    identifierMasked: d.identifier_masked ?? null,
+    expiryDate: d.expiry_date ?? null,
+    status: d.verification_status,
+    rejectionReason: d.rejection_reason ?? null,
+  }));
+}
+
 export function useDriverDocuments() {
-  return useQuery({
-    queryKey: queryKeys.driverDocuments,
-    queryFn: async ({ signal }): Promise<DriverDocument[]> => {
-      const docs = await onboardingApi.listDocuments(signal);
-      return (docs ?? []).map((d) => ({
-        id: d.id,
-        type: d.document_type,
-        identifierMasked: d.identifier_masked ?? null,
-        status: d.verification_status,
-        rejectionReason: d.rejection_reason ?? null,
-      }));
-    },
-  });
+  return useQuery({ queryKey: queryKeys.driverDocuments, queryFn: fetchDriverDocuments });
 }
 
 /** Submits one driver document (create, upload front/back, verify), then refreshes the steps. */
@@ -248,12 +254,12 @@ export function buildRegistrationSteps(
     },
     {
       id: 'identity',
-      title: 'Aadhaar & PAN card',
+      title: 'PAN card',
       subject: 'Your PAN card is',
       detail:
         idState === 'todo'
           ? aadhaarState === 'todo'
-            ? null
+            ? 'Mandatory · Aadhaar optional'
             : 'Aadhaar added · PAN still needed'
           : idState === 'rejected' && pan?.rejectionReason
             ? pan.rejectionReason

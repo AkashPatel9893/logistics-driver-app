@@ -106,23 +106,11 @@ export function RegistrationHubScreen() {
               icon: 'doc.text.fill' as const,
             };
 
+  // Every step opens its screen, showing what was sent (to look at or update) once submitted.
+  // A submitted profile photo opens Profile information (photo + details), not the camera.
   const openStep = (step: RegistrationStep) => {
-    if (step.state === 'review' || step.state === 'verified') {
-      Alert.alert(
-        `${step.subject} ${step.state === 'verified' ? 'verified' : 'under verification'}`,
-        step.state === 'verified'
-          ? 'Nothing to do here.'
-          : 'We will notify you once it is checked. You can upload it again if something was wrong.',
-        [
-          { text: 'OK', style: 'cancel' },
-          ...(step.state === 'review'
-            ? [{ text: 'Upload again', onPress: () => router.push(step.route) }]
-            : []),
-        ],
-      );
-      return;
-    }
-    router.push(step.route);
+    if (step.id === 'photo' && step.state !== 'todo') router.push('/register-photo');
+    else router.push(step.route);
   };
 
   const handleSubmit = () =>

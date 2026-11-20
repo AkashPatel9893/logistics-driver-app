@@ -64,8 +64,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       {
         cameraPermission:
           'Ryno Driver uses the camera to photograph parcels at pickup and drop, your vehicle and your documents.',
-        photosPermission:
-          'Ryno Driver lets you choose document photos from your library during onboarding.',
+        // Photos are always taken with the camera; the app never reads the photo library.
+        photosPermission: false,
         microphonePermission: false,
       },
     ],

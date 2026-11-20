@@ -24,7 +24,7 @@ export function DailyCheckScreen() {
   const submit = useSubmitDailyCheck();
   const check = profile?.dailyCheck;
   // Camera-first: the check proves the vehicle is on the road today.
-  const selfie = usePhotoUpload('daily_check', check?.photoUrl ?? null, 'camera');
+  const selfie = usePhotoUpload('daily_check', check?.photoUrl ?? null);
   const done = check?.completedToday ?? false;
   const reward = formatRupees(check?.reward ?? 0);
 

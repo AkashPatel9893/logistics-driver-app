@@ -16,12 +16,25 @@ import {
 import { SetupScreenLayout } from '@/features/driver/components/setup-screen-layout';
 import { goBack } from '@/lib/go-back';
 
+import { saveDraftPhoto } from '../drafts';
 import { useSelfieStore } from '../use-selfie-store';
 
 type Stage = 'intro' | 'camera' | 'review';
 
 const TITLE = 'Take a selfie';
 const SUBTITLE = 'Remove any helmet, sunglasses or mask. Your face should be clearly visible.';
+
+/** Largest available "WxH" size whose long side is at most 1600 px, if any. */
+function pickPictureSize(sizes: string[]): string | undefined {
+  const parsed = sizes
+    .map((size) => {
+      const [w, h] = size.split('x').map(Number);
+      return { size, long: Math.max(w, h), area: w * h };
+    })
+    .filter((s) => Number.isFinite(s.area) && s.long <= 1600)
+    .sort((a, b) => b.area - a.area);
+  return parsed[0]?.size;
+}
 
 /** Drawn illustration: a phone showing a face inside the oval guide. */
 function SelfieIllustration() {
@@ -62,6 +75,7 @@ export function SelfieScreen() {
   const [stage, setStage] = useState<Stage>('intro');
   const [photo, setPhoto] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [pictureSize, setPictureSize] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
   const start = async () => {
@@ -83,8 +97,10 @@ export function SelfieScreen() {
     }
   };
 
-  const usePhoto = () => {
-    useSelfieStore.getState().setUri(photo);
+  const usePhoto = async () => {
+    if (!photo) return;
+    // Kept on the phone until Profile information is submitted, in case the app closes.
+    useSelfieStore.getState().setUri(await saveDraftPhoto('profile.photo', photo));
     if (next === 'info') router.replace('/register-photo');
     else goBack(router);
   };
@@ -108,12 +124,31 @@ export function SelfieScreen() {
             >
               {stage === 'camera' ? (
                 <>
+                  {/* The camera feed is 3:4 portrait. Sized at that shape and centred, it covers
+                      the whole circle (the extra top and bottom are clipped) instead of being
+                      squeezed into a square with black bars. */}
                   <CameraView
                     ref={camera}
                     facing="front"
                     mirror
-                    style={{ width: circle, height: circle }}
-                    onCameraReady={() => setReady(true)}
+                    ratio="4:3"
+                    style={{
+                      position: 'absolute',
+                      width: circle,
+                      height: (circle * 4) / 3,
+                      top: -circle / 6,
+                    }}
+                    pictureSize={pictureSize}
+                    onCameraReady={async () => {
+                      setReady(true);
+                      // The default is the camera's largest size (often 12 MP+): far more than a selfie needs
+                      // and a slow upload. Use the largest one up to 1600 px.
+                      const sizes = await camera.current
+                        ?.getAvailablePictureSizesAsync()
+                        .catch(() => []);
+                      const chosen = pickPictureSize(sizes ?? []);
+                      if (chosen) setPictureSize(chosen);
+                    }}
                   />
                   {!ready ? (
                     <AppView className="absolute">

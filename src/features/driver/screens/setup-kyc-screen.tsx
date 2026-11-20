@@ -30,9 +30,9 @@ export function SetupKycScreen() {
   const [panNumber, setPanNumber] = useState('');
   const [dlNumber, setDlNumber] = useState('');
   const [dlExpiry, setDlExpiry] = useState('');
-  const pan = useLocalPhoto('document');
-  const dl = useLocalPhoto('document');
-  const selfie = useLocalPhoto('camera');
+  const pan = useLocalPhoto();
+  const dl = useLocalPhoto();
+  const selfie = useLocalPhoto();
   const [error, setError] = useState<string>();
 
   const handleSubmit = () => {

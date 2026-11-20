@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { getErrorMessage } from '@/lib/api/api-error';
 import { uploadsApi, type UploadKind } from '@/lib/api/uploads';
-import { capturePhoto, choosePhoto } from '@/lib/photo-capture';
+import { capturePhoto } from '@/lib/photo-capture';
 
 export interface PhotoUpload {
   /** What to show: the uploaded URL, or the local preview while uploading. */
@@ -11,26 +11,19 @@ export interface PhotoUpload {
   url: string | null;
   uploading: boolean;
   error: string | undefined;
-  /** Opens the camera (or library for documents) and uploads the result. */
+  /** Opens the camera and uploads the result. */
   pick: () => Promise<void>;
 }
 
-/**
- * One photo field: capture → upload → hosted URL. `source: 'document'` lets
- * the driver pick an existing scan; live proof (parcel, selfie) is camera-first.
- */
-export function usePhotoUpload(
-  kind: UploadKind,
-  initialUrl: string | null = null,
-  source: 'camera' | 'document' = 'camera',
-): PhotoUpload {
+/** One photo field: camera capture → upload → hosted URL. Never from the gallery. */
+export function usePhotoUpload(kind: UploadKind, initialUrl: string | null = null): PhotoUpload {
   const [url, setUrl] = useState<string | null>(initialUrl);
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
 
   const pick = async () => {
-    const uri = source === 'document' ? await choosePhoto() : await capturePhoto();
+    const uri = await capturePhoto();
     if (!uri) return;
     setLocalUri(uri);
     setError(undefined);

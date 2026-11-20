@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert } from 'react-native';
@@ -14,10 +15,11 @@ import { useDriverProfile, useSaveBank } from '@/hooks/use-driver';
 import { getErrorMessage } from '@/lib/api/api-error';
 
 import { SetupScreenLayout } from '../components/setup-screen-layout';
-import { goBack } from '@/lib/go-back';
+import { goToNextStep } from '@/features/registration/next-step';
 
 export function SetupBankScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: profile } = useDriverProfile();
   const saveBank = useSaveBank();
   const current = profile?.bank ?? null;
@@ -41,7 +43,7 @@ export function SetupBankScreen() {
           Alert.alert(
             'Bank account submitted',
             `Account ending ${updated.bank?.accountLast4 ?? ''} has been added.`,
-            [{ text: 'OK', onPress: () => goBack(router) }],
+            [{ text: 'OK', onPress: () => goToNextStep(router, queryClient, 'bank') }],
           ),
         onError: (e) => setError(getErrorMessage(e)),
       },

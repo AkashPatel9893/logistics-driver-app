@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 
@@ -5,10 +6,10 @@ import { AppPressable, AppScrollView, AppSpinner, AppText, AppView, Icon } from 
 import { SetupScreenLayout } from '@/features/driver/components/setup-screen-layout';
 import { VehicleImage } from '@/features/driver/components/vehicle-image';
 import { useDriverProfile, useVehicleTypes } from '@/hooks/use-driver';
-import { goBack } from '@/lib/go-back';
 
 import { StickyFooter } from '../components';
 import { useRegistrationStore } from '../use-registration-store';
+import { goToNextStep } from '../next-step';
 
 export interface VehicleTypeScreenProps {
   /** Shown during sign-up (before a profile exists): Confirm continues to Driver details. */
@@ -18,6 +19,7 @@ export interface VehicleTypeScreenProps {
 /** Which vehicle the driver will deliver with. Right after "Rider" at sign-up, or from Documents. */
 export function VehicleTypeScreen({ signUp = false }: VehicleTypeScreenProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: profile } = useDriverProfile({ enabled: !signUp });
   const setFleetDriver = useRegistrationStore.use.setFleetDriver();
   const { data: vehicleTypes = [], isLoading } = useVehicleTypes();
@@ -30,13 +32,13 @@ export function VehicleTypeScreen({ signUp = false }: VehicleTypeScreenProps) {
     if (!selectedId) return;
     setVehicleTypeId(selectedId);
     if (signUp) router.push('/(auth)/onboarding');
-    else goBack(router);
+    else goToNextStep(router, queryClient, 'vehicle-type');
   };
 
   const handleFleetDriver = () => {
     setFleetDriver(true);
     if (signUp) router.push('/(auth)/onboarding');
-    else goBack(router);
+    else goToNextStep(router, queryClient, 'vehicle-type');
   };
 
   return (

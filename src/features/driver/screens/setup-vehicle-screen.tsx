@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Keyboard } from 'react-native';
@@ -16,6 +17,7 @@ import { useDriverProfile, useSaveVehicle, useVehicleTypes } from '@/hooks/use-d
 import { useAddFleetVehicle, useFleetCompany, useRequestFleetLink } from '@/hooks/use-fleet';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { useRegistrationStore } from '@/features/registration/use-registration-store';
+import { markSubmitted, useDraftText } from '@/features/registration/drafts';
 import { formatDateInput, toIsoDate } from '@/lib/api/onboarding';
 import { PhotoUploadBox } from '../components/photo-upload-box';
 import { useLocalPhoto } from '../hooks/use-local-photo';
@@ -24,6 +26,7 @@ import type { FuelType } from '@/lib/api/models';
 
 import { SetupScreenLayout } from '../components/setup-screen-layout';
 import { goBack } from '@/lib/go-back';
+import { goToNextStep } from '@/features/registration/next-step';
 
 const CAPACITIES = [
   { value: 500, label: '500 kg' },
@@ -36,16 +39,20 @@ const CAPACITIES = [
 
 export function SetupVehicleScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: profile } = useDriverProfile();
   const { data: vehicleTypes = [] } = useVehicleTypes();
   const addFleetVehicle = useAddFleetVehicle();
   const saveVehicle = useSaveVehicle();
   const isFleetOwner = useFleetStore.use.dashboardRole() === 'owner';
-  const rc = useLocalPhoto();
-  const insurance = useLocalPhoto();
-  const puc = useLocalPhoto();
-  const [insuranceExpiry, setInsuranceExpiry] = useState('');
-  const [pucExpiry, setPucExpiry] = useState('');
+  // A driver's half-filled vehicle form is kept on the phone until saved (fleet owners adding
+  // vehicles start fresh each time).
+  const draft = (key: string) => (isFleetOwner ? undefined : `vehicle.${key}`);
+  const rc = useLocalPhoto(draft('rc'));
+  const insurance = useLocalPhoto(draft('insurance'));
+  const puc = useLocalPhoto(draft('puc'));
+  const [insuranceExpiry, setInsuranceExpiry] = useDraftText(draft('insuranceExpiry'));
+  const [pucExpiry, setPucExpiry] = useDraftText(draft('pucExpiry'));
   const requestFleetLink = useRequestFleetLink();
   const { data: company } = useFleetCompany();
 
@@ -63,12 +70,14 @@ export function SetupVehicleScreen() {
     current?.vehicleTypeId ?? (isFleetOwner ? null : pickedTypeId) ?? (vehicleTypes[0]?.id || ''),
   );
   const [showTypePicker, setShowTypePicker] = useState(false);
-  const [plateNumber, setPlateNumber] = useState(current?.plateNumber ?? '');
+  const [plateNumber, setPlateNumber] = useDraftText(draft('plate'), current?.plateNumber ?? '');
   const [capacityKg, setCapacityKg] = useState<number | null>(null);
   const [showCapacityPicker, setShowCapacityPicker] = useState(false);
-  const [fuelType, setFuelType] = useState<FuelType | null>(null);
-  const [make, setMake] = useState('');
-  const [model, setModel] = useState('');
+  const [fuelDraft, setFuelDraft] = useDraftText(draft('fuel'));
+  const fuelType = (fuelDraft || null) as FuelType | null;
+  const setFuelType = (value: FuelType | null) => setFuelDraft(value ?? '');
+  const [make, setMake] = useDraftText(draft('make'));
+  const [model, setModel] = useDraftText(draft('model'));
 
   // Driver Assignment
   const [assignedDriver, setAssignedDriver] = useState<FleetDriver | null>(null);
@@ -95,7 +104,7 @@ export function SetupVehicleScreen() {
         [
           {
             text: 'Got it',
-            onPress: () => goBack(router),
+            onPress: () => goToNextStep(router, queryClient, 'vehicle'),
           },
         ],
       );
@@ -168,13 +177,15 @@ export function SetupVehicleScreen() {
           assign_driver: assignedDriver?.isOwnerSelf ? { is_owner_self: true } : undefined,
         });
 
+      markSubmitted('vehicle.');
       Alert.alert(
         'Vehicle saved',
         `Your ${model} (${cleanPlate}) has been registered for review.`,
         [
           {
             text: 'Continue',
-            onPress: () => goBack(router),
+            onPress: () =>
+              isFleetOwner ? goBack(router) : goToNextStep(router, queryClient, 'vehicle'),
           },
         ],
       );
