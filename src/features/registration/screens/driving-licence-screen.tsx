@@ -52,6 +52,8 @@ export function DrivingLicenceScreen() {
   const canSubmit = Boolean(front.uri && back.uri && numberValid && expiryIso);
 
   const handleSubmit = () => {
+    // A quick double tap must not send the document twice.
+    if (submit.isPending) return;
     if (!expiryIso) return setError('Enter the validity date as DD/MM/YYYY.');
     if (Date.parse(expiryIso) < Date.now()) return setError('This driving licence has expired.');
     setError(undefined);
@@ -154,7 +156,6 @@ export function DrivingLicenceScreen() {
             </>
           )}
 
-          {error ? <AppText className="text-[13px] font-medium text-error">{error}</AppText> : null}
           <AppView className="h-2" />
         </AppScrollView>
       </AppKeyboardAvoidingView>
@@ -170,7 +171,11 @@ export function DrivingLicenceScreen() {
           onPress={handleSubmit}
           disabled={!canSubmit || submit.isPending}
           loading={submit.isPending}
-        />
+        >
+          {error ? (
+            <AppText className="text-center text-[13px] font-medium text-error">{error}</AppText>
+          ) : null}
+        </StickyFooter>
       )}
     </SetupScreenLayout>
   );

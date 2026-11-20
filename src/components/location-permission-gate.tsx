@@ -1,34 +1,56 @@
-import * as Location from 'expo-location';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Linking, Modal, Platform } from 'react-native';
 
 import { AppPressable, AppText, AppView, Icon } from '@/components/ui';
+import { useAuthStore } from '@/features/auth/use-auth-store';
+import {
+  readPermissions,
+  requestPermission,
+  REQUIRED_PERMISSIONS,
+  type PermissionId,
+  type PermissionMap,
+} from '@/features/registration/use-permission-status';
 
-type GateState = 'checking' | 'granted' | 'blocked';
+const LABELS: Record<PermissionId, string> = {
+  location: 'Location',
+  background: 'Background location',
+  camera: 'Camera',
+  notifications: 'Notifications',
+};
 
 /**
- * Location is mandatory for a driver app. Asks as soon as the app opens; while it is not
- * granted, a blocking dialog covers the app. "Allow" asks again, or opens the app's
- * settings once Android/iOS no longer shows the system prompt (denied twice / "Don't ask again").
- * Re-checks whenever the app comes back to the foreground (e.g. returning from Settings).
+ * Permissions are mandatory for a driver app. Location is asked as soon as the app opens (it finds
+ * the city before login); once signed in, camera and notifications are required too, whether the
+ * driver is still registering or already approved. While any is missing, a blocking dialog covers
+ * the app. "Allow" asks for the next missing one, or opens the app's settings once Android/iOS no
+ * longer shows the system prompt (denied twice / "Don't ask again"). Re-checks whenever the app
+ * comes back to the foreground (e.g. returning from Settings).
  */
 export function LocationPermissionGate() {
-  const [state, setState] = useState<GateState>('checking');
-  const [canAskAgain, setCanAskAgain] = useState(true);
+  const isSignedIn = useAuthStore((state) => state.status === 'signIn');
+  const [permissions, setPermissions] = useState<PermissionMap | null>(null);
   const busy = useRef(false);
 
-  const check = useCallback(async (ask: boolean) => {
+  const required: PermissionId[] = isSignedIn ? REQUIRED_PERMISSIONS : ['location'];
+  // null = doesn't apply on this phone (e.g. notifications before Android 13).
+  const missing = permissions
+    ? required.filter((id) => permissions[id] !== null && permissions[id]?.granted !== true)
+    : [];
+  const next = missing[0];
+  const canAskNext = next ? permissions?.[next]?.canAskAgain !== false : true;
+
+  const check = useCallback(async (ask: PermissionId | null) => {
     if (busy.current) return;
     busy.current = true;
     try {
-      let permission = await Location.getForegroundPermissionsAsync();
-      if (!permission.granted && ask && permission.canAskAgain) {
-        permission = await Location.requestForegroundPermissionsAsync();
+      let current = await readPermissions();
+      if (ask && current[ask] && !current[ask]?.granted && current[ask]?.canAskAgain) {
+        await requestPermission(ask);
+        current = await readPermissions();
       }
-      setCanAskAgain(permission.canAskAgain);
-      setState(permission.granted ? 'granted' : 'blocked');
+      setPermissions(current);
     } catch {
-      setState('blocked');
+      // Keep the last known state.
     } finally {
       busy.current = false;
     }
@@ -36,23 +58,29 @@ export function LocationPermissionGate() {
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
-    // First launch: show the system prompt straight away (state is set after the async read).
-    void Promise.resolve().then(() => check(true));
-    const sub = AppState.addEventListener('change', (next) => {
+    // First launch: show the location prompt straight away (state is set after the async read).
+    void Promise.resolve().then(() => check('location'));
+    const sub = AppState.addEventListener('change', (state) => {
       // Back from Settings or another app: only re-read, don't prompt again.
-      if (next === 'active') check(false);
+      if (state === 'active') check(null);
     });
     return () => sub.remove();
   }, [check]);
 
+  // Signing in adds camera and notifications: re-read so the dialog shows if they are missing.
+  useEffect(() => {
+    if (isSignedIn) void Promise.resolve().then(() => check(null));
+  }, [isSignedIn, check]);
+
   const handleAllow = () => {
-    if (canAskAgain) check(true);
+    if (!next) return;
+    if (canAskNext) check(next);
     else Linking.openSettings();
   };
 
   return (
     <Modal
-      visible={state === 'blocked'}
+      visible={missing.length > 0}
       transparent
       animationType="fade"
       statusBarTranslucent
@@ -68,14 +96,31 @@ export function LocationPermissionGate() {
               Mandatory permissions required
             </AppText>
             <AppText className="text-[14px] leading-5 text-muted">
-              {canAskAgain
-                ? 'RYNO Partner needs these permissions to find your city and send you delivery requests nearby.'
-                : 'Please allow these permissions from App settings to continue.'}
+              {canAskNext
+                ? 'RYNO Partner needs these permissions to find your city, take document photos and send you delivery requests.'
+                : `Please allow ${next ? LABELS[next] : 'these permissions'} from App settings to continue.`}
             </AppText>
           </AppView>
-          <AppView row className="gap-2.5">
-            <AppView className="h-2 w-2 rounded-full bg-foreground" />
-            <AppText className="text-[15px] font-bold text-foreground">Location</AppText>
+          <AppView className="gap-2.5">
+            {required
+              .filter((id) => permissions?.[id] !== null)
+              .map((id) => {
+                const granted = permissions?.[id]?.granted === true;
+                return (
+                  <AppView key={id} row className="items-center gap-2.5">
+                    {granted ? (
+                      <Icon name="checkmark.circle.fill" size={18} tone="success" />
+                    ) : (
+                      <AppView className="mx-[5px] h-2 w-2 rounded-full bg-foreground" />
+                    )}
+                    <AppText
+                      className={`text-[15px] font-bold ${granted ? 'text-muted' : 'text-foreground'}`}
+                    >
+                      {LABELS[id]}
+                    </AppText>
+                  </AppView>
+                );
+              })}
           </AppView>
           <AppPressable
             onPress={handleAllow}
@@ -84,7 +129,7 @@ export function LocationPermissionGate() {
             className="mt-1 items-center rounded-2xl bg-brand py-3.5"
           >
             <AppText className="text-[15px] font-extrabold text-brand-foreground">
-              {canAskAgain ? 'Allow' : 'Open settings'}
+              {canAskNext ? `Allow ${next ? LABELS[next].toLowerCase() : ''}` : 'Open settings'}
             </AppText>
           </AppPressable>
         </AppView>

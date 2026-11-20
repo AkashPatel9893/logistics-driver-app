@@ -1,5 +1,3 @@
-import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
 import { Linking } from 'react-native';
 
 import {
@@ -12,7 +10,12 @@ import {
 } from '@/components/ui';
 import { SetupScreenLayout } from '@/features/driver/components/setup-screen-layout';
 
-import { usePermissionStatus, type PermissionId } from '../use-permission-status';
+import {
+  REQUIRED_PERMISSIONS,
+  requestPermission,
+  usePermissionStatus,
+  type PermissionId,
+} from '../use-permission-status';
 
 const ITEMS: { id: PermissionId; title: string; body: string; icon: IconName }[] = [
   {
@@ -33,9 +36,15 @@ const ITEMS: { id: PermissionId; title: string; body: string; icon: IconName }[]
     body: 'Take document, pickup and delivery photos',
     icon: 'camera',
   },
+  {
+    id: 'notifications',
+    title: 'Notifications',
+    body: 'Get new trip requests and updates on your documents',
+    icon: 'bell',
+  },
 ];
 
-/** Optional step: lets the driver grant everything the app needs up front. */
+/** Everything the app needs. Location, camera and notifications are required to use the app. */
 export function PermissionsScreen() {
   const { permissions, refresh, allGranted } = usePermissionStatus();
 
@@ -46,13 +55,7 @@ export function PermissionsScreen() {
       await Linking.openSettings();
       return;
     }
-    if (id === 'location') await Location.requestForegroundPermissionsAsync();
-    if (id === 'background') {
-      // Android and iOS only offer "always" once "while using" is granted.
-      const fg = await Location.requestForegroundPermissionsAsync();
-      if (fg.granted) await Location.requestBackgroundPermissionsAsync();
-    }
-    if (id === 'camera') await ImagePicker.requestCameraPermissionsAsync();
+    await requestPermission(id);
     await refresh();
   };
 
@@ -69,7 +72,7 @@ export function PermissionsScreen() {
           >
             {allGranted
               ? 'All permissions are allowed. You are ready to take trips.'
-              : 'These are optional now, but you need them to go online and take trips.'}
+              : 'Location, camera and notifications are required to use RYNO Partner.'}
           </AppText>
         </AppView>
         {/* A permission this phone doesn't use (null) is not shown. */}
@@ -89,7 +92,12 @@ export function PermissionsScreen() {
                 <Icon name={item.icon} size={19} tone="brand" />
               </AppView>
               <AppView className="flex-1">
-                <AppText className="text-[15px] font-bold text-foreground">{item.title}</AppText>
+                <AppText className="text-[15px] font-bold text-foreground">
+                  {item.title}
+                  {REQUIRED_PERMISSIONS.includes(item.id) ? null : (
+                    <AppText className="text-[13px] font-medium text-muted"> (optional)</AppText>
+                  )}
+                </AppText>
                 <AppText className="mt-0.5 text-[12px] leading-4 text-muted">{item.body}</AppText>
               </AppView>
               {granted ? (

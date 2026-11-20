@@ -52,7 +52,10 @@ export function ProfilePhotoScreen() {
   const photo = useSelfieStore((state) => state.uri) ?? draftPhoto;
   // Null until the driver taps Edit: then the name shown is the one on the profile.
   const [nameDraft, setNameDraft] = useState<string | null>(null);
-  const name = nameDraft ?? profile?.name ?? '';
+  // The signed-in user already has the name and DOB from Driver details: shown at once, without
+  // waiting for the profile request.
+  const user = useAuthStore.use.user();
+  const name = nameDraft ?? (profile?.name || user?.name || '');
   const [genderDraft, setGenderDraft] = useDraftText('profile.gender');
   const gender = (genderDraft || null) as Gender | null;
   const setGender = (value: Gender) => setGenderDraft(value);
@@ -63,7 +66,13 @@ export function ProfilePhotoScreen() {
   useEffect(() => () => useSelfieStore.getState().setUri(null), []);
 
   const takeSelfie = () => router.push('/register-selfie');
-  const dobLabel = profile?.dob ? profile.dob.split('-').reverse().join('/') : null;
+  const dob = profile?.dob || user?.dob || null;
+  // ISO (YYYY-MM-DD) → DD/MM/YYYY; anything else is shown as stored.
+  const dobLabel = dob
+    ? /^\d{4}-\d{2}-\d{2}$/.test(dob)
+      ? dob.split('-').reverse().join('/')
+      : dob
+    : null;
 
   const handleSubmit = async () => {
     if (!photo) return;

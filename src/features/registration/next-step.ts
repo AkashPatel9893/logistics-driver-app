@@ -14,6 +14,26 @@ import {
 } from './use-registration';
 import { useRegistrationStore } from './use-registration-store';
 
+// Set right after sign-up so Documents opens the first pending step at once (a new driver goes
+// through the steps in a row). In memory only: opening the app later shows the list instead.
+let autoStartRequested = false;
+
+/** Asks the next Documents screen that opens to go straight to the first pending step. */
+export function requestAutoStart() {
+  autoStartRequested = true;
+}
+
+export function isAutoStartRequested() {
+  return autoStartRequested;
+}
+
+/** Returns whether auto-start was requested, and clears it (so it happens once). */
+export function takeAutoStart(): boolean {
+  const requested = autoStartRequested;
+  autoStartRequested = false;
+  return requested;
+}
+
 /**
  * After a registration step is done, opens the next unfinished one in its place, so the driver
  * goes through the steps one after another; back to Documents once nothing is left.

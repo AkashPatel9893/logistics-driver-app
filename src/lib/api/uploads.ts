@@ -1,4 +1,4 @@
-import { request } from './client';
+import { uploadMultipart } from './client';
 import { filePart } from './file-part';
 
 /** What a photo is for — the backend stores and retains each kind differently. */
@@ -32,15 +32,11 @@ export const uploadsApi = {
   /** Uploads a photo from a local file URI and returns its hosted URL. */
   uploadPhoto: async (localUri: string, kind: UploadKind): Promise<UploadedFile> => {
     // Errors propagate: a photo that didn't reach the server is never shown as saved.
-    const form = new FormData();
-    form.append('kind', BACKEND_KIND[kind] ?? kind);
-    // React Native's FormData accepts { uri, name, type } file parts.
-    form.append('file', filePart(localUri, kind) as never);
-    return await request<UploadedFile>({
-      method: 'POST',
+    return await uploadMultipart<UploadedFile>({
       url: '/uploads',
-      data: form,
-      headers: { 'Content-Type': 'multipart/form-data' },
+      fileUri: localUri,
+      mimeType: filePart(localUri, kind).type,
+      fields: { kind: BACKEND_KIND[kind] ?? kind },
     });
   },
 };

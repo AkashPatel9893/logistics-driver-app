@@ -142,11 +142,20 @@ export function SetupVehicleScreen() {
       return setError('Choose a vehicle type and fuel type, and enter the make and model.');
     }
     if (!isFleetOwner) {
-      if (!rc.uri || !insurance.uri || (fuelType !== 'ELECTRIC' && !puc.uri)) {
-        return setError('Add photos of the RC, insurance, and, for non-electric vehicles, PUC.');
+      const needsPuc = fuelType !== 'ELECTRIC';
+      const missingPhotos = [
+        !rc.uri && 'RC',
+        !insurance.uri && 'insurance',
+        needsPuc && !puc.uri && 'PUC',
+      ].filter(Boolean);
+      if (missingPhotos.length > 0) {
+        return setError(`Add a photo of your ${missingPhotos.join(', ')}.`);
       }
-      if (!toIsoDate(insuranceExpiry) || (fuelType !== 'ELECTRIC' && !toIsoDate(pucExpiry))) {
-        return setError('Enter valid insurance and PUC expiry dates as DD/MM/YYYY.');
+      if (!toIsoDate(insuranceExpiry)) {
+        return setError('Enter the insurance expiry date as DD/MM/YYYY.');
+      }
+      if (needsPuc && !toIsoDate(pucExpiry)) {
+        return setError('Enter the PUC expiry date as DD/MM/YYYY.');
       }
     }
     setError(undefined);
@@ -178,16 +187,15 @@ export function SetupVehicleScreen() {
         });
 
       markSubmitted('vehicle.');
+      if (!isFleetOwner) {
+        // Registering driver: straight on to the next step (Documents shows it under review).
+        await goToNextStep(router, queryClient, 'vehicle');
+        return;
+      }
       Alert.alert(
         'Vehicle saved',
         `Your ${model} (${cleanPlate}) has been registered for review.`,
-        [
-          {
-            text: 'Continue',
-            onPress: () =>
-              isFleetOwner ? goBack(router) : goToNextStep(router, queryClient, 'vehicle'),
-          },
-        ],
+        [{ text: 'Continue', onPress: () => goBack(router) }],
       );
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || 'Could not add vehicle.';

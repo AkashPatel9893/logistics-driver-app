@@ -1,6 +1,6 @@
-import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
-import { Alert } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, RefreshControl } from 'react-native';
 
 import {
   AppPressable,
@@ -11,7 +11,11 @@ import {
   Button,
   Icon,
 } from '@/components/ui';
-import { signOut, syncOnboardingStatus } from '@/features/auth/use-auth-store';
+import {
+  refreshOnboardingStatus,
+  signOut,
+  syncOnboardingStatus,
+} from '@/features/auth/use-auth-store';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { useFleetCompany } from '@/hooks/use-fleet';
 import { SetupScreenLayout } from '@/features/driver/components/setup-screen-layout';
@@ -29,10 +33,27 @@ import {
 } from '../use-registration';
 import { usePermissionStatus } from '../use-permission-status';
 import { useRegistrationStore } from '../use-registration-store';
+import { isAutoStartRequested, takeAutoStart } from '../next-step';
 
 /** The driver's registration checklist: one row per document, each with its own status. */
 export function RegistrationHubScreen() {
   const router = useRouter();
+  // Right after sign-up: open the first pending step at once, so a new driver goes through the
+  // steps in a row. Opening the app later (resume) shows this list instead.
+  // `holding` keeps the spinner up until the step is on screen, so the list never flashes.
+  const [holding, setHolding] = useState(isAutoStartRequested);
+  const pushedStep = useRef(false);
+  const leftForStep = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      // Back on Documents from the step it opened: show the list. Only once Documents has lost
+      // focus to that step; it can report focus more than once while it first appears.
+      if (leftForStep.current) setHolding(false);
+      return () => {
+        if (pushedStep.current) leftForStep.current = true;
+      };
+    }, []),
+  );
   // Only the onboarding status and the documents: two light requests, not the full profile.
   const statusQuery = useOnboardingStatus();
   const docsQuery = useDriverDocuments();
@@ -49,6 +70,21 @@ export function RegistrationHubScreen() {
     useFleetStore.getState().setDashboardRole('owner');
     router.replace('/home');
   };
+  // Pull down to check whether documents have been verified since.
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        statusQuery.refetch(),
+        docsQuery.refetch(),
+        permissionStatus.refresh(),
+        refreshOnboardingStatus(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const snapshot = statusQuery.data ? snapshotFromStatus(statusQuery.data) : null;
   const onboardingStatus = snapshot?.onboarding.status;
   // Once approved, the app opens on Home again (see the tabs layout).
@@ -56,7 +92,25 @@ export function RegistrationHubScreen() {
     if (onboardingStatus) syncOnboardingStatus(onboardingStatus);
   }, [onboardingStatus]);
 
-  if (!snapshot) {
+  const steps = snapshot
+    ? buildRegistrationSteps(snapshot, docsQuery.data, vehicleTypes, pickedTypeId, fleetDriver)
+    : [];
+  const nextStep = steps.find((s) => !isStepDone(s.state));
+  const ready = holding && snapshot !== null && !docsQuery.isPending;
+  useEffect(() => {
+    // Once only: the step data refreshes after the push and would re-run this.
+    if (!ready || pushedStep.current) return;
+    if (takeAutoStart() && nextStep) {
+      pushedStep.current = true;
+      router.push(nextStep.route);
+      return;
+    }
+    // Nothing to open (or another Documents screen already did): show the list.
+    void Promise.resolve().then(() => setHolding(false));
+  }, [ready, nextStep, router]);
+
+  // Spinner while loading, and while about to open the first step (no flash of the list).
+  if (!snapshot || holding) {
     return (
       <SetupScreenLayout title="Documents" subtitle="Driver registration">
         <AppView className="flex-1 items-center justify-center p-6">
@@ -75,15 +129,7 @@ export function RegistrationHubScreen() {
     );
   }
 
-  const steps = buildRegistrationSteps(
-    snapshot,
-    docsQuery.data,
-    vehicleTypes,
-    pickedTypeId,
-    fleetDriver,
-  );
   const doneCount = steps.filter((s) => isStepDone(s.state)).length;
-  const nextStep = steps.find((s) => !isStepDone(s.state));
   const { onboarding } = snapshot;
   const allSubmitted = !nextStep;
 
@@ -168,6 +214,7 @@ export function RegistrationHubScreen() {
       <AppScrollView
         contentContainerClassName="gap-3 px-5 pb-16 pt-4"
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
         {isFleetOwner ? (
           <AppView className="gap-3 rounded-3xl border border-border bg-surface p-4">
@@ -220,7 +267,6 @@ export function RegistrationHubScreen() {
 
         <StepRow
           title="Permissions"
-          optional
           detail={
             permissionStatus.allGranted
               ? 'All allowed'
@@ -243,7 +289,7 @@ export function RegistrationHubScreen() {
           />
         ) : null}
 
-        {onboarding.canSubmit ? (
+        {onboarding.canSubmit && allSubmitted ? (
           <Button
             variant="brand"
             label="Submit for review"

@@ -10,6 +10,8 @@ import type {
 } from '@/lib/api/models';
 import { queryKeys } from '@/lib/queries/keys';
 
+import { hasDraft } from './drafts';
+
 /** One current driver document as the backend reports it. */
 export interface DriverDocument {
   id: string;
@@ -95,6 +97,22 @@ export interface RegistrationStep {
   optional?: boolean;
   /** Plural subject for "… is under verification" messages. */
   subject: string;
+}
+
+/** Shown on a step not sent yet whose photos or details are saved on the phone. */
+const DRAFT_DETAIL = 'In progress · tap to continue';
+
+/** Draft keys of each step (see drafts.ts). */
+const DRAFT_PREFIXES: Record<string, string[]> = {
+  licence: ['licence.'],
+  photo: ['profile.'],
+  vehicle: ['vehicle.'],
+  identity: ['pan.', 'aadhaar.'],
+  bank: ['bank.'],
+};
+
+function stepHasDraft(id: string) {
+  return (DRAFT_PREFIXES[id] ?? []).some(hasDraft);
 }
 
 const STATE_DETAIL: Record<StepState, string | null> = {
@@ -189,14 +207,29 @@ export function buildRegistrationSteps(
       route,
       state,
       detail:
-        state === 'rejected' && doc?.rejectionReason ? doc.rejectionReason : STATE_DETAIL[state],
+        state === 'rejected' && doc?.rejectionReason
+          ? doc.rejectionReason
+          : state === 'todo' && stepHasDraft(id)
+            ? DRAFT_DETAIL
+            : STATE_DETAIL[state],
     };
   };
 
   const pan = findDocument(docs, 'PAN');
   const aadhaar = findDocument(docs, 'AADHAAR');
-  const idState = documentState(pan?.status);
+  const panState = documentState(pan?.status);
   const aadhaarState = documentState(aadhaar?.status);
+  // Both PAN and Aadhaar are asked for: the step is only as far along as the less finished one.
+  const idStates = [panState, aadhaarState];
+  const idState: StepState = idStates.includes('rejected')
+    ? 'rejected'
+    : idStates.includes('todo')
+      ? 'todo'
+      : idStates.every((st) => st === 'verified')
+        ? 'verified'
+        : 'review';
+  const idRejection =
+    (panState === 'rejected' ? pan?.rejectionReason : aadhaar?.rejectionReason) ?? null;
 
   const vehicleState: StepState = snapshot.vehicle
     ? snapshot.vehicle.status === 'verified'
@@ -235,34 +268,44 @@ export function buildRegistrationSteps(
       '/register-licence',
     ),
     // Photo first (selfie screen), then profile information.
-    docStep(
-      'photo',
-      'SELFIE',
-      'Profile photo',
-      'Your profile photo is',
-      '/register-selfie?next=info',
-    ),
+    {
+      ...docStep(
+        'photo',
+        'SELFIE',
+        'Profile photo',
+        'Your profile photo is',
+        '/register-selfie?next=info',
+      ),
+      // Selfie already taken on this phone: open Profile information, not the camera again.
+      ...(hasDraft('profile.photo') ? { route: '/register-photo' as const } : {}),
+    },
     {
       id: 'vehicle',
       title: 'Vehicle number & RC',
       subject: 'Your vehicle documents are',
       detail: snapshot.vehicle
         ? [snapshot.vehicle.plate, STATE_DETAIL[vehicleState]].filter(Boolean).join(' · ')
-        : 'Vehicle number, RC, insurance and PUC',
+        : stepHasDraft('vehicle')
+          ? DRAFT_DETAIL
+          : 'Vehicle number, RC, insurance and PUC',
       state: vehicleState,
       route: '/setup-vehicle',
     },
     {
       id: 'identity',
-      title: 'PAN card',
-      subject: 'Your PAN card is',
+      title: 'PAN & Aadhaar',
+      subject: 'Your PAN and Aadhaar are',
       detail:
         idState === 'todo'
-          ? aadhaarState === 'todo'
-            ? 'Mandatory · Aadhaar optional'
-            : 'Aadhaar added · PAN still needed'
-          : idState === 'rejected' && pan?.rejectionReason
-            ? pan.rejectionReason
+          ? panState === 'todo' && aadhaarState === 'todo'
+            ? stepHasDraft('identity')
+              ? DRAFT_DETAIL
+              : 'PAN card and Aadhaar card'
+            : panState === 'todo'
+              ? 'Aadhaar added · PAN still needed'
+              : 'PAN added · Aadhaar still needed'
+          : idState === 'rejected' && idRejection
+            ? idRejection
             : STATE_DETAIL[idState],
       state: idState,
       route: '/register-identity',
@@ -271,7 +314,11 @@ export function buildRegistrationSteps(
       id: 'bank',
       title: 'Bank account',
       subject: 'Your bank account is',
-      detail: snapshot.bank ? snapshot.bank.label : 'For your trip payouts',
+      detail: snapshot.bank
+        ? snapshot.bank.label
+        : stepHasDraft('bank')
+          ? DRAFT_DETAIL
+          : 'For your trip payouts',
       state: bankState,
       route: '/setup-bank',
     },

@@ -1,5 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+
+import { requestAutoStart } from '@/features/registration/next-step';
 import { useState } from 'react';
 import { Alert, Keyboard } from 'react-native';
 
@@ -30,8 +32,12 @@ export function useOnboardingForm() {
   const updateProfile = useMutation({
     mutationFn: authApi.updateProfile,
     onSuccess: (updated) => {
+      // Straight into the first document step (Documents stays underneath for back / resume).
+      // Requested before setUser: saving the profile makes the sign-up layout redirect to
+      // Documents on its own, and that screen must already know to open the first step.
+      requestAutoStart();
       useAuthStore.getState().setUser(updated);
-      // Straight on to the documents: a driver stays there until approved (see Home).
+      // A driver stays in registration until approved (see Home).
       router.replace('/registration');
     },
     onError: (error) => Alert.alert('Could not save profile', getErrorMessage(error)),

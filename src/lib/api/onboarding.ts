@@ -1,4 +1,4 @@
-import { request } from './client';
+import { request, uploadMultipart } from './client';
 import { filePart } from './file-part';
 
 /** Must equal the backend's current partner agreement version. */
@@ -51,15 +51,11 @@ export function toIsoDate(text: string): string | null {
 }
 
 function uploadFile(url: string, fileUri: string, side: 'front' | 'back' = 'front') {
-  const form = new FormData();
-  // React Native's FormData accepts { uri, name, type } file parts.
-  form.append('file', filePart(fileUri, 'document') as never);
-  return request<any>({
-    method: 'POST',
+  return uploadMultipart<any>({
     url,
+    fileUri,
+    mimeType: filePart(fileUri, 'document').type,
     params: { side },
-    data: form,
-    headers: { 'Content-Type': 'multipart/form-data' },
   });
 }
 

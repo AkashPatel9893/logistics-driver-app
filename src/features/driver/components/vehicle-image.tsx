@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { AppImage, type AppImageProps } from '@/components/ui';
 
-import { getVehicleImage } from '../vehicle-images';
+import { getBundledVehicleImage, getVehicleImage } from '../vehicle-images';
 
 export interface VehicleImageProps extends Omit<AppImageProps, 'source'> {
   /** Picture from the backend; may be missing or a broken link. */
@@ -26,6 +26,9 @@ export function VehicleImage({
       {...props}
       contentFit={contentFit}
       source={getVehicleImage(url, type)}
+      // The bundled picture shows at once while the backend's one loads.
+      placeholder={url ? (getBundledVehicleImage(type) as any) : undefined}
+      placeholderContentFit={contentFit}
       onError={() => {
         if (url) setFailedUrl(url);
       }}

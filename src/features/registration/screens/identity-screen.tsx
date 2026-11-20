@@ -33,13 +33,27 @@ import { goToNextStep } from '../next-step';
 
 type IdType = 'AADHAAR' | 'PAN';
 
+/** Small line on a tab: what to upload, or where it stands. */
+function tabSub(state: ReturnType<typeof documentState>, todo: string) {
+  switch (state) {
+    case 'verified':
+      return 'Verified';
+    case 'review':
+      return 'Under verification';
+    case 'rejected':
+      return 'Upload again';
+    default:
+      return todo;
+  }
+}
+
 /** "1234 5678 9012" while typing. */
 function formatAadhaar(text: string) {
   const digits = text.replace(/\D/g, '').slice(0, 12);
   return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
 }
 
-/** Aadhaar and PAN on one screen. PAN is required to go online; Aadhaar is optional. */
+/** PAN and Aadhaar on one screen: the driver adds both (one tab each). */
 export function IdentityScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -50,9 +64,14 @@ export function IdentityScreen() {
   const aadhaarState = documentState(aadhaar?.status);
   const submit = useSubmitDriverDocument();
 
-  // Open the one still needed, PAN first since it is required.
-  // PAN first: it is the mandatory one (the backend requires PAN; Aadhaar is optional).
-  const [idType, setIdType] = useState<IdType>('PAN');
+  // Open the one still needed: PAN first, then Aadhaar.
+  const [idType, setIdType] = useState<IdType>(() =>
+    panState !== 'todo' &&
+    panState !== 'rejected' &&
+    (aadhaarState === 'todo' || aadhaarState === 'rejected')
+      ? 'AADHAAR'
+      : 'PAN',
+  );
   // Kept on the phone until submitted, so closing the app mid-step loses nothing.
   const aadhaarFront = useLocalPhoto('aadhaar.front');
   const aadhaarBack = useLocalPhoto('aadhaar.back');
@@ -78,6 +97,8 @@ export function IdentityScreen() {
   };
 
   const handleSubmit = () => {
+    // A quick double tap must not send the document twice.
+    if (submit.isPending) return;
     setError(undefined);
     submit.mutate(
       isAadhaar
@@ -91,9 +112,10 @@ export function IdentityScreen() {
       {
         onSuccess: () => {
           markSubmitted(isAadhaar ? 'aadhaar.' : 'pan.');
-          // PAN is the required one: after Aadhaar, ask for PAN if missing; otherwise move on
-          // to the next registration step (Aadhaar stays optional, on its tab).
-          if (isAadhaar && (panState === 'todo' || panState === 'rejected')) switchTo('PAN');
+          // Both are needed: open the other one if it is still missing, else the next step.
+          const otherState = isAadhaar ? panState : aadhaarState;
+          if (otherState === 'todo' || otherState === 'rejected')
+            switchTo(isAadhaar ? 'PAN' : 'AADHAAR');
           else goToNextStep(router, queryClient, 'identity');
         },
         onError: (e) => setError(getErrorMessage(e)),
@@ -101,13 +123,7 @@ export function IdentityScreen() {
     );
   };
 
-  const tab = (
-    type: IdType,
-    label: string,
-    badge: { text: string; mandatory: boolean },
-    sub: string,
-    state: typeof panState,
-  ) => {
+  const tab = (type: IdType, label: string, sub: string, state: typeof panState) => {
     const selected = idType === type;
     return (
       <AppPressable
@@ -128,19 +144,6 @@ export function IdentityScreen() {
             <StepStatusIcon state={state} />
           )}
         </AppView>
-        <AppView
-          className={`mt-1.5 self-start rounded-full px-2 py-0.5 ${
-            badge.mandatory ? 'bg-red-500/10' : 'bg-black/5 dark:bg-white/10'
-          }`}
-        >
-          <AppText
-            className={`text-[10px] font-extrabold uppercase tracking-wide ${
-              badge.mandatory ? 'text-red-600 dark:text-red-400' : 'text-muted'
-            }`}
-          >
-            {badge.text}
-          </AppText>
-        </AppView>
         <AppText className="mt-1 text-[11px] font-medium text-muted">{sub}</AppText>
       </AppPressable>
     );
@@ -155,24 +158,11 @@ export function IdentityScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <AppText className="text-[13px] leading-5 text-foreground-secondary">
-            <AppText className="font-bold text-foreground">PAN card is mandatory.</AppText> Aadhaar
-            is optional, but adding it helps faster approval.
+            Add both your PAN card and Aadhaar card to verify your identity.
           </AppText>
           <AppView row className="gap-3">
-            {tab(
-              'PAN',
-              'PAN Card',
-              { text: 'Mandatory', mandatory: true },
-              'Needed to drive',
-              panState,
-            )}
-            {tab(
-              'AADHAAR',
-              'Aadhaar',
-              { text: 'Optional', mandatory: false },
-              'Faster approval',
-              aadhaarState,
-            )}
+            {tab('PAN', 'PAN Card', tabSub(panState, 'Front side'), panState)}
+            {tab('AADHAAR', 'Aadhaar', tabSub(aadhaarState, 'Front & back'), aadhaarState)}
           </AppView>
 
           <DocumentStatusNote
@@ -254,8 +244,6 @@ export function IdentityScreen() {
               />
             </>
           )}
-
-          {error ? <AppText className="text-[13px] font-medium text-error">{error}</AppText> : null}
         </AppScrollView>
       </AppKeyboardAvoidingView>
       {locked ? null : (
@@ -268,7 +256,11 @@ export function IdentityScreen() {
           onPress={handleSubmit}
           disabled={!canSubmit || submit.isPending}
           loading={submit.isPending}
-        />
+        >
+          {error ? (
+            <AppText className="text-center text-[13px] font-medium text-error">{error}</AppText>
+          ) : null}
+        </StickyFooter>
       )}
     </SetupScreenLayout>
   );

@@ -23,6 +23,25 @@ export class ApiError extends Error {
 const FALLBACK_MESSAGE = 'Something went wrong. Please try again.';
 const SERVER_FAULT_MESSAGE = 'Our server is having trouble. Please try again in a minute.';
 
+/** ApiError for an HTTP error response, from the backend's error envelope. */
+export function httpError(status: number, payload: any): ApiError {
+  const detail = payload?.detail;
+  const detailMsg =
+    typeof detail === 'string'
+      ? detail
+      : Array.isArray(detail)
+        ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+        : null;
+  // A server fault's own text ("Internal server error") means nothing to a driver.
+  const serverFault = status >= 500;
+  return new ApiError(
+    serverFault ? SERVER_FAULT_MESSAGE : (detailMsg ?? payload?.message ?? FALLBACK_MESSAGE),
+    'http',
+    status,
+    payload?.error ?? payload?.code ?? null,
+  );
+}
+
 export function toApiError(error: unknown): ApiError {
   if (error instanceof ApiError) return error;
   if (isCancel(error)) return new ApiError('Request canceled', 'canceled');
@@ -30,24 +49,7 @@ export function toApiError(error: unknown): ApiError {
     if (error.code === 'ECONNABORTED') {
       return new ApiError('The request timed out. Check your connection.', 'timeout');
     }
-    const payload = error.response?.data as any;
-    if (error.response) {
-      const detail = payload?.detail;
-      const detailMsg =
-        typeof detail === 'string'
-          ? detail
-          : Array.isArray(detail)
-            ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
-            : null;
-      // A server fault's own text ("Internal server error") means nothing to a driver.
-      const serverFault = error.response.status >= 500;
-      return new ApiError(
-        serverFault ? SERVER_FAULT_MESSAGE : (detailMsg ?? payload?.message ?? FALLBACK_MESSAGE),
-        'http',
-        error.response.status,
-        payload?.error ?? payload?.code ?? null,
-      );
-    }
+    if (error.response) return httpError(error.response.status, error.response.data);
     return new ApiError('No internet connection.', 'network');
   }
   return new ApiError(FALLBACK_MESSAGE, 'unknown');
