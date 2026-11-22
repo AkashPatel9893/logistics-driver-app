@@ -201,6 +201,15 @@ export interface WelcomeBonus {
   seen: boolean;
 }
 
+export interface DocumentAlert {
+  documentType: string;
+  /** Message from the backend when it sends one. */
+  message: string | null;
+  expiryDate: string | null;
+  daysLeft: number | null;
+  expired: boolean;
+}
+
 export interface DriverProfile {
   id: string;
   name: string;
@@ -225,6 +234,8 @@ export interface DriverProfile {
   welcomeBonus: WelcomeBonus;
   walletBalance: number;
   lifetimeTrips: number;
+  /** Documents expiring soon or expired (reminders 15 and 4 days before; expired = offline). */
+  documentAlerts: DocumentAlert[];
 }
 
 // ─── Jobs ───────────────────────────────────────────────────────────────────
@@ -255,6 +266,10 @@ export interface JobOffer {
   driverEarning: number | null;
   paymentMode: PaymentMode;
   paymentTiming: PaymentTiming;
+  /** Priority booking: the customer paid extra to be served first. */
+  isPriority: boolean;
+  /** Tip the customer has added so far (can grow while the offer is open); 0 when none. */
+  tipAmount: number;
 }
 
 /** What the final amount is made of; sent once, when the final drop's code is verified. */
@@ -307,6 +322,8 @@ export interface DriverJob {
   cancelledAt: string | null;
   cancelReason: string | null;
   unreadMessages: number;
+  /** Tips the customer added; already part of the amount to collect. */
+  tipTotal: number;
   stops?: JobStop[];
   currentStopId?: string | null;
 }
@@ -388,6 +405,9 @@ export interface EarningsSummary {
   incentives: number;
   cashCollected: number;
   paidToFleet: number;
+  /** Part of the total from priority bookings, and from customer tips (no commission on tips). */
+  priorityEarnings: number;
+  tipEarnings: number;
   onlineMinutes: number | null;
   /** Chart bars: the last 7 days for "today"/"week", one per week for "month". */
   buckets: { label: string; amount: number }[];
@@ -403,6 +423,9 @@ export interface TripSummary {
   grossEarning: number;
   commissionRate: number;
   commission: number;
+  /** Extra for a priority booking, and the customer's tip (100% to the driver). */
+  priorityEarning: number;
+  tipEarning: number;
   endedAt: string;
   paidTo: 'DRIVER' | 'FLEET';
   fleetName: string | null;

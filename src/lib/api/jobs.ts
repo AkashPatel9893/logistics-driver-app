@@ -85,7 +85,20 @@ export function mapJobOffer(o: any): JobOffer {
     driverEarning: o.driver_earning ?? o.driverEarning ?? null,
     paymentMode: o.payment_mode,
     paymentTiming: o.payment_timing,
+    isPriority: Boolean(o.is_priority),
+    tipAmount: Number(o.tip_amount ?? 0) || 0,
   };
+}
+
+/**
+ * A driver can hold two open offers (one normal, one priority): priority first, then newest.
+ */
+export function sortOffers(offers: JobOffer[]): JobOffer[] {
+  return [...offers].sort(
+    (a, b) =>
+      Number(b.isPriority) - Number(a.isPriority) ||
+      Date.parse(b.createdAt) - Date.parse(a.createdAt),
+  );
 }
 
 function mapDriverJob(raw: any): DriverJob {
@@ -159,6 +172,7 @@ function mapDriverJob(raw: any): DriverJob {
     cancelledAt: raw.cancelled_at ?? raw.cancelledAt ?? null,
     cancelReason: raw.cancel_reason ?? raw.cancelReason ?? null,
     unreadMessages: Number(raw.unread_messages ?? raw.unreadMessages ?? 0),
+    tipTotal: Number(raw.tip_total ?? 0) || 0,
     stops: Array.isArray(raw.stops)
       ? raw.stops.map((s: any) => ({
           stopId: s.stop_id ?? s.stopId ?? s.id,
@@ -292,10 +306,10 @@ async function getActiveTripDetails(): Promise<ActiveTrip | null> {
 }
 
 export const jobsApi = {
-  /** Live offers for this driver (usually zero or one). */
+  /** Live offers for this driver (up to two: one normal, one priority), priority first. */
   getOffers: async (signal?: AbortSignal): Promise<JobOffer[]> => {
     const res = await request<any[]>({ url: '/partner/offers', signal });
-    return res.map(mapJobOffer);
+    return sortOffers(res.map(mapJobOffer));
   },
 
   /** `orderId` lets a lost response be recognised: the server may have assigned the trip anyway. */

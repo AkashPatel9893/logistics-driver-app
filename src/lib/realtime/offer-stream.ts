@@ -7,8 +7,9 @@
 import { fetch } from 'expo/fetch';
 
 import { queryClient } from '@/lib/api/api-provider';
+import { renewSession } from '@/lib/api/client';
 import { API_BASE_URL } from '@/lib/api/config';
-import { jobsApi, mapJobOffer } from '@/lib/api/jobs';
+import { mapJobOffer, sortOffers } from '@/lib/api/jobs';
 import type { JobOffer } from '@/lib/api/models';
 import { getToken } from '@/lib/auth/utils';
 import { queryKeys } from '@/lib/queries/keys';
@@ -26,6 +27,8 @@ let controller: AbortController | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let failures = 0;
 let live = false;
+/** Set by an `error` event (session revoked / token expired): renew, then reconnect at once. */
+let authFailed = false;
 const liveListeners = new Set<() => void>();
 
 function setLive(next: boolean) {
@@ -58,7 +61,7 @@ function handleEvent(event: string, data: string) {
     // A fresh snapshot is the source of truth after every (re)connect.
     queryClient.setQueryData<JobOffer[]>(
       queryKeys.offers,
-      payload.flatMap((raw) => toOffer(raw) ?? []),
+      sortOffers(payload.flatMap((raw) => toOffer(raw) ?? [])),
     );
     failures = 0;
     setLive(true);
@@ -66,10 +69,25 @@ function handleEvent(event: string, data: string) {
     const offer = toOffer(payload);
     if (!offer) return;
     // Events can arrive twice, so offers are keyed by id.
-    queryClient.setQueryData<JobOffer[]>(queryKeys.offers, (current = []) => [
-      offer,
-      ...current.filter((o) => o.id !== offer.id),
-    ]);
+    queryClient.setQueryData<JobOffer[]>(queryKeys.offers, (current = []) =>
+      sortOffers([offer, ...current.filter((o) => o.id !== offer.id)]),
+    );
+  } else if (event === 'offer_updated') {
+    // The customer added a tip: update that offer card in place.
+    const full = toOffer(payload);
+    const id = String(full?.id ?? payload?.offer_id ?? payload?.id ?? '');
+    const tip = payload?.tip_amount;
+    queryClient.setQueryData<JobOffer[]>(queryKeys.offers, (current = []) =>
+      current.map((o) =>
+        o.id !== id
+          ? o
+          : (full ?? { ...o, tipAmount: tip == null ? o.tipAmount : Number(tip) || 0 }),
+      ),
+    );
+  } else if (event === 'error') {
+    // SESSION_REVOKED / TOKEN_EXPIRED: the server ends the stream next.
+    const code = String(payload?.code ?? payload?.error ?? payload?.error_code ?? '');
+    if (code === 'SESSION_REVOKED' || code === 'TOKEN_EXPIRED' || code === '') authFailed = true;
   } else if (event === 'offer_closed' && payload?.offer_id) {
     queryClient.setQueryData<JobOffer[]>(queryKeys.offers, (current = []) =>
       current.filter((o) => o.id !== String(payload.offer_id)),
@@ -122,11 +140,8 @@ async function connect() {
       },
       signal: abort.signal,
     });
-    if (res.status === 401) {
-      // A normal request refreshes an expired token (or ends the session); then try again.
-      await jobsApi.getOffers().catch(() => undefined);
-      throw new Error('unauthorized');
-    }
+    if (res.status === 401) authFailed = true;
+    if (authFailed) throw new Error('unauthorized');
     if (!res.ok || !res.body) throw new Error(`stream ${res.status}`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -149,6 +164,16 @@ async function connect() {
     }
   } catch {
     // Closed, offline or refused: handled below.
+  }
+  if (controller !== abort || subscribers === 0) return;
+  if (authFailed) {
+    // New token first (or the session ends and the login screen shows), then reconnect at once.
+    authFailed = false;
+    setLive(false);
+    if (await renewSession()) {
+      if (controller === abort && subscribers > 0) void connect();
+      return;
+    }
   }
   // A stall aborts this request while it is still the current one; a disconnect replaces it.
   if (controller === abort && subscribers > 0) scheduleReconnect();

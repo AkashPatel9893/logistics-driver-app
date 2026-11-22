@@ -34,6 +34,7 @@ const ANDROID_ICON_REGISTRY = {
   scope: { set: 'ionicons', name: 'locate' },
   star: { set: 'ionicons', name: 'star-outline' },
   'star.fill': { set: 'ionicons', name: 'star' },
+  'bolt.fill': { set: 'ionicons', name: 'flash' },
   person: { set: 'ionicons', name: 'person-outline' },
   'person.fill': { set: 'ionicons', name: 'person' },
   mappin: { set: 'material-community', name: 'map-marker' },

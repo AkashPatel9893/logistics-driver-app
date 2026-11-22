@@ -8,6 +8,7 @@ import { onboardingApi, type OnboardingStatus } from './onboarding';
 import type {
   BankInput,
   DailyCheck,
+  DocumentAlert,
   DriverProfile,
   GeoPoint,
   BankDetails,
@@ -136,6 +137,27 @@ function toBank(accounts: any[]): BankDetails | null {
   };
 }
 
+/** `document_alerts` from GET /partner/profile; unknown entries are skipped. */
+function toDocumentAlerts(raw: unknown): DocumentAlert[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((a: any) => {
+    const documentType = String(a?.document_type ?? a?.type ?? '');
+    if (!documentType) return [];
+    const daysRaw = a.days_left ?? a.days_until_expiry ?? a.days_remaining;
+    const daysLeft = daysRaw == null || !Number.isFinite(Number(daysRaw)) ? null : Number(daysRaw);
+    const status = String(a.status ?? a.level ?? '').toUpperCase();
+    return [
+      {
+        documentType,
+        message: typeof a.message === 'string' && a.message ? a.message : null,
+        expiryDate: a.expiry_date ?? a.expires_on ?? null,
+        daysLeft,
+        expired: status === 'EXPIRED' || a.expired === true || (daysLeft !== null && daysLeft < 0),
+      },
+    ];
+  });
+}
+
 export const driverApi = {
   getProfile: async (signal?: AbortSignal): Promise<DriverProfile> => {
     {
@@ -191,6 +213,7 @@ export const driverApi = {
           },
           walletBalance: 0,
           lifetimeTrips: p.lifetime_trips ?? 0,
+          documentAlerts: toDocumentAlerts(p.document_alerts),
         };
       } catch (error) {
         // No invented profile: the screen shows the failure and can retry.
@@ -297,6 +320,10 @@ export const driverApi = {
         fuel_type: input.fuelType,
         is_owner: true,
       }));
+    // Only the primary vehicle counts for onboarding, and the backend makes only the first one
+    // primary. If the driver corrected the number (e.g. the first RC came back expired), the new
+    // vehicle must replace the old one there, or the step keeps showing the old vehicle's status.
+    await onboardingApi.setActiveVehicle(vehicle.id);
     // A previous attempt may have saved the vehicle and some documents before failing.
     // Keep already-submitted documents on retry instead of superseding their review records.
     const existingDocs = existing ? await onboardingApi.listVehicleDocuments(vehicle.id) : [];

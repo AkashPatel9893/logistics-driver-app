@@ -97,6 +97,20 @@ export function MyEarningsScreen() {
           </AppView>
         </AppView>
 
+        {summary && (summary.tipEarnings > 0 || summary.priorityEarnings > 0) ? (
+          <AppText className="text-[13px] text-muted">
+            Includes{' '}
+            {[
+              summary.tipEarnings > 0 &&
+                `${formatRupees(summary.tipEarnings)} in customer tips (100% yours)`,
+              summary.priorityEarnings > 0 &&
+                `${formatRupees(summary.priorityEarnings)} from priority bookings`,
+            ]
+              .filter(Boolean)
+              .join(' and ')}
+            .
+          </AppText>
+        ) : null}
         {summary && summary.paidToFleet > 0 ? (
           <AppText className="text-[13px] text-muted">
             Includes {formatRupees(summary.paidToFleet)} paid to your fleet owner.

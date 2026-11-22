@@ -20,6 +20,7 @@ import type { JobOffer } from '@/lib/api/models';
 import { formatDistance, formatMinutes, formatRupees } from '@/lib/format';
 
 import { goBack } from '@/lib/go-back';
+import { PriorityBadge, TipBadge } from '@/features/driver/components/delivery-request-card';
 
 const IGNORED_REASON = 'Ignored';
 const DECLINE_REASONS = ['Too far from me', 'Low fare', 'Vehicle not suitable', 'Taking a break'];
@@ -102,8 +103,14 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
         <AppView row className="items-center justify-between gap-3">
           {/* flex-1 lets a long vehicle name wrap instead of pushing the timer off the screen */}
           <AppView className="flex-1">
+            {offer.isPriority || offer.tipAmount > 0 ? (
+              <AppView row className="mb-1.5 flex-wrap gap-2">
+                {offer.isPriority ? <PriorityBadge onDark /> : null}
+                {offer.tipAmount > 0 ? <TipBadge amount={offer.tipAmount} onDark /> : null}
+              </AppView>
+            ) : null}
             <AppText className="text-[24px] font-black tracking-tight text-white">
-              New delivery request
+              {offer.isPriority ? 'Priority delivery request' : 'New delivery request'}
             </AppText>
             <AppText className="text-[13px] font-semibold text-white/85" numberOfLines={2}>
               {[offer.vehicle.name, `Order #${offer.orderNumber}`].filter(Boolean).join(' · ')}
@@ -145,6 +152,12 @@ function OfferDetails({ offer }: { offer: JobOffer }) {
                 <AppText className="text-[32px] font-black leading-tight text-foreground">
                   {formatRupees(offer.driverEarning ?? offer.fare)}
                 </AppText>
+                {offer.tipAmount > 0 ? (
+                  // Updates live while the customer adds tips; all of it goes to the driver.
+                  <AppText className="text-[13px] font-bold text-emerald-600">
+                    + {formatRupees(offer.tipAmount)} tip from customer
+                  </AppText>
+                ) : null}
               </AppView>
               <AppView className="items-end">
                 <AppView

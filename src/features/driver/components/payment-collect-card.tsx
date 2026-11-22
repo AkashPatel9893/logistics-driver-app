@@ -18,6 +18,17 @@ export function PaymentCollectCard({ job, onCollected }: PaymentCollectCardProps
   const router = useRouter();
   const collectCash = useCollectCash();
   const { payment } = job;
+  // The tip is already inside the amount to collect.
+  const tipNote =
+    job.tipTotal > 0 ? (
+      <AppView row className="items-center gap-2 rounded-2xl bg-emerald-500/10 p-3">
+        <Icon name="gift.fill" size={16} color="#059669" />
+        <AppText className="flex-1 text-[13px] font-bold text-emerald-700 dark:text-emerald-400">
+          Customer added {formatRupees(job.tipTotal)} tip · included in{' '}
+          {formatRupees(payment.amount)}
+        </AppText>
+      </AppView>
+    ) : null;
 
   if (payment.status === 'collected') {
     return (
@@ -50,6 +61,7 @@ export function PaymentCollectCard({ job, onCollected }: PaymentCollectCardProps
 
   return (
     <AppView className="gap-3">
+      {tipNote}
       <Button
         variant="outline"
         label="Show payment QR"

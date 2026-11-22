@@ -39,6 +39,9 @@ export const earningsApi = {
       incentives: Number(summary.incentives),
       cashCollected: Number(summary.cash_collected),
       paidToFleet: Number(summary.paid_to_fleet ?? 0),
+      priorityEarnings:
+        Number(summary.priority_earning ?? summary.total_priority_earning ?? 0) || 0,
+      tipEarnings: Number(summary.tip_earning ?? summary.total_tip_earning ?? 0) || 0,
       onlineMinutes: summary.online_minutes,
       buckets: summary.daily.map((day: { date: string; amount: string | number }) => ({
         label: day.date.slice(5),
@@ -154,6 +157,8 @@ export const earningsApi = {
         grossEarning: Number(item.gross_amount),
         commissionRate: Number(item.commission_rate),
         commission: Number(item.commission_deduction),
+        priorityEarning: Number(item.priority_earning ?? 0) || 0,
+        tipEarning: Number(item.tip_earning ?? 0) || 0,
         endedAt: item.calculated_at,
         paidTo: item.paid_to,
         fleetName: item.fleet_name,

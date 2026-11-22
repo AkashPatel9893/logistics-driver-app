@@ -86,8 +86,9 @@ export function useAcceptOffer() {
   return useMutation({
     mutationFn: (offer: Pick<JobOffer, 'id' | 'orderId'>) =>
       jobsApi.acceptOffer(offer.id, offer.orderId),
-    onSuccess: (job, offer) => {
-      removeOffer(queryClient, offer.id);
+    onSuccess: (job) => {
+      // Accepting one offer cancels the driver's other open offer too.
+      queryClient.setQueryData<JobOffer[]>(queryKeys.offers, []);
       cacheJob(job);
     },
     onError: (_error, offer) => removeOffer(queryClient, offer.id),

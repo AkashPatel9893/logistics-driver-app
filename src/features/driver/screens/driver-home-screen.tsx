@@ -23,7 +23,7 @@ import { RegistrationProgressCard } from '@/features/registration/registration-p
 import { syncOnboardingStatus } from '@/features/auth/use-auth-store';
 import { FleetStatsRow, FleetVehiclesSection, RoleSwitcher } from '@/features/fleet/components';
 import { getErrorMessage } from '@/lib/api/api-error';
-import type { JobOffer, SetupStep } from '@/lib/api/models';
+import type { DocumentAlert, JobOffer, SetupStep } from '@/lib/api/models';
 import { canDrawOverlays, isBubbleSupported, openOverlaySettings } from '@/lib/driver-bubble';
 import { greetingFor } from '@/lib/format';
 
@@ -58,6 +58,53 @@ const STEP_LABEL: Record<SetupStep, string> = {
   kyc: 'KYC',
   bank: 'bank details',
 };
+
+const DOCUMENT_LABEL: Record<string, string> = {
+  DRIVING_LICENCE: 'Driving licence',
+  RC: 'RC',
+  INSURANCE: 'Vehicle insurance',
+  PUC: 'PUC certificate',
+  PERMIT: 'Permit',
+  FITNESS: 'Fitness certificate',
+  FITNESS_CERTIFICATE: 'Fitness certificate',
+};
+
+function alertText(alert: DocumentAlert) {
+  if (alert.message) return alert.message;
+  const name = DOCUMENT_LABEL[alert.documentType] ?? alert.documentType.replace(/_/g, ' ');
+  if (alert.expired) return `Your ${name} has expired. Upload a new one to go online.`;
+  if (alert.daysLeft !== null)
+    return `Your ${name} expires in ${alert.daysLeft} ${alert.daysLeft === 1 ? 'day' : 'days'}. Upload the new one in time.`;
+  return `Your ${name} expires soon. Upload the new one in time.`;
+}
+
+/** Expiring or expired documents: an expired one takes an idle driver offline. */
+function DocumentAlertsCard({ alerts }: { alerts: DocumentAlert[] }) {
+  const router = useRouter();
+  const anyExpired = alerts.some((a) => a.expired);
+  return (
+    <AppPressable
+      onPress={() => router.push('/registration')}
+      accessibilityRole="button"
+      className={`gap-1.5 rounded-2xl border p-4 ${
+        anyExpired ? 'border-red-500/40 bg-red-500/10' : 'border-amber-500/40 bg-amber-500/10'
+      }`}
+    >
+      <AppView row className="items-center gap-2">
+        <Icon name="doc.text.fill" size={16} color={anyExpired ? '#dc2626' : '#d97706'} />
+        <AppText className="flex-1 text-[14px] font-extrabold text-foreground">
+          {anyExpired ? 'Document expired' : 'Document expiring soon'}
+        </AppText>
+        <Icon name="chevron.right" size={14} tone="icon-subtle" />
+      </AppView>
+      {alerts.map((alert) => (
+        <AppText key={alert.documentType} className="text-[13px] text-foreground-secondary">
+          {alertText(alert)}
+        </AppText>
+      ))}
+    </AppPressable>
+  );
+}
 
 export function DriverHomeScreen() {
   const router = useRouter();
@@ -98,14 +145,16 @@ export function DriverHomeScreen() {
   }, [needsRegistration, dashboardRole, profile, router]);
 
   // A new offer takes over the screen, like a ringing call.
+  // Up to two offers can be open (priority first): each one rings once.
   const shownOfferIds = useRef(new Set<string>());
-  const newestOffer = offers.at(-1);
+  const offerList = offersQuery.data;
   useEffect(() => {
-    if (!isFocused || activeJob || !newestOffer || dashboardRole !== 'driver') return;
-    if (shownOfferIds.current.has(newestOffer.id)) return;
-    shownOfferIds.current.add(newestOffer.id);
-    router.push({ pathname: '/incoming-job', params: { offerId: newestOffer.id } });
-  }, [isFocused, activeJob, newestOffer, router, dashboardRole]);
+    if (!isFocused || activeJob || dashboardRole !== 'driver') return;
+    const next = offerList?.find((o) => !shownOfferIds.current.has(o.id));
+    if (!next) return;
+    shownOfferIds.current.add(next.id);
+    router.push({ pathname: '/incoming-job', params: { offerId: next.id } });
+  }, [isFocused, activeJob, offerList, router, dashboardRole]);
 
   if (!profile) {
     return (
@@ -264,6 +313,10 @@ export function DriverHomeScreen() {
               walletBalance={walletQuery.data?.balance}
             />
 
+            {profile.documentAlerts.length > 0 ? (
+              <DocumentAlertsCard alerts={profile.documentAlerts} />
+            ) : null}
+
             {activeJob ? <ActiveDeliveryCard job={activeJob} /> : null}
 
             {!profile.canGoOnline ? <RegistrationProgressCard profile={profile} /> : null}
@@ -272,7 +325,7 @@ export function DriverHomeScreen() {
               offers.length > 0 ? (
                 <AppView className="mt-1 gap-3">
                   <AppText className="px-1 text-[20px] font-black text-foreground">
-                    New delivery request
+                    {offers.length > 1 ? 'New delivery requests' : 'New delivery request'}
                   </AppText>
                   {offers.map((offer) => (
                     <DeliveryRequestCard key={offer.id} offer={offer} onOpen={openOffer} />

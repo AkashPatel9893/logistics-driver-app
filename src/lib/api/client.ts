@@ -70,6 +70,18 @@ function sharedRefresh(version: number): Promise<string | null> {
   return refresh.promise;
 }
 
+/**
+ * For connections that don't go through `request` (the offer stream): gets a new access token after
+ * the server said the session was revoked or the token expired. If that fails, the session ends
+ * (login screen). Returns the new token, or null.
+ */
+export async function renewSession(): Promise<string | null> {
+  const version = getSessionVersion();
+  const token = await sharedRefresh(version);
+  if (!token && version === getSessionVersion()) onUnauthorized?.();
+  return token;
+}
+
 /** Seconds until the JWT access token expires, or null if it can't be read. */
 function secondsUntilExpiry(accessToken: string): number | null {
   try {
