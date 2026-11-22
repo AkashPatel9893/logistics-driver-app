@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { useRouter } from 'expo-router';
 import { Alert, Linking } from 'react-native';
 
 import { AppPressable, AppScrollView, AppSpinner, AppText, AppView, Icon } from '@/components/ui';
 import { useSupportInfo } from '@/hooks/use-content';
+import { useSos } from '@/hooks/use-support';
+import { ApiError, getErrorMessage, toApiError } from '@/lib/api/api-error';
 
 import { SetupScreenLayout } from '../components/setup-screen-layout';
 
@@ -11,7 +14,36 @@ const EMERGENCY_NUMBER = '112';
 
 export function DriverSupportScreen() {
   const { data: support, isLoading } = useSupportInfo();
+  const router = useRouter();
+  const sos = useSos();
   const [openFaq, setOpenFaq] = useState<string | null>(null);
+
+  const callEmergency = () => Linking.openURL(`tel:${EMERGENCY_NUMBER}`);
+
+  // The safety team only hears about trips in progress; 112 is always offered as well.
+  const sendSos = () =>
+    sos.mutate(undefined, {
+      onSuccess: (incident) =>
+        Alert.alert(
+          'Safety team alerted',
+          `Reference ${incident.number}. They can see your location. If you are in danger, call ${EMERGENCY_NUMBER} now.`,
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: `Call ${EMERGENCY_NUMBER}`, onPress: callEmergency },
+          ],
+        ),
+      onError: (error) => {
+        const apiError: ApiError = toApiError(error);
+        const message =
+          apiError.code === 'NO_ACTIVE_TRIP'
+            ? `The safety team can be alerted during a trip. For an emergency now, call ${EMERGENCY_NUMBER}.`
+            : getErrorMessage(error);
+        Alert.alert('Could not alert the safety team', message, [
+          { text: 'Close', style: 'cancel' },
+          { text: `Call ${EMERGENCY_NUMBER}`, style: 'destructive', onPress: callEmergency },
+        ]);
+      },
+    });
 
   return (
     <SetupScreenLayout title="Help & support" subtitle="Partner care and common questions">
@@ -45,6 +77,20 @@ export function DriverSupportScreen() {
             </AppPressable>
           </AppView>
         </AppView>
+
+        <AppPressable
+          onPress={() => router.push('/support-tickets')}
+          className="flex-row items-center gap-3 rounded-2xl border border-border bg-card p-4"
+        >
+          <Icon name="message.fill" size={18} tone="brand" />
+          <AppView className="flex-1">
+            <AppText className="text-[14px] font-bold text-foreground">My requests</AppText>
+            <AppText className="text-[12px] text-muted">
+              Message partner care and track replies
+            </AppText>
+          </AppView>
+          <Icon name="chevron.right" size={16} tone="icon-subtle" />
+        </AppPressable>
 
         <AppView className="gap-2.5">
           {support?.faqs.length ? (
@@ -82,15 +128,13 @@ export function DriverSupportScreen() {
 
         <AppPressable
           onPress={() =>
-            Alert.alert('Emergency', `Call ${EMERGENCY_NUMBER} for police, ambulance or fire?`, [
+            Alert.alert('Emergency SOS', 'Alert the Ryno safety team about your current trip?', [
               { text: 'Cancel', style: 'cancel' },
-              {
-                text: `Call ${EMERGENCY_NUMBER}`,
-                style: 'destructive',
-                onPress: () => Linking.openURL(`tel:${EMERGENCY_NUMBER}`),
-              },
+              { text: `Call ${EMERGENCY_NUMBER}`, onPress: callEmergency },
+              { text: 'Alert safety team', style: 'destructive', onPress: sendSos },
             ])
           }
+          disabled={sos.isPending}
           className="flex-row items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4"
         >
           <AppView className="h-10 w-10 items-center justify-center rounded-full bg-red-500/20">
@@ -101,7 +145,9 @@ export function DriverSupportScreen() {
               Emergency SOS
             </AppText>
             <AppText className="text-[12px] text-red-600/80 dark:text-red-400/80">
-              Accident or safety issue — call {EMERGENCY_NUMBER}
+              {sos.isPending
+                ? 'Alerting the safety team…'
+                : `Accident or safety issue — alerts our team or calls ${EMERGENCY_NUMBER}`}
             </AppText>
           </AppView>
         </AppPressable>

@@ -112,6 +112,14 @@ export const onboardingApi = {
 
   listVehicles: () => request<any[]>({ url: '/partner/vehicles' }),
 
+  /** Makes this the driver's primary vehicle: the one onboarding checks and driver mode uses. */
+  setActiveVehicle: (vehicleId: string) =>
+    request<any>({
+      method: 'POST',
+      url: '/partner/active-vehicle',
+      data: { vehicle_id: vehicleId },
+    }),
+
   listVehicleDocuments: (vehicleId: string) =>
     request<any[]>({ url: `/partner/vehicles/${vehicleId}/documents` }),
 

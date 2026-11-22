@@ -82,16 +82,16 @@ export function TripDetailsScreen() {
 
           <AppView className="rounded-2xl border border-border bg-card p-4">
             <AppText className="text-[15px] font-bold text-foreground">Your earning</AppText>
-            <Line label="Trip earning" value={formatRupees(trip.grossEarning)} />
+            {/* The earned amount is already after commission; the tip is added in full on top. */}
+            <Line label="Trip earning" value={formatRupees(trip.driverEarning - trip.tipEarning)} />
             {trip.priorityEarning > 0 ? (
-              <Line label="Priority booking" value={formatRupees(trip.priorityEarning)} />
+              <Line
+                label="· includes priority booking"
+                value={formatRupees(trip.priorityEarning * (1 - trip.commissionRate / 100))}
+              />
             ) : null}
-            <Line
-              label={`Commission (${trip.commissionRate}%)`}
-              value={`− ${formatRupees(trip.commission)}`}
-            />
             {trip.tipEarning > 0 ? (
-              <Line label="Customer tip (no commission)" value={formatRupees(trip.tipEarning)} />
+              <Line label="Customer tip" value={formatRupees(trip.tipEarning)} />
             ) : null}
             <AppView className="mt-3 border-t border-border/60 pt-1">
               <Line label="You earned" value={formatRupees(trip.driverEarning)} strong />

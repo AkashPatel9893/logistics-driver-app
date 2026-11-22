@@ -27,8 +27,15 @@ export type OrderWallet = {
 
 export const earningsApi = {
   getSummary: async (period: EarningsPeriod, signal?: AbortSignal): Promise<EarningsSummary> => {
-    const res = await request<any>({ url: '/partner/earnings', params: { period }, signal });
+    const res = await request<any>({
+      url: '/partner/earnings',
+      params: { period, limit: 200 },
+      signal,
+    });
     const summary = res.summary;
+    // The period summary has no tip/priority totals; the per-trip items do, so add those up.
+    const sumItems = (field: 'priority_earning' | 'tip_earning') =>
+      ((res.items ?? []) as any[]).reduce((total, item) => total + (Number(item[field]) || 0), 0);
     return {
       period,
       from: summary.from_date,
@@ -40,8 +47,10 @@ export const earningsApi = {
       cashCollected: Number(summary.cash_collected),
       paidToFleet: Number(summary.paid_to_fleet ?? 0),
       priorityEarnings:
-        Number(summary.priority_earning ?? summary.total_priority_earning ?? 0) || 0,
-      tipEarnings: Number(summary.tip_earning ?? summary.total_tip_earning ?? 0) || 0,
+        Number(summary.priority_earning ?? summary.total_priority_earning ?? 0) ||
+        sumItems('priority_earning'),
+      tipEarnings:
+        Number(summary.tip_earning ?? summary.total_tip_earning ?? 0) || sumItems('tip_earning'),
       onlineMinutes: summary.online_minutes,
       buckets: summary.daily.map((day: { date: string; amount: string | number }) => ({
         label: day.date.slice(5),
@@ -139,7 +148,11 @@ export const earningsApi = {
   },
 
   getTrips: async (signal?: AbortSignal): Promise<TripSummary[]> => {
-    const res = await request<any>({ url: '/partner/earnings', signal });
+    const res = await request<any>({
+      url: '/partner/earnings',
+      params: { limit: 200 },
+      signal,
+    });
     const items: any[] = res.items ?? [];
     // The earnings list carries amounts only; the route and order number live on the job record.
     // Only the latest are looked up, so opening the tab stays a handful of cheap calls.

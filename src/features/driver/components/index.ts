@@ -4,7 +4,6 @@ export * from './delivery-request-card';
 export * from './driver-online-toggle';
 export * from './driver-past-trip-card';
 export * from './driver-setup-checklist';
-export * from './driver-stats-row';
 export * from './earnings-trend-chart';
 export * from './photo-upload-box';
 export * from './welcome-bonus-modal';

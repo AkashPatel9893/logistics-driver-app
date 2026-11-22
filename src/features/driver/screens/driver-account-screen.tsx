@@ -9,13 +9,19 @@ import {
   AppScrollView,
   AppText,
   AppView,
+  Button,
   FocusAwareStatusBar,
   Icon,
   type IconName,
 } from '@/components/ui';
 import { signOut, useAuthStore } from '@/features/auth/use-auth-store';
+import { RoleSwitcher } from '@/features/fleet/components';
+import { modeSwitchState, registrationLinkLabel } from '@/features/fleet/mode-switch';
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import type { DashboardRole } from '@/features/fleet/types';
 import { useDriverProfile, useSetOnline } from '@/hooks/use-driver';
 import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
+import { useActiveJob } from '@/hooks/use-jobs';
 import { formatRupees } from '@/lib/format';
 import { kvStorage, STORAGE_KEYS } from '@/lib/storage';
 
@@ -37,6 +43,33 @@ export function DriverAccountScreen() {
   const { data: wallet } = useWallet();
   const { data: company } = useFleetCompany();
   const { data: vehicles = [] } = useFleetVehicles();
+  const { data: activeJob } = useActiveJob();
+  const dashboardRole = useFleetStore.use.dashboardRole();
+  const setDashboardRole = useFleetStore.use.setDashboardRole();
+  const modeSwitch = modeSwitchState(profile);
+
+  // A Fleet Owner with no approved driver profile has no other way into driver registration.
+  const openDriverRegistration = () => {
+    setDashboardRole('driver');
+    router.replace('/registration' as any);
+  };
+
+  const handleChangeRole = (next: DashboardRole) => {
+    if (!modeSwitch.allowed || next === dashboardRole) return;
+    if (activeJob) {
+      Alert.alert('Finish your delivery first', 'You can switch modes once this delivery is done.');
+      return;
+    }
+    if (profile?.isOnline && next === 'owner') {
+      Alert.alert(
+        'Go offline first',
+        'Go offline from Home before switching to Fleet Owner mode, so you stop getting delivery requests.',
+      );
+      return;
+    }
+    setDashboardRole(next);
+    router.navigate('/home');
+  };
 
   const name = company?.ownerName || profile?.name || '—';
   // The backend may send the rating as a string (decimal) or a number.
@@ -69,6 +102,18 @@ export function DriverAccountScreen() {
       label: 'Driver Profile & Badges',
       sublabel: 'View verification status and personal info',
       route: '/driver-profile',
+    },
+    {
+      icon: 'gift.fill',
+      label: 'Incentives',
+      sublabel: 'Daily, weekly and bonus rewards',
+      route: '/incentives',
+    },
+    {
+      icon: 'person.text.rectangle',
+      label: 'Ryno ID card',
+      sublabel: 'Your partner identity and approval status',
+      route: '/driver-id-card',
     },
     {
       icon: 'checkmark.shield.fill',
@@ -180,6 +225,34 @@ export function DriverAccountScreen() {
             <Icon name="chevron.right" size={18} tone="icon-subtle" />
           </AppView>
         </AppPressable>
+
+        {/* Mode: Driver or Fleet Owner. Locked until the admin has verified the account. */}
+        <AppView className="rounded-3xl border border-border bg-card p-4 shadow-sm">
+          <AppView row className="items-center justify-between">
+            <AppText className="text-[15px] font-black text-foreground">Switch mode</AppText>
+            {!modeSwitch.allowed ? <Icon name="lock.fill" size={15} tone="icon-subtle" /> : null}
+          </AppView>
+          <AppText className="mb-3 mt-0.5 text-[12px] text-muted">
+            {dashboardRole === 'driver' ? "You're in Driver mode" : "You're in Fleet Owner mode"}
+          </AppText>
+          <RoleSwitcher
+            role={dashboardRole}
+            onChangeRole={handleChangeRole}
+            locked={!modeSwitch.allowed}
+          />
+          {modeSwitch.lockedReason ? (
+            <AppText className="mt-3 text-[12px] text-muted">{modeSwitch.lockedReason}</AppText>
+          ) : null}
+          {!modeSwitch.allowed && profile && dashboardRole === 'owner' ? (
+            <Button
+              variant="outline"
+              size="md"
+              className="mt-3"
+              label={registrationLinkLabel(profile)}
+              onPress={openDriverRegistration}
+            />
+          ) : null}
+        </AppView>
 
         {/* Quick Action Cards: Support & Wallet */}
         <AppView row className="gap-3">

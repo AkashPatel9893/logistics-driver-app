@@ -139,6 +139,24 @@ export function useCancelJob() {
   );
 }
 
+/** A delivery stop could not be completed. Another stop may remain; if not, the trip is over. */
+export function useFailStop() {
+  const queryClient = useQueryClient();
+  const cacheJob = useCacheJob();
+  return useMutation({
+    mutationFn: (reason: string) => jobsApi.failStop(reason),
+    onSuccess: (job) => {
+      if (job) {
+        cacheJob(job);
+      } else {
+        queryClient.setQueryData(queryKeys.activeJob, null);
+        queryClient.invalidateQueries({ queryKey: queryKeys.activeJob });
+        invalidateTripTotals(queryClient);
+      }
+    },
+  });
+}
+
 export function useCollectCash() {
   return useJobMutation((job: DriverJob) => jobsApi.collectCash(job));
 }

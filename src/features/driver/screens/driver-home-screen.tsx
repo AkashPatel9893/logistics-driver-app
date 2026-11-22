@@ -1,5 +1,5 @@
 import { useIsFocused, useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Image, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,7 +21,7 @@ import { useActiveJob, useOffers } from '@/hooks/use-jobs';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { RegistrationProgressCard } from '@/features/registration/registration-progress-card';
 import { syncOnboardingStatus } from '@/features/auth/use-auth-store';
-import { FleetStatsRow, FleetVehiclesSection, RoleSwitcher } from '@/features/fleet/components';
+import { FleetStatsRow, FleetVehiclesSection } from '@/features/fleet/components';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DocumentAlert, JobOffer, SetupStep } from '@/lib/api/models';
 import { canDrawOverlays, isBubbleSupported, openOverlaySettings } from '@/lib/driver-bubble';
@@ -31,7 +31,9 @@ import { ActiveDeliveryCard } from '../components/active-delivery-card';
 import { DeliveryRequestCard } from '../components/delivery-request-card';
 import { DriverOnlineToggle } from '../components/driver-online-toggle';
 import { DriverSetupChecklist } from '../components/driver-setup-checklist';
-import { DriverStatsRow } from '../components/driver-stats-row';
+import { HomeMenu } from '../components/home-menu';
+import { EarningsStrip } from '../components/earnings-strip';
+import { TripTracker } from '../components/trip-tracker';
 import { WelcomeBonusModal } from '../components/welcome-bonus-modal';
 
 let overlayPromptShown = false;
@@ -108,6 +110,7 @@ function DocumentAlertsCard({ alerts }: { alerts: DocumentAlert[] }) {
 
 export function DriverHomeScreen() {
   const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const { refreshing, refresh } = usePullToRefresh();
@@ -125,7 +128,6 @@ export function DriverHomeScreen() {
 
   // Fleet Owner state
   const dashboardRole = useFleetStore.use.dashboardRole();
-  const setDashboardRole = useFleetStore.use.setDashboardRole();
   const fleetVehiclesQuery = useFleetVehicles();
   const { data: vehicles = [] } = fleetVehiclesQuery;
   const fleetCompanyQuery = useFleetCompany();
@@ -236,6 +238,13 @@ export function DriverHomeScreen() {
         className="z-20 bg-background px-5 pb-3"
       >
         <AppView row className="items-center justify-between">
+          <AppPressable
+            onPress={() => setMenuOpen(true)}
+            accessibilityLabel="Open menu"
+            className="mr-3 h-10 w-10 items-center justify-center rounded-full border border-border bg-card shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
+          >
+            <Icon name="line.3.horizontal" size={20} tone="icon-strong" />
+          </AppPressable>
           <AppView className="flex-1 pr-3">
             <AppText className="text-[28px] font-black text-foreground" numberOfLines={1}>
               {greetingFor()}, {firstName}
@@ -261,11 +270,6 @@ export function DriverHomeScreen() {
           >
             <Icon name="questionmark.circle" size={20} tone="icon-strong" />
           </AppPressable>
-        </AppView>
-
-        {/* Role toggle: Driver | Fleet Owner */}
-        <AppView className="mt-4">
-          <RoleSwitcher role={dashboardRole} onChangeRole={setDashboardRole} />
         </AppView>
       </AppView>
 
@@ -307,11 +311,13 @@ export function DriverHomeScreen() {
               busy={setOnline.isPending}
             />
 
-            <DriverStatsRow
-              tripsToday={todayQuery.data?.trips}
+            <EarningsStrip
               earningsToday={todayQuery.data?.totalEarnings}
+              tripsToday={todayQuery.data?.trips}
               walletBalance={walletQuery.data?.balance}
             />
+
+            <TripTracker completedTrips={profile.lifetimeTrips} />
 
             {profile.documentAlerts.length > 0 ? (
               <DocumentAlertsCard alerts={profile.documentAlerts} />
@@ -377,6 +383,8 @@ export function DriverHomeScreen() {
           />
         </AppView>
       </AppScrollView>
+
+      <HomeMenu visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
       <WelcomeBonusModal
         bonus={profile.welcomeBonus}

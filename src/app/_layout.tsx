@@ -59,7 +59,12 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="wallet" />
         <Stack.Screen name="support" />
+        <Stack.Screen name="support-tickets" />
         <Stack.Screen name="earnings" />
+        <Stack.Screen name="incentives" />
+        <Stack.Screen name="rate-card" />
+        <Stack.Screen name="rewards" />
+        <Stack.Screen name="refer" />
         <Stack.Screen name="trip-details" />
         <Stack.Screen name="incoming-job" />
         <Stack.Screen name="active-delivery" />
@@ -70,6 +75,7 @@ export default function RootLayout() {
         <Stack.Screen name="customer-chat" />
         <Stack.Screen name="daily-check" />
         <Stack.Screen name="driver-profile" />
+        <Stack.Screen name="driver-id-card" />
         <Stack.Screen name="setup-vehicle" />
         <Stack.Screen name="setup-kyc" />
         <Stack.Screen name="setup-bank" />

@@ -279,7 +279,11 @@ export interface CollectionBreakdown {
   otherCharges: number;
   discount: number;
   tax: number;
+  /** Customer tip included in the total (0 when none). */
+  tip: number;
   total: number;
+  /** Every final component in order (night charge, surge, tip, ...); empty without a quote. */
+  lines: { type: string; description: string; amount: number }[];
 }
 
 export interface JobPayment {

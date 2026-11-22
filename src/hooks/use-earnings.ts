@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { earningsApi } from '@/lib/api/earnings';
+import { rateCardApi } from '@/lib/api/rate-card';
+import { growthApi } from '@/lib/api/growth';
+import { incentivesApi, type IncentiveType } from '@/lib/api/incentives';
 import type { EarningsPeriod } from '@/lib/api/models';
 import { queryKeys } from '@/lib/queries/keys';
 
@@ -37,9 +40,38 @@ export function useRequestPayout() {
   });
 }
 
-export function useTrips() {
+export function useTrips(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.trips,
     queryFn: ({ signal }) => earningsApi.getTrips(signal),
+    enabled: options.enabled ?? true,
+  });
+}
+
+export function useIncentives(type: IncentiveType) {
+  return useQuery({
+    queryKey: queryKeys.incentives(type),
+    queryFn: ({ signal }) => incentivesApi.list(type, signal),
+  });
+}
+
+export function useRewards() {
+  return useQuery({
+    queryKey: queryKeys.rewards,
+    queryFn: ({ signal }) => growthApi.getRewards(signal),
+  });
+}
+
+export function useReferral() {
+  return useQuery({
+    queryKey: queryKeys.referral,
+    queryFn: ({ signal }) => growthApi.getReferral(signal),
+  });
+}
+
+export function useRateCard() {
+  return useQuery({
+    queryKey: queryKeys.rateCard,
+    queryFn: ({ signal }) => rateCardApi.get(signal),
   });
 }

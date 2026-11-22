@@ -218,7 +218,17 @@ function mapBreakdown(raw: any): CollectionBreakdown | null {
     otherCharges: Number(raw.other_charges),
     discount: Number(raw.discount),
     tax: Number(raw.tax),
+    tip: Number(raw.tip ?? 0) || 0,
     total: Number(raw.total),
+    lines: Array.isArray(raw.lines)
+      ? raw.lines
+          .filter((l: any) => l && Number.isFinite(Number(l.amount)))
+          .map((l: any) => ({
+            type: String(l.component_type ?? ''),
+            description: String(l.description ?? ''),
+            amount: Number(l.amount),
+          }))
+      : [],
   };
 }
 
@@ -544,6 +554,21 @@ export const jobsApi = {
           cancelReason: reason,
         }
       : mapDriverJob({ id, status: 'cancelled' });
+  },
+
+  /**
+   * Marks the delivery stop the driver is at as failed (receiver unreachable, refused, wrong
+   * address). Returns the job still in progress, or null when this was the last stop.
+   */
+  failStop: async (reason: string): Promise<DriverJob | null> => {
+    const trip = await getActiveTripDetails();
+    if (!trip?.tripId || !trip.currentDrop) throw new ApiError(TRIP_UNREACHABLE, 'unknown');
+    await request<any>({
+      method: 'POST',
+      url: `/trips/${trip.tripId}/stops/${trip.currentDrop.stopId}/fail`,
+      data: { ...devicePosition(), reason },
+    });
+    return jobsApi.getActiveJob();
   },
 
   /**

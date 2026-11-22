@@ -17,6 +17,7 @@ type AndroidGlyph =
  */
 const ANDROID_ICON_REGISTRY = {
   banknote: { set: 'ionicons', name: 'cash-outline' },
+  'line.3.horizontal': { set: 'ionicons', name: 'menu' },
   iphone: { set: 'ionicons', name: 'phone-portrait-outline' },
   creditcard: { set: 'ionicons', name: 'card-outline' },
   'wallet.pass.fill': { set: 'ionicons', name: 'wallet' },

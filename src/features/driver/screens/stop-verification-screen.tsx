@@ -15,11 +15,13 @@ import {
   FocusAwareStatusBar,
   Icon,
   LiquidGlassBackButton,
+  OptionSheet,
   OtpInput,
 } from '@/components/ui';
 import {
   useActiveJob,
   useClearFinishedJob,
+  useFailStop,
   useResendDeliveryCode,
   useVerifyDrop,
   useVerifyPickup,
@@ -36,6 +38,13 @@ import { usePhotoUpload } from '../hooks/use-photo-upload';
 import { goBack } from '@/lib/go-back';
 
 type Stop = 'pickup' | 'drop';
+
+const DELIVERY_FAILED_REASONS = [
+  'Receiver not reachable',
+  'Receiver refused the parcel',
+  'Wrong or incomplete address',
+  'Receiver not available at the address',
+];
 
 /**
  * Whether a parcel / proof-of-delivery photo must be uploaded before the code is
@@ -98,6 +107,8 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
   const verifyPickup = useVerifyPickup();
   const verifyDrop = useVerifyDrop();
   const resend = useResendDeliveryCode();
+  const failStop = useFailStop();
+  const [failSheetOpen, setFailSheetOpen] = useState(false);
   const verify = stop === 'pickup' ? verifyPickup : verifyDrop;
   const [otp, setOtp] = useState('');
   const [otpError, setOtpError] = useState<string>();
@@ -166,6 +177,29 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
         { text: 'Call sender', onPress: () => Linking.openURL(`tel:${job.sender.phone}`) },
       ],
     );
+
+  // mutateAsync: the cache update can unmount this screen, which would drop mutate() callbacks.
+  const reportFailedDelivery = (reason: string) => {
+    setFailSheetOpen(false);
+    Alert.alert(
+      'Mark delivery as failed?',
+      `Reason: ${reason}. This stop will be closed and you cannot undo it.`,
+      [
+        { text: 'Go back', style: 'cancel' },
+        {
+          text: 'Mark failed',
+          style: 'destructive',
+          onPress: () =>
+            failStop
+              .mutateAsync(reason)
+              .then((next) => router.replace(next ? '/active-delivery' : '/home'))
+              .catch((error: unknown) =>
+                Alert.alert('Could not update trip', getErrorMessage(error)),
+              ),
+        },
+      ],
+    );
+  };
 
   const handleResend = () => {
     resend.mutate(job.id, {
@@ -275,6 +309,17 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
                 </AppText>
               </AppPressable>
             ) : null}
+            {stop === 'drop' ? (
+              <AppPressable
+                onPress={() => setFailSheetOpen(true)}
+                disabled={failStop.isPending}
+                className="min-h-11 justify-center px-2"
+              >
+                <AppText className="text-[13px] font-semibold text-error">
+                  {failStop.isPending ? 'Updating…' : "Can't deliver this parcel?"}
+                </AppText>
+              </AppPressable>
+            ) : null}
           </AppView>
 
           <AppView className="gap-2">
@@ -318,6 +363,17 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
           />
         </AppView>
       </AppKeyboardAvoidingView>
+
+      <OptionSheet
+        isPresented={failSheetOpen}
+        title="Why can't you deliver?"
+        message="Try calling the receiver first. This closes the stop."
+        options={DELIVERY_FAILED_REASONS}
+        cancelLabel="Keep trying"
+        destructive
+        onSelect={reportFailedDelivery}
+        onDismiss={() => setFailSheetOpen(false)}
+      />
     </AppView>
   );
 }
