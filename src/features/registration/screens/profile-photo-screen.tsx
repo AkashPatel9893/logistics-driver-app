@@ -29,6 +29,7 @@ import {
 import { markSubmitted, readDraftPhoto, useDraftText } from '../drafts';
 import { useSelfieStore } from '../use-selfie-store';
 import { goToNextStep } from '../next-step';
+import { goBack } from '@/lib/go-back';
 
 type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 
@@ -59,6 +60,8 @@ export function ProfilePhotoScreen() {
   const [genderDraft, setGenderDraft] = useDraftText('profile.gender');
   const gender = (genderDraft || null) as Gender | null;
   const setGender = (value: Gender) => setGenderDraft(value);
+  // What was there when the screen opened, to tell an edit from "nothing changed".
+  const [initialGender] = useState(genderDraft);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -74,31 +77,49 @@ export function ProfilePhotoScreen() {
       : dob
     : null;
 
+  // A selfie is already on file: a later visit is an edit, so no new photo is needed.
+  const hasSelfie = documentState(current?.status) !== 'todo';
+  // The backend locks name and date of birth once the application is submitted.
+  const onboardingStatus = profile?.onboarding.status;
+  const nameLocked = onboardingStatus === 'submitted' || onboardingStatus === 'approved';
+  const nameChanged = nameDraft !== null && nameDraft.trim() !== (profile?.name ?? '');
+  const genderChanged = Boolean(gender) && genderDraft !== initialGender;
+  const hasChanges = nameChanged || genderChanged || Boolean(photo);
+  const canSave = hasSelfie ? hasChanges : Boolean(photo) && Boolean(gender);
+  const LOCKED_MESSAGE =
+    "Your name and date of birth can't be changed after your application is submitted. Contact support if they are wrong.";
+
   const handleSubmit = async () => {
-    if (!photo) return;
+    if (!canSave) return;
     if (name.trim().length < 2) return setError('Enter your full name.');
-    if (!gender) return setError('Select your gender.');
+    if (!hasSelfie && !gender) return setError('Select your gender.');
     setError(undefined);
     setSaving(true);
     try {
-      if (profile?.dob) {
-        // Name and gender go together: the backend clears gender on a save without it.
+      // Name and gender go together: the backend clears gender on a save without it.
+      if (profile?.dob && (nameChanged || genderChanged || !hasSelfie)) {
         try {
           const updated = await authApi.updateProfile({
             name: name.trim(),
             dob: profile.dob,
-            gender,
+            ...(gender ? { gender } : {}),
           });
           useAuthStore.getState().setUser(updated);
           queryClient.invalidateQueries({ queryKey: queryKeys.profile });
         } catch (e) {
-          // Name and DOB lock once the application is submitted; the photo can still be replaced.
           if (!(e instanceof ApiError && e.code === 'PROFILE_LOCKED')) throw e;
+          // Locked: only a new photo can still go through; say so instead of failing silently.
+          if (!photo) {
+            setError(LOCKED_MESSAGE);
+            return;
+          }
         }
       }
-      await submit.mutateAsync({ type: 'SELFIE', fileUri: photo });
+      if (photo) await submit.mutateAsync({ type: 'SELFIE', fileUri: photo });
       markSubmitted('profile.');
-      await goToNextStep(router, queryClient, 'photo');
+      // First time: on to the next registration step. An edit goes back to where it came from.
+      if (hasSelfie) goBack(router);
+      else await goToNextStep(router, queryClient, 'photo');
     } catch (e) {
       setError(getErrorMessage(e));
     } finally {
@@ -117,6 +138,8 @@ export function ProfilePhotoScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {error ? <AppText className="text-[13px] font-medium text-error">{error}</AppText> : null}
+
           <DocumentStatusNote
             state={documentState(current?.status)}
             reason={current?.rejectionReason}
@@ -153,7 +176,7 @@ export function ProfilePhotoScreen() {
               <AppText className="text-[13px] font-bold text-foreground-emphasis">
                 Full name <AppText className="text-brand">*</AppText>
               </AppText>
-              {nameDraft === null ? (
+              {nameDraft === null && !nameLocked ? (
                 <AppPressable onPress={() => setNameDraft(name)} hitSlop={8}>
                   <AppText className="text-[13px] font-bold text-[#2563eb]">Edit</AppText>
                 </AppPressable>
@@ -166,12 +189,16 @@ export function ProfilePhotoScreen() {
                 onChangeText={setNameDraft}
                 editable={nameDraft !== null}
                 autoFocus={nameDraft !== null}
-                placeholder="As printed on your driving licence"
+                placeholder="As printed on your documents"
                 autoCapitalize="words"
                 autoCorrect={false}
                 leading={<Icon name="person" size={18} tone="icon-subtle" />}
                 inputClassName="ml-2"
-                hint="Must match the name on your driving licence"
+                hint={
+                  nameLocked
+                    ? 'Locked after submission. Contact support to change it.'
+                    : 'Must match the name on your documents'
+                }
               />
             </AppView>
           </AppView>
@@ -191,7 +218,7 @@ export function ProfilePhotoScreen() {
 
           <AppView className="gap-2">
             <AppText className="text-[13px] font-bold text-foreground-emphasis">
-              Gender <AppText className="text-brand">*</AppText>
+              Gender {hasSelfie ? null : <AppText className="text-brand">*</AppText>}
             </AppText>
             <AppView row className="gap-3">
               {GENDERS.map((g) => {
@@ -226,14 +253,12 @@ export function ProfilePhotoScreen() {
               'Only you in the photo, plain background',
             ]}
           />
-
-          {error ? <AppText className="text-[13px] font-medium text-error">{error}</AppText> : null}
         </AppScrollView>
       </AppKeyboardAvoidingView>
       <StickyFooter
-        label={documentState(current?.status) === 'todo' ? 'Submit' : 'Update'}
+        label={hasSelfie ? 'Save changes' : 'Submit'}
         onPress={handleSubmit}
-        disabled={!photo || !gender || saving}
+        disabled={!canSave || saving}
         loading={saving}
       />
     </SetupScreenLayout>

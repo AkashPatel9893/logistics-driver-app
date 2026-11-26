@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { switchDashboardRole } from '@/features/fleet/switch-role';
 import { useState } from 'react';
 import { Alert, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,10 +17,11 @@ import {
   LiquidGlassBackButton,
   TextField,
 } from '@/components/ui';
-import { useFleetCompany, useRegisterCompany } from '@/hooks/use-fleet';
+import { useFleetCompany, useRegisterCompany, useUpdateCompany } from '@/hooks/use-fleet';
 import type { CompanyDetails } from '../types';
 
-import { useFleetStore } from '../use-fleet-store';
+import { ApiError } from '@/lib/api/api-error';
+import type { CompanyUpdateRequest } from '@/lib/api/fleet';
 import { goBack } from '@/lib/go-back';
 
 const COMPANY_TYPES = [
@@ -39,7 +41,8 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const registerCompany = useRegisterCompany();
-  const setDashboardRole = useFleetStore.use.setDashboardRole();
+  const updateCompany = useUpdateCompany();
+  const setDashboardRole = switchDashboardRole;
 
   const [companyName, setCompanyName] = useState(initialCompany?.companyName || '');
   const [ownerName, setOwnerName] = useState(initialCompany?.ownerName || '');
@@ -62,6 +65,9 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
     gstin.trim().toUpperCase(),
   );
 
+  // GSTIN is optional, but if it is typed it must be valid.
+  const gstinOk = gstin.trim().length === 0 || isValidGstin;
+
   const isValid =
     companyName.trim().length >= 2 &&
     ownerName.trim().length >= 2 &&
@@ -69,36 +75,70 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
     email.trim().includes('@') &&
     Boolean(companyType) &&
     registeredAddress.trim().length >= 5 &&
-    isValidGstin;
+    gstinOk;
+
+  const isEditing = initialCompany?.isRegistered === true;
+  const saving = registerCompany.isPending || updateCompany.isPending;
+
+  /** Only what the owner actually changed, so one edit never rewrites the rest. */
+  const changedFields = (): CompanyUpdateRequest => {
+    const initial = initialCompany;
+    const digits = (value: string) => value.replace(/\D/g, '').slice(-10);
+    const changes: CompanyUpdateRequest = {};
+    if (companyName.trim() !== (initial?.companyName ?? ''))
+      changes.company_name = companyName.trim();
+    if (ownerName.trim() !== (initial?.ownerName ?? '')) changes.owner_name = ownerName.trim();
+    if (digits(phone) !== digits(initial?.phone ?? '')) changes.phone = `+91 ${digits(phone)}`;
+    if (email.trim() !== (initial?.email ?? '')) changes.email = email.trim();
+    if (companyType !== (initial?.companyType ?? '')) changes.company_type = companyType;
+    if (registeredAddress.trim() !== (initial?.registeredAddress ?? '')) {
+      changes.registered_address = registeredAddress.trim();
+    }
+    if (gstin.trim().toUpperCase() !== (initial?.gstin ?? '').toUpperCase() && gstin.trim()) {
+      changes.gstin = gstin.trim().toUpperCase();
+    }
+    return changes;
+  };
 
   const handleContinue = async () => {
     if (!isValid) {
-      if (!isValidGstin) {
+      if (!gstinOk) {
         Alert.alert(
           'Invalid GSTIN',
-          'Please enter a valid 15-character GSTIN (e.g. 29ABCDE1234F1Z5).',
+          'Please enter a valid 15-character GSTIN (e.g. 29ABCDE1234F1Z5), or leave it empty.',
         );
         return;
       }
-      Alert.alert('Incomplete details', 'Please fill in all company information to continue.');
+      Alert.alert('Incomplete details', 'Please fill in all the required company information.');
       return;
     }
 
     try {
-      await registerCompany.mutateAsync({
-        company_name: companyName.trim(),
-        owner_name: ownerName.trim(),
-        phone: `+91 ${phone.trim().slice(-10)}`,
-        email: email.trim(),
-        company_type: companyType,
-        registered_address: registeredAddress.trim(),
-        gstin: gstin.trim().toUpperCase(),
-      });
-      setDashboardRole('owner');
+      if (isEditing) {
+        const changes = changedFields();
+        if (Object.keys(changes).length === 0) {
+          Alert.alert('Nothing to save', 'You have not changed anything.');
+          return;
+        }
+        await updateCompany.mutateAsync(changes);
+      } else {
+        await registerCompany.mutateAsync({
+          company_name: companyName.trim(),
+          owner_name: ownerName.trim(),
+          phone: `+91 ${phone.trim().slice(-10)}`,
+          email: email.trim(),
+          company_type: companyType,
+          registered_address: registeredAddress.trim(),
+          ...(gstin.trim() ? { gstin: gstin.trim().toUpperCase() } : {}),
+        });
+        setDashboardRole('owner');
+      }
 
       Alert.alert(
-        'Company profile saved',
-        'Your owner profile is ready. You can now add vehicles and assign drivers or drive yourself.',
+        isEditing ? 'Company details updated' : 'Company profile saved',
+        isEditing
+          ? 'Your changes have been saved.'
+          : 'Your owner profile is ready. You can now add vehicles and assign drivers or drive yourself.',
         [
           {
             text: 'Continue',
@@ -113,10 +153,12 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
         ],
       );
     } catch (err: any) {
-      const message =
-        err?.response?.data?.detail || err?.message || 'Failed to save company profile.';
+      const notAvailable = err instanceof ApiError && [404, 405, 501].includes(err.status ?? 0);
+      const message = notAvailable
+        ? "Editing company details isn't available yet. Please contact support to change them."
+        : err?.response?.data?.detail || err?.message || 'Failed to save company profile.';
       Alert.alert(
-        'Registration Error',
+        isEditing ? 'Could not save changes' : 'Registration Error',
         typeof message === 'string' ? message : JSON.stringify(message),
       );
     }
@@ -206,8 +248,7 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
           {/* GSTIN */}
           <TextField
             variant="outlined"
-            label="GSTIN"
-            required
+            label="GSTIN (optional)"
             value={gstin}
             onChangeText={(text) =>
               setGstin(
@@ -283,7 +324,7 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
           {/* Registered address */}
           <AppView>
             <AppText className="mb-2 text-[12px] font-bold uppercase tracking-wider text-muted">
-              ADDRESS
+              ADDRESS <AppText className="text-brand">*</AppText>
             </AppText>
             <TextField
               variant="outlined"
@@ -301,10 +342,10 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
         <AppView className="mt-10">
           <Button
             variant="brand"
-            label={registerCompany.isPending ? 'Saving...' : 'Continue'}
+            label={saving ? 'Saving...' : isEditing ? 'Save changes' : 'Continue'}
             onPress={handleContinue}
-            disabled={!isValid || registerCompany.isPending}
-            loading={registerCompany.isPending}
+            disabled={!isValid || saving}
+            loading={saving}
             size="lg"
             textClassName="font-extrabold text-base"
           />

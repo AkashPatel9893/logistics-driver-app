@@ -7,7 +7,7 @@ import { Alert, Keyboard } from 'react-native';
 
 import { getErrorMessage } from '@/lib/api/api-error';
 import { authApi } from '@/lib/api/auth';
-import { getDobError } from '@/lib/dob';
+import { getDobBlurError, getDobTypingError } from '@/lib/dob';
 
 import { driverProfileSchema } from '../schema';
 import { useAuthStore } from '../use-auth-store';
@@ -57,7 +57,6 @@ export function useOnboardingForm() {
   };
 
   const handleDobChange = (text: string) => {
-    clearError('dob');
     const cleaned = text.replace(/[^0-9]/g, '');
     let formatted = cleaned;
     if (cleaned.length > 2 && cleaned.length <= 4) {
@@ -66,10 +65,15 @@ export function useOnboardingForm() {
       formatted = `${cleaned.slice(0, 2)} / ${cleaned.slice(2, 4)} / ${cleaned.slice(4, 8)}`;
     }
     setDob(formatted);
-    if (formatted.length < 14) return;
-    // Tell the user as soon as the date is complete, with the keyboard out of the way of the message.
-    Keyboard.dismiss();
-    const error = getDobError(formatted);
+    // Checked as it is typed (day, month, year), so a wrong part shows its message at once.
+    setValidationErrors((current) => ({ ...current, dob: getDobTypingError(formatted) }));
+    // Complete: get the keyboard out of the way of the message.
+    if (formatted.length === 14) Keyboard.dismiss();
+  };
+
+  /** Leaving the field half-filled is an error too. */
+  const handleDobBlur = () => {
+    const error = getDobBlurError(dob);
     if (error) setValidationErrors((current) => ({ ...current, dob: error }));
   };
 
@@ -101,6 +105,7 @@ export function useOnboardingForm() {
     handleNameChange,
     handlePhoneChange,
     handleDobChange,
+    handleDobBlur,
     handleSubmit,
   };
 }

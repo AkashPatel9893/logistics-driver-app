@@ -15,7 +15,7 @@ const BUNDLED = {
  */
 export function getBundledVehicleImage(codeOrName?: string | null): ImageSourcePropType {
   const key = (codeOrName ?? '').toUpperCase().replace(/[^A-Z0-9]+/g, '_');
-  if (/BIKE|SCOOTER|TWO_WHEELER|(^|_)2_?W/.test(key)) return BUNDLED.scooter;
+  if (/BIKE|SCOOTER|MOTORCYCLE|MOPED|TWO_WHEELER|(^|_)2_?W/.test(key)) return BUNDLED.scooter;
   if (/THREE_WHEELER|(^|_)3_?W|AUTO|E_LOADER/.test(key)) return BUNDLED.threeWheeler;
   if (/PICKUP/.test(key)) return BUNDLED.pickup;
   if (/HEAVY|TRUCK_(1[0-9]|[2-9][0-9])|(1[0-9]|[2-9][0-9])_?FT|EICHER|407|LCV|HCV/.test(key)) {

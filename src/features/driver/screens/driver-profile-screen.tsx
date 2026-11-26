@@ -11,6 +11,7 @@ import {
 } from '@/components/ui';
 import { useDriverProfile } from '@/hooks/use-driver';
 import { useFleetCompany } from '@/hooks/use-fleet';
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { FleetVehiclesSection } from '@/features/fleet/components';
 import type { VerificationStatus } from '@/lib/api/models';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,6 +39,7 @@ export function DriverProfileScreen() {
   const insets = useSafeAreaInsets();
   const { data: profile } = useDriverProfile();
   const { data: company } = useFleetCompany();
+  const isOwnerMode = useFleetStore.use.dashboardRole() === 'owner';
   const user = useAuthStore.use.user();
 
   if (!profile) {
@@ -80,6 +82,10 @@ export function DriverProfileScreen() {
       route: '/setup-bank' as const,
     },
   ];
+  // A fleet owner is only asked for what the fleet needs; licence and RC are for driving.
+  const visibleDocuments = isOwnerMode
+    ? documents.filter((d) => d.name !== 'Driving licence' && d.name !== 'Registration certificate')
+    : documents;
 
   return (
     <AppView className="flex-1 bg-background">
@@ -144,7 +150,7 @@ export function DriverProfileScreen() {
           </AppText>
 
           <AppView className="rounded-3xl border border-border bg-card overflow-hidden shadow-sm">
-            {documents.map((doc, idx) => {
+            {visibleDocuments.map((doc, idx) => {
               const meta = STATUS[doc.status];
               return (
                 <AppPressable
@@ -152,7 +158,7 @@ export function DriverProfileScreen() {
                   onPress={() => router.push(doc.route)}
                   pressScale={0.98}
                   className={`flex-row items-center justify-between p-4 ${
-                    idx !== documents.length - 1 ? 'border-b border-border/60' : ''
+                    idx !== visibleDocuments.length - 1 ? 'border-b border-border/60' : ''
                   } active:bg-neutral-100 dark:active:bg-neutral-800`}
                 >
                   <AppView className="flex-1 pr-3">

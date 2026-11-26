@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { driverApi } from '@/lib/api/driver';
+import { onboardingApi } from '@/lib/api/onboarding';
 import type { BankInput, DriverProfile, KycInput, VehicleInput } from '@/lib/api/models';
 import { queryKeys } from '@/lib/queries/keys';
 
@@ -65,6 +66,29 @@ export function useSubmitDailyCheck() {
       queryClient.invalidateQueries({ queryKey: queryKeys.profile });
       queryClient.invalidateQueries({ queryKey: queryKeys.wallet });
       queryClient.invalidateQueries({ queryKey: ['driver', 'earnings'] });
+    },
+  });
+}
+
+/** What the backend has for one saved vehicle's documents: status and expiry per type. */
+export interface VehicleDocumentInfo {
+  type: string;
+  status: string;
+  /** ISO date, when the document has one. */
+  expiryDate: string | null;
+}
+
+export function useVehicleDocuments(vehicleId: string | undefined) {
+  return useQuery({
+    queryKey: ['driver', 'vehicle-documents', vehicleId ?? ''],
+    enabled: Boolean(vehicleId),
+    queryFn: async (): Promise<VehicleDocumentInfo[]> => {
+      const docs = await onboardingApi.listVehicleDocuments(vehicleId!);
+      return (docs ?? []).map((d: any) => ({
+        type: d.document_type,
+        status: d.verification_status,
+        expiryDate: d.expiry_date ?? null,
+      }));
     },
   });
 }

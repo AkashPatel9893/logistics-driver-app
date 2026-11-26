@@ -3,10 +3,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import { getErrorMessage } from '@/lib/api/api-error';
-import { authApi } from '@/lib/api/auth';
+import { authApi, toPartnerRole } from '@/lib/api/auth';
 
 import { isAwaitingApproval, useAuthStore } from '../use-auth-store';
-import { useFleetStore } from '@/features/fleet/use-fleet-store';
+import { getSavedDashboardRole, useFleetStore } from '@/features/fleet/use-fleet-store';
 import { goBack } from '@/lib/go-back';
 
 const DEFAULT_OTP_LENGTH = 6;
@@ -33,7 +33,10 @@ export function useOtpVerification() {
   }, [isCountingDown]);
 
   const verify = useMutation({
-    mutationFn: (otp: string) => authApi.verifyOtp(phone, otp),
+    mutationFn: (otp: string) => {
+      const saved = getSavedDashboardRole();
+      return authApi.verifyOtp(phone, otp, saved ? toPartnerRole(saved) : null);
+    },
     onSuccess: (session) => {
       useAuthStore.getState().signIn(session);
       // The backend remembers the dashboard the partner picked (a UI hint only).

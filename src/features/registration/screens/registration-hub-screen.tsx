@@ -1,4 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
+import { switchDashboardRole } from '@/features/fleet/switch-role';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, RefreshControl } from 'react-native';
 
@@ -16,7 +17,6 @@ import {
   signOut,
   syncOnboardingStatus,
 } from '@/features/auth/use-auth-store';
-import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { useFleetCompany } from '@/hooks/use-fleet';
 import { SetupScreenLayout } from '@/features/driver/components/setup-screen-layout';
 import { useSubmitOnboarding, useVehicleTypes } from '@/hooks/use-driver';
@@ -28,6 +28,7 @@ import {
   isStepDone,
   snapshotFromStatus,
   useDriverDocuments,
+  useFleetAssignedVehicle,
   useOnboardingStatus,
   type RegistrationStep,
 } from '../use-registration';
@@ -58,6 +59,7 @@ export function RegistrationHubScreen() {
   const statusQuery = useOnboardingStatus();
   const docsQuery = useDriverDocuments();
   const { data: vehicleTypes = [] } = useVehicleTypes();
+  const { data: fleetVehicle = null } = useFleetAssignedVehicle();
   const pickedTypeId = useRegistrationStore.use.vehicleTypeId();
   const fleetDriver = useRegistrationStore.use.fleetDriver();
   const submit = useSubmitOnboarding();
@@ -67,7 +69,7 @@ export function RegistrationHubScreen() {
   const { data: company } = useFleetCompany();
   const isFleetOwner = company?.isRegistered === true;
   const backToFleet = () => {
-    useFleetStore.getState().setDashboardRole('owner');
+    switchDashboardRole('owner');
     router.replace('/home');
   };
   // Pull down to check whether documents have been verified since.
@@ -93,7 +95,14 @@ export function RegistrationHubScreen() {
   }, [onboardingStatus]);
 
   const steps = snapshot
-    ? buildRegistrationSteps(snapshot, docsQuery.data, vehicleTypes, pickedTypeId, fleetDriver)
+    ? buildRegistrationSteps(
+        snapshot,
+        docsQuery.data,
+        vehicleTypes,
+        pickedTypeId,
+        fleetDriver,
+        fleetVehicle,
+      )
     : [];
   const nextStep = steps.find((s) => !isStepDone(s.state));
   const ready = holding && snapshot !== null && !docsQuery.isPending;

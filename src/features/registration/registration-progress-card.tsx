@@ -10,6 +10,7 @@ import {
   isStepDone,
   snapshotFromProfile,
   useDriverDocuments,
+  useFleetAssignedVehicle,
 } from './use-registration';
 import { useRegistrationStore } from './use-registration-store';
 
@@ -18,6 +19,7 @@ export function RegistrationProgressCard({ profile }: { profile: DriverProfile }
   const router = useRouter();
   const { data: docs } = useDriverDocuments();
   const { data: vehicleTypes = [] } = useVehicleTypes();
+  const { data: fleetVehicle = null } = useFleetAssignedVehicle();
   const pickedTypeId = useRegistrationStore.use.vehicleTypeId();
   const fleetDriver = useRegistrationStore.use.fleetDriver();
   const steps = buildRegistrationSteps(
@@ -26,6 +28,7 @@ export function RegistrationProgressCard({ profile }: { profile: DriverProfile }
     vehicleTypes,
     pickedTypeId,
     fleetDriver,
+    fleetVehicle,
   );
   const done = steps.filter((s) => isStepDone(s.state)).length;
   const next = steps.find((s) => !isStepDone(s.state));

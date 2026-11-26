@@ -4,6 +4,7 @@ import {
   fleetApi,
   type AssignDriverRequest,
   type CompanyCreateRequest,
+  type CompanyUpdateRequest,
   type FleetVehicleCreateRequest,
   type LinkRequestCreate,
 } from '@/lib/api/fleet';
@@ -31,6 +32,16 @@ export function useRegisterCompany() {
   });
 }
 
+export function useUpdateCompany() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CompanyUpdateRequest) => fleetApi.updateCompany(body),
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKeys.fleet.company, toCompanyDetails(data));
+    },
+  });
+}
+
 export function useFleetStats() {
   return useQuery({
     queryKey: queryKeys.fleet.stats,
@@ -38,9 +49,10 @@ export function useFleetStats() {
   });
 }
 
-export function useFleetVehicles() {
+export function useFleetVehicles(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.fleet.vehicles,
+    enabled: options.enabled ?? true,
     queryFn: async ({ signal }) => {
       const list = await fleetApi.listVehicles(signal);
       return (list ?? []).map(toFleetVehicle);

@@ -1,4 +1,5 @@
 import { useCanGoBack, useRouter } from 'expo-router';
+import { switchDashboardRole } from '@/features/fleet/switch-role';
 import { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,7 +22,7 @@ export function ChooseRoleScreen() {
   // This screen's own stack: no back button when it is the first screen (e.g. after a restart).
   const canGoBack = useCanGoBack();
   const insets = useSafeAreaInsets();
-  const setDashboardRole = useFleetStore.use.setDashboardRole();
+  const setDashboardRole = switchDashboardRole;
   const currentRole = useFleetStore.use.dashboardRole();
 
   const [selectedRole, setSelectedRole] = useState<RoleType>(currentRole || 'driver');
@@ -124,10 +125,6 @@ export function ChooseRoleScreen() {
               Continue
             </AppText>
           </AppPressable>
-
-          <AppText className="mt-3 text-center text-[12px] text-muted">
-            {isRider ? 'Next, choose your vehicle' : 'Next, set up your company details'}
-          </AppText>
         </AppView>
       </AppView>
     </AppView>

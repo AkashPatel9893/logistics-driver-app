@@ -10,6 +10,7 @@ import {
   Icon,
   TextField,
 } from '@/components/ui';
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { useDriverProfile, useSaveKyc } from '@/hooks/use-driver';
 import { getErrorMessage } from '@/lib/api/api-error';
 import { formatDateInput, toIsoDate } from '@/lib/api/onboarding';
@@ -25,6 +26,8 @@ export function SetupKycScreen() {
   const { data: profile } = useDriverProfile();
   const saveKyc = useSaveKyc();
   const current = profile?.kyc ?? null;
+  // A fleet owner only needs PAN and a selfie; the licence is asked when they choose to drive.
+  const needsLicence = useFleetStore.use.dashboardRole() !== 'owner';
 
   // Numbers are stored masked on the server, so they are entered again to resubmit.
   const [panNumber, setPanNumber] = useState('');
@@ -38,34 +41,51 @@ export function SetupKycScreen() {
   const handleSubmit = () => {
     const expiry = toIsoDate(dlExpiry);
     if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panNumber)) return setError('Enter a valid PAN number.');
-    if (dlNumber.trim().length < 6) return setError('Enter your driving licence number.');
-    if (!expiry) return setError('Enter the licence validity date as DD/MM/YYYY.');
-    if (Date.parse(expiry) < Date.now()) return setError('This driving licence has expired.');
-    if (!pan.uri || !dl.uri || !selfie.uri) {
-      return setError('Add photos of your PAN and licence, and take a selfie.');
+    if (needsLicence) {
+      if (dlNumber.trim().length < 6) return setError('Enter your driving licence number.');
+      if (!expiry) return setError('Enter the licence validity date as DD/MM/YYYY.');
+      if (Date.parse(expiry) < Date.now()) return setError('This driving licence has expired.');
+    }
+    if (!pan.uri || !selfie.uri || (needsLicence && !dl.uri)) {
+      return setError(
+        needsLicence
+          ? 'Add photos of your PAN and licence, and take a selfie.'
+          : 'Add a photo of your PAN, and take a selfie.',
+      );
     }
     setError(undefined);
     saveKyc.mutate(
       {
         panNumber,
         panPhotoUri: pan.uri,
-        dlNumber: dlNumber.replace(/[^A-Z0-9]/g, ''),
-        dlExpiry: expiry,
-        dlPhotoUri: dl.uri,
+        ...(needsLicence
+          ? {
+              dlNumber: dlNumber.replace(/[^A-Z0-9]/g, ''),
+              dlExpiry: expiry ?? undefined,
+              dlPhotoUri: dl.uri ?? undefined,
+            }
+          : {}),
         selfieUri: selfie.uri,
       },
       {
         onSuccess: () =>
-          Alert.alert('Documents submitted', 'Your licence, PAN and selfie have been uploaded.', [
-            { text: 'OK', onPress: () => goBack(router) },
-          ]),
+          Alert.alert(
+            'Documents submitted',
+            needsLicence
+              ? 'Your licence, PAN and selfie have been uploaded.'
+              : 'Your PAN and selfie have been uploaded.',
+            [{ text: 'OK', onPress: () => goBack(router) }],
+          ),
         onError: (e) => setError(getErrorMessage(e)),
       },
     );
   };
 
   return (
-    <SetupScreenLayout title="KYC verification" subtitle="Driving licence, PAN and selfie">
+    <SetupScreenLayout
+      title="KYC verification"
+      subtitle={needsLicence ? 'Driving licence, PAN and selfie' : 'PAN and selfie'}
+    >
       <AppKeyboardAvoidingView>
         <AppScrollView
           contentContainerClassName="gap-5 px-5 pb-16 pt-4"
@@ -74,44 +94,51 @@ export function SetupKycScreen() {
         >
           {current ? (
             <AppText className="text-[13px] text-muted">
-              On file: licence {current.dlNumber || '—'}, PAN {current.panNumber || '—'}
-              {current.missing.length > 0 ? `. Still needed: ${current.missing.join(', ')}` : ''}.
-              Submitting again replaces them.
+              On file: {needsLicence ? `licence ${current.dlNumber || '—'}, ` : ''}PAN{' '}
+              {current.panNumber || '—'}
+              {current.missing.length > 0
+                ? `. Still needed: ${current.missing.filter((m) => needsLicence || !/licen[cs]e/i.test(m)).join(', ')}`
+                : ''}
+              . Submitting again replaces them.
             </AppText>
           ) : null}
 
-          <TextField
-            variant="outlined"
-            label="Driving licence number"
-            required
-            value={dlNumber}
-            onChangeText={(t) => setDlNumber(t.toUpperCase())}
-            placeholder="KA0520190012345"
-            autoCapitalize="characters"
-            maxLength={18}
-            leading={<Icon name="document" size={18} tone="icon-subtle" />}
-          />
+          {needsLicence ? (
+            <>
+              <TextField
+                variant="outlined"
+                label="Driving licence number"
+                required
+                value={dlNumber}
+                onChangeText={(t) => setDlNumber(t.toUpperCase())}
+                placeholder="KA0520190012345"
+                autoCapitalize="characters"
+                maxLength={18}
+                leading={<Icon name="document" size={18} tone="icon-subtle" />}
+              />
 
-          <TextField
-            variant="outlined"
-            label="Licence valid until"
-            required
-            value={dlExpiry}
-            onChangeText={(value) => setDlExpiry(formatDateInput(value))}
-            placeholder="DD/MM/YYYY"
-            keyboardType="number-pad"
-            maxLength={10}
-            hint="The validity date printed on your licence"
-          />
+              <TextField
+                variant="outlined"
+                label="Licence valid until"
+                required
+                value={dlExpiry}
+                onChangeText={(value) => setDlExpiry(formatDateInput(value))}
+                placeholder="DD/MM/YYYY"
+                keyboardType="number-pad"
+                maxLength={10}
+                hint="The validity date printed on your licence"
+              />
 
-          <PhotoUploadBox
-            label="Driving licence"
-            title="Add licence photo"
-            hint="Name, photo and validity date must be readable"
-            photoUri={dl.uri}
-            uploading={false}
-            onSelectPhoto={dl.pick}
-          />
+              <PhotoUploadBox
+                label="Driving licence"
+                title="Add licence photo"
+                hint="Name, photo and validity date must be readable"
+                photoUri={dl.uri}
+                uploading={false}
+                onSelectPhoto={dl.pick}
+              />
+            </>
+          ) : null}
 
           <TextField
             variant="outlined"

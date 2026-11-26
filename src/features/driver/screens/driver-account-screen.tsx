@@ -1,4 +1,5 @@
 import { useWallet } from '@/hooks/use-earnings';
+import { switchDashboardRole } from '@/features/fleet/switch-role';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { Alert } from 'react-native';
@@ -45,7 +46,7 @@ export function DriverAccountScreen() {
   const { data: vehicles = [] } = useFleetVehicles();
   const { data: activeJob } = useActiveJob();
   const dashboardRole = useFleetStore.use.dashboardRole();
-  const setDashboardRole = useFleetStore.use.setDashboardRole();
+  const setDashboardRole = switchDashboardRole;
   const modeSwitch = modeSwitchState(profile);
 
   // A Fleet Owner with no approved driver profile has no other way into driver registration.
@@ -118,9 +119,12 @@ export function DriverAccountScreen() {
     {
       icon: 'checkmark.shield.fill',
       label: 'KYC Documents',
-      sublabel: profile?.kyc
-        ? `Licence ${profile.kyc.dlNumber || 'submitted'}`
-        : 'Driving licence, PAN and selfie',
+      sublabel:
+        dashboardRole === 'owner'
+          ? 'PAN and selfie'
+          : profile?.kyc
+            ? `Licence ${profile.kyc.dlNumber || 'submitted'}`
+            : 'Driving licence, PAN and selfie',
       route: '/setup-kyc',
     },
     {

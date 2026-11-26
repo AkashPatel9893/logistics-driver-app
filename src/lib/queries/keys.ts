@@ -13,6 +13,7 @@ export const queryKeys = {
   ticketMessages: (id: string) => ['support', 'tickets', id, 'messages'] as const,
   profile: ['driver', 'profile'] as const,
   vehicleTypes: ['driver', 'vehicle-types'] as const,
+  fleetAssignedVehicle: ['driver', 'fleet-assigned-vehicle'] as const,
   onboardingStatus: ['driver', 'onboarding', 'status'] as const,
   driverDocuments: ['driver', 'onboarding', 'documents'] as const,
   offers: ['driver', 'offers'] as const,

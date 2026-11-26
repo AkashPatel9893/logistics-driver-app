@@ -10,6 +10,7 @@ import type {
   DailyCheck,
   DocumentAlert,
   DriverProfile,
+  FuelType,
   GeoPoint,
   BankDetails,
   KycDetails,
@@ -37,10 +38,15 @@ async function activeVehicle(signal?: AbortSignal): Promise<VehicleDetails | nul
   const v = vehicles?.[0];
   if (!v) return null;
   const type = (types ?? []).find((t) => t.code === v.vehicle_type_code);
+  const fuel = String(v.fuel_type ?? '').toUpperCase();
   return {
+    id: v.id,
     vehicleTypeId: type?.id ?? '',
     vehicleTypeName: type?.display_name ?? v.vehicle_type_code,
     model: [v.make, v.model].filter(Boolean).join(' '),
+    makeName: v.make ?? '',
+    modelName: v.model ?? '',
+    fuelType: ['PETROL', 'DIESEL', 'CNG', 'ELECTRIC'].includes(fuel) ? (fuel as FuelType) : null,
     plateNumber: v.registration_number,
     rcPhotoUrl: '',
     frontPhotoUrl: '',
@@ -356,12 +362,14 @@ export const driverApi = {
   },
 
   saveKyc: async (input: KycInput): Promise<DriverProfile> => {
-    await onboardingApi.submitDriverDocument({
-      type: 'DRIVING_LICENCE',
-      identifier: input.dlNumber,
-      expiryDate: input.dlExpiry,
-      fileUri: input.dlPhotoUri,
-    });
+    if (input.dlNumber && input.dlExpiry && input.dlPhotoUri) {
+      await onboardingApi.submitDriverDocument({
+        type: 'DRIVING_LICENCE',
+        identifier: input.dlNumber,
+        expiryDate: input.dlExpiry,
+        fileUri: input.dlPhotoUri,
+      });
+    }
     await onboardingApi.submitDriverDocument({
       type: 'PAN',
       identifier: input.panNumber,

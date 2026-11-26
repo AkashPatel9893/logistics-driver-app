@@ -41,6 +41,13 @@ async function marketFromLocation(): Promise<string> {
   return serviceability.market_code;
 }
 
+export type PartnerRole = 'RIDER' | 'FLEET_OWNER';
+
+/** The partner app's two modes, as the backend names them. */
+export function toPartnerRole(role: 'driver' | 'owner'): PartnerRole {
+  return role === 'owner' ? 'FLEET_OWNER' : 'RIDER';
+}
+
 export const authApi = {
   sendOtp: async (identifier: string): Promise<OtpChallenge> => {
     const phone = toPhone(identifier);
@@ -56,7 +63,11 @@ export const authApi = {
     };
   },
 
-  verifyOtp: async (identifier: string, otp: string): Promise<AuthSession> => {
+  verifyOtp: async (
+    identifier: string,
+    otp: string,
+    savedRole?: PartnerRole | null,
+  ): Promise<AuthSession> => {
     const phone = toPhone(identifier);
     const res = await request<any>({
       method: 'POST',
@@ -66,6 +77,8 @@ export const authApi = {
         app_type: 'PARTNER',
         code: otp,
         device: deviceInfo(),
+        // Only when this phone has a saved choice: never guess for someone who has not chosen.
+        ...(savedRole ? { selected_role: savedRole } : {}),
       },
     });
     setToken({ accessToken: res.access_token, refreshToken: res.refresh_token });
@@ -99,14 +112,34 @@ export const authApi = {
   /** Light status check (one request): profile exists? onboarding status? */
   getMe: async (
     signal?: AbortSignal,
-  ): Promise<{ isOnboarded: boolean; onboardingStatus: string | null; name: string | null }> => {
+  ): Promise<{
+    isOnboarded: boolean;
+    onboardingStatus: string | null;
+    name: string | null;
+    /** The mode the backend has on record (proposed field; null until it exists). */
+    activeRole: PartnerRole | null;
+  }> => {
     const res = await request<any>({ url: '/auth/me', signal });
     const me = res?.user ?? res ?? {};
+    const role = me.active_role ?? me.selected_role;
     return {
       isOnboarded: me.profile_complete === true,
       onboardingStatus: me.onboarding_status ?? null,
       name: me.name ?? null,
+      activeRole: role === 'RIDER' || role === 'FLEET_OWNER' ? role : null,
     };
+  },
+
+  /**
+   * Tells the backend which mode the partner is in. PUT /auth/active-role is proposed, so a
+   * missing endpoint is not an error: the phone still remembers the choice.
+   */
+  setActiveRole: async (role: PartnerRole): Promise<void> => {
+    try {
+      await request<any>({ method: 'PUT', url: '/auth/active-role', data: { role } });
+    } catch {
+      // Not built yet, offline, or rejected: the local choice stands.
+    }
   },
 
   updateProfile: async (input: UpdateProfileInput): Promise<User> => {

@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Keyboard } from 'react-native';
+import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -17,19 +17,7 @@ import {
 } from '@/components/ui';
 import { useAssignFleetDriver, useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import type { AssignDriverRequest } from '@/lib/api/fleet';
-import { getDobError } from '@/lib/dob';
 import { goBack } from '@/lib/go-back';
-
-function parseDobToIso(formatted: string): string | undefined {
-  const parts = formatted.split('/').map((s) => s.trim());
-  if (parts.length === 3) {
-    const [day, month, year] = parts;
-    if (day && month && year && year.length === 4) {
-      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-    }
-  }
-  return undefined;
-}
 
 export function AddDriverScreen() {
   const router = useRouter();
@@ -44,10 +32,6 @@ export function AddDriverScreen() {
   const [isSelfDrive, setIsSelfDrive] = useState(false);
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [dob, setDob] = useState('');
-  const [dlNumber, setDlNumber] = useState('');
-  const [aadhaarUploaded, setAadhaarUploaded] = useState(false);
-  const [dlUploaded, setDlUploaded] = useState(false);
 
   const handleToggleSelfDrive = () => {
     if (!isSelfDrive) {
@@ -56,44 +40,15 @@ export function AddDriverScreen() {
       setPhone(
         company?.phone ? company.phone.replace(/^\+91/, '').replace(/\D/g, '').slice(-10) : '',
       );
-      setDob('');
-      setDlNumber('');
-      setAadhaarUploaded(true);
-      setDlUploaded(true);
     } else {
       setIsSelfDrive(false);
       setFullName('');
       setPhone('');
-      setDob('');
-      setDlNumber('');
-      setAadhaarUploaded(false);
-      setDlUploaded(false);
     }
   };
 
-  const handleDobChange = (text: string) => {
-    const cleaned = text.replace(/[^0-9]/g, '');
-    let formatted = cleaned;
-    if (cleaned.length > 2 && cleaned.length <= 4) {
-      formatted = `${cleaned.slice(0, 2)} / ${cleaned.slice(2)}`;
-    } else if (cleaned.length > 4) {
-      formatted = `${cleaned.slice(0, 2)} / ${cleaned.slice(2, 4)} / ${cleaned.slice(4, 8)}`;
-    }
-    setDob(formatted);
-    // Keeps any age error from sitting behind the keyboard.
-    if (formatted.length === 14) Keyboard.dismiss();
-  };
-
-  const isoDob = parseDobToIso(dob);
-  const dobError = dob.length === 14 ? getDobError(dob) : undefined;
-
-  const isValid = isSelfDrive
-    ? true
-    : fullName.trim().length >= 2 &&
-      phone.trim().length >= 10 &&
-      Boolean(isoDob) &&
-      !dobError &&
-      dlNumber.trim().length >= 6;
+  // Only who the driver is: they add licence, date of birth and Aadhaar in their own onboarding.
+  const isValid = isSelfDrive ? true : fullName.trim().length >= 2 && phone.trim().length >= 10;
 
   const handleContinue = async () => {
     const targetVehicleId = vehicleId || vehicles?.[0]?.id;
@@ -103,10 +58,7 @@ export function AddDriverScreen() {
     }
 
     if (!isValid) {
-      Alert.alert(
-        'Incomplete details',
-        'Please enter full name, 10-digit phone number, valid DOB (DD/MM/YYYY, 18 or older), and DL number.',
-      );
+      Alert.alert('Incomplete details', "Enter the driver's name and 10-digit mobile number.");
       return;
     }
 
@@ -116,8 +68,6 @@ export function AddDriverScreen() {
           is_owner_self: false,
           name: fullName.trim(),
           phone: `+91 ${phone.trim().slice(-10)}`,
-          dob: isoDob,
-          dl_number: dlNumber.trim().toUpperCase(),
         };
 
     try {
@@ -161,7 +111,7 @@ export function AddDriverScreen() {
               Add driver
             </AppText>
             <AppText className="mt-1.5 text-[15px] leading-5 text-muted">
-              Assign yourself or a new driver to your fleet vehicle.
+              Assign yourself, or add a driver by name and mobile number.
             </AppText>
           </AppView>
 
@@ -224,7 +174,7 @@ export function AddDriverScreen() {
               {/* Phone number */}
               <TextField
                 variant="outlined"
-                label="Phone number*"
+                label="Mobile number"
                 required
                 value={phone}
                 onChangeText={(text) => setPhone(text.replace(/\D/g, '').slice(0, 10))}
@@ -236,99 +186,10 @@ export function AddDriverScreen() {
                 inputClassName="ml-2 text-[15px]"
               />
 
-              {/* Date of birth */}
-              <TextField
-                variant="outlined"
-                label="Date of birth*"
-                required
-                value={dob}
-                onChangeText={handleDobChange}
-                placeholder="DD / MM / YYYY"
-                keyboardType="numeric"
-                maxLength={14}
-                leading={<Icon name="calendar" size={20} tone="icon-subtle" />}
-                inputClassName="ml-2 text-[15px]"
-                error={dobError}
-              />
-
-              {/* DL number */}
-              <TextField
-                variant="outlined"
-                label="Driving Licence number*"
-                required
-                value={dlNumber}
-                onChangeText={(text) => setDlNumber(text.toUpperCase().slice(0, 16))}
-                placeholder="e.g. DL-1420110012345"
-                autoCapitalize="characters"
-                autoCorrect={false}
-                leading={<Icon name="document" size={20} tone="icon-subtle" />}
-                inputClassName="ml-2 text-[15px]"
-              />
-
-              {/* Document upload checklist */}
-              <AppView className="mt-2 gap-3">
-                <AppText className="text-[13px] font-bold text-foreground">
-                  Verification Documents
-                </AppText>
-
-                <AppPressable
-                  onPress={() => setAadhaarUploaded((prev) => !prev)}
-                  className="flex-row items-center justify-between rounded-2xl border border-dashed border-border bg-card p-4 active:bg-neutral-100 dark:active:bg-neutral-800"
-                >
-                  <AppView row className="items-center gap-3">
-                    <Icon name="doc.text.fill" size={20} tone="icon-subtle" />
-                    <AppView>
-                      <AppText className="text-[14px] font-bold text-foreground">
-                        Aadhaar Card
-                      </AppText>
-                      <AppText className="text-[12px] text-muted">Front & back copy</AppText>
-                    </AppView>
-                  </AppView>
-                  <AppView
-                    className={`rounded-full px-3 py-1 ${
-                      aadhaarUploaded ? 'bg-emerald-500/15' : 'bg-surface-muted'
-                    }`}
-                  >
-                    <AppText
-                      className={`text-[11px] font-bold ${
-                        aadhaarUploaded
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-foreground'
-                      }`}
-                    >
-                      {aadhaarUploaded ? 'Attached' : 'Attach'}
-                    </AppText>
-                  </AppView>
-                </AppPressable>
-
-                <AppPressable
-                  onPress={() => setDlUploaded((prev) => !prev)}
-                  className="flex-row items-center justify-between rounded-2xl border border-dashed border-border bg-card p-4 active:bg-neutral-100 dark:active:bg-neutral-800"
-                >
-                  <AppView row className="items-center gap-3">
-                    <Icon name="doc.text.fill" size={20} tone="icon-subtle" />
-                    <AppView>
-                      <AppText className="text-[14px] font-bold text-foreground">
-                        Driving Licence
-                      </AppText>
-                      <AppText className="text-[12px] text-muted">Commercial / LMV licence</AppText>
-                    </AppView>
-                  </AppView>
-                  <AppView
-                    className={`rounded-full px-3 py-1 ${
-                      dlUploaded ? 'bg-emerald-500/15' : 'bg-surface-muted'
-                    }`}
-                  >
-                    <AppText
-                      className={`text-[11px] font-bold ${
-                        dlUploaded ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'
-                      }`}
-                    >
-                      {dlUploaded ? 'Attached' : 'Attach'}
-                    </AppText>
-                  </AppView>
-                </AppPressable>
-              </AppView>
+              <AppText className="text-[13px] leading-5 text-muted">
+                The driver signs in to the Ryno Partner app with this number and adds their own
+                licence, date of birth and Aadhaar. They can start once the Ryno team approves them.
+              </AppText>
             </AppView>
           ) : null}
 

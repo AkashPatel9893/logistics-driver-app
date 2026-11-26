@@ -8,8 +8,12 @@ export interface CompanyCreateRequest {
   email: string;
   company_type: string;
   registered_address: string;
-  gstin: string;
+  /** Optional: a small fleet may not be GST registered. */
+  gstin?: string;
 }
+
+/** Any subset of the company fields, for editing one thing at a time. */
+export type CompanyUpdateRequest = Partial<CompanyCreateRequest>;
 
 export interface CompanyResponse {
   id: string | null;
@@ -167,6 +171,14 @@ export const fleetApi = {
     request<CompanyResponse>({
       url: '/fleet/company',
       method: 'POST',
+      data: body,
+    }),
+
+  /** PATCH /fleet/company (proposed): change only the fields sent. */
+  updateCompany: (body: CompanyUpdateRequest) =>
+    request<CompanyResponse>({
+      url: '/fleet/company',
+      method: 'PATCH',
       data: body,
     }),
 

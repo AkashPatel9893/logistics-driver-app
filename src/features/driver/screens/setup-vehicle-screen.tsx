@@ -7,24 +7,33 @@ import {
   AppKeyboardAvoidingView,
   AppPressable,
   AppScrollView,
+  AppSpinner,
   AppText,
   AppView,
   Button,
   Icon,
   TextField,
 } from '@/components/ui';
-import { useDriverProfile, useSaveVehicle, useVehicleTypes } from '@/hooks/use-driver';
-import { useAddFleetVehicle, useFleetCompany, useRequestFleetLink } from '@/hooks/use-fleet';
+import {
+  useDriverProfile,
+  useSaveVehicle,
+  useVehicleDocuments,
+  useVehicleTypes,
+  type VehicleDocumentInfo,
+} from '@/hooks/use-driver';
+import { useAddFleetVehicle, useFleetVehicles, useRequestFleetLink } from '@/hooks/use-fleet';
+import { DriverChoiceSheet } from '@/features/fleet/components';
+import { useDriveVehicle } from '@/features/fleet/use-drive-vehicle';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { useRegistrationStore } from '@/features/registration/use-registration-store';
 import { markSubmitted, useDraftText } from '@/features/registration/drafts';
-import { formatDateInput, toIsoDate } from '@/lib/api/onboarding';
 import { PhotoUploadBox } from '../components/photo-upload-box';
 import { useLocalPhoto } from '../hooks/use-local-photo';
-import type { FleetDriver } from '@/features/fleet/types';
-import type { FuelType } from '@/lib/api/models';
+import type { DriverProfile, FuelType, VehicleTypeOption } from '@/lib/api/models';
+import { formatDateInput, toIsoDate } from '@/lib/api/onboarding';
 
 import { SetupScreenLayout } from '../components/setup-screen-layout';
+import { VehicleImage } from '../components/vehicle-image';
 import { goBack } from '@/lib/go-back';
 import { goToNextStep } from '@/features/registration/next-step';
 
@@ -37,11 +46,60 @@ const CAPACITIES = [
   { value: 2000, label: '2 Ton (2000 kg)' },
 ];
 
+/** Capacities a vehicle type can carry: the presets at or below its max payload, plus the max itself. */
+function capacityOptionsFor(maxPayloadKg: number | null): { value: number; label: string }[] {
+  if (maxPayloadKg == null) return CAPACITIES;
+  const options = CAPACITIES.filter((cap) => cap.value < maxPayloadKg);
+  options.push({ value: maxPayloadKg, label: `${maxPayloadKg} kg` });
+  return options;
+}
+
+/** ISO date (YYYY-MM-DD) as the form shows it (DD/MM/YYYY). */
+function toFormDate(iso: string | null | undefined): string {
+  return iso ? iso.split('-').reverse().join('/') : '';
+}
+
+const DOC_LABEL: Record<string, string> = { RC: 'RC', INSURANCE: 'Insurance', PUC: 'PUC' };
+
+function docStatus(status: string): { label: string; className: string } {
+  if (status === 'VERIFIED') return { label: 'Verified', className: 'text-emerald-700' };
+  if (status === 'REJECTED') return { label: 'Rejected', className: 'text-red-600' };
+  return { label: 'In review', className: 'text-amber-700' };
+}
+
+/** Waits for the saved details, so the form never opens empty while they are still loading. */
 export function SetupVehicleScreen() {
+  const { data: profile } = useDriverProfile();
+  const { data: vehicleTypes } = useVehicleTypes();
+  const savedId = profile?.vehicle?.id;
+  const docs = useVehicleDocuments(savedId);
+  const waitingForDocs = Boolean(savedId) && docs.isLoading;
+  if (!profile || !vehicleTypes || waitingForDocs) {
+    return (
+      <SetupScreenLayout
+        title="Add your vehicle"
+        subtitle="Tell us about the vehicle you'll use for deliveries."
+      >
+        <AppView className="flex-1 items-center justify-center p-6">
+          <AppSpinner size="large" />
+        </AppView>
+      </SetupScreenLayout>
+    );
+  }
+  return (
+    <SetupVehicleForm profile={profile} vehicleTypes={vehicleTypes} vehicleDocs={docs.data ?? []} />
+  );
+}
+
+interface SetupVehicleFormProps {
+  profile: DriverProfile;
+  vehicleTypes: VehicleTypeOption[];
+  vehicleDocs: VehicleDocumentInfo[];
+}
+
+function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFormProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { data: profile } = useDriverProfile();
-  const { data: vehicleTypes = [] } = useVehicleTypes();
   const addFleetVehicle = useAddFleetVehicle();
   const saveVehicle = useSaveVehicle();
   const isFleetOwner = useFleetStore.use.dashboardRole() === 'owner';
@@ -51,10 +109,17 @@ export function SetupVehicleScreen() {
   const rc = useLocalPhoto(draft('rc'));
   const insurance = useLocalPhoto(draft('insurance'));
   const puc = useLocalPhoto(draft('puc'));
-  const [insuranceExpiry, setInsuranceExpiry] = useDraftText(draft('insuranceExpiry'));
-  const [pucExpiry, setPucExpiry] = useDraftText(draft('pucExpiry'));
+  // What the backend has, to start from when this phone has no draft of its own. A fleet owner
+  // adding a fleet vehicle starts empty: the saved vehicle is their personal one.
+  const saved = isFleetOwner ? null : (profile.vehicle ?? null);
+  const savedExpiry = (type: string) =>
+    toFormDate(vehicleDocs.find((d) => d.type === type)?.expiryDate);
+  const [insuranceExpiry, setInsuranceExpiry] = useDraftText(
+    draft('insuranceExpiry'),
+    savedExpiry('INSURANCE'),
+  );
+  const [pucExpiry, setPucExpiry] = useDraftText(draft('pucExpiry'), savedExpiry('PUC'));
   const requestFleetLink = useRequestFleetLink();
-  const { data: company } = useFleetCompany();
 
   const current = profile?.vehicle ?? null;
 
@@ -71,20 +136,27 @@ export function SetupVehicleScreen() {
   );
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [plateNumber, setPlateNumber] = useDraftText(draft('plate'), current?.plateNumber ?? '');
-  const [capacityKg, setCapacityKg] = useState<number | null>(null);
+  const [capacityKg, setCapacityKg] = useState<number | null>(
+    vehicleTypes.find((t) => t.id === typeId)?.capacityKg ?? null,
+  );
   const [showCapacityPicker, setShowCapacityPicker] = useState(false);
-  const [fuelDraft, setFuelDraft] = useDraftText(draft('fuel'));
+  const [fuelDraft, setFuelDraft] = useDraftText(draft('fuel'), saved?.fuelType ?? '');
   const fuelType = (fuelDraft || null) as FuelType | null;
   const setFuelType = (value: FuelType | null) => setFuelDraft(value ?? '');
-  const [make, setMake] = useDraftText(draft('make'));
-  const [model, setModel] = useDraftText(draft('model'));
+  const [make, setMake] = useDraftText(draft('make'), saved?.makeName ?? '');
+  const [model, setModel] = useDraftText(draft('model'), saved?.modelName ?? '');
 
-  // Driver Assignment
-  const [assignedDriver, setAssignedDriver] = useState<FleetDriver | null>(null);
-  const [showDriverChoiceModal, setShowDriverChoiceModal] = useState(false);
   const [error, setError] = useState<string>();
 
+  // Fleet owner: after saving, ask who will drive the new vehicle.
+  const { data: fleetVehicles = [] } = useFleetVehicles({ enabled: isFleetOwner });
+  const { assigningVehicleId, driveVehicle } = useDriveVehicle();
+  const [newVehicle, setNewVehicle] = useState<{ id: string; label: string } | null>(null);
+  const [showDriverChoice, setShowDriverChoice] = useState(false);
+
   const selectedType = vehicleTypes.find((t) => t.id === typeId);
+  const maxPayloadKg = selectedType?.capacityKg ?? null;
+  const capacityOptions = capacityOptionsFor(maxPayloadKg);
 
   const handleLinkOwner = async () => {
     const clean = ownerPhone.replace(/[^0-9]/g, '');
@@ -115,22 +187,35 @@ export function SetupVehicleScreen() {
     }
   };
 
-  const handleSelfDrive = () => {
-    const selfDriver: FleetDriver = {
-      id: 'driver-self',
-      name: company?.ownerName || profile?.name || 'Owner',
-      phone: company?.phone || profile?.phone || '',
-      isOwnerSelf: true,
-      aadhaarUploaded: true,
-      dlUploaded: true,
-    };
-    setAssignedDriver(selfDriver);
-    setShowDriverChoiceModal(false);
+  const finishAfterSave = () => {
+    setShowDriverChoice(false);
+    goBack(router);
   };
 
-  const handleOpenAddDriver = () => {
-    setShowDriverChoiceModal(false);
-    router.push('/add-driver' as any);
+  const assignOwnerToNewVehicle = async () => {
+    if (!newVehicle) return;
+    if (await driveVehicle(newVehicle)) finishAfterSave();
+  };
+
+  const handleDriveMyself = () => {
+    const current = fleetVehicles.find((v) => v.driver?.isOwnerSelf && v.id !== newVehicle?.id);
+    if (!current) {
+      void assignOwnerToNewVehicle();
+      return;
+    }
+    Alert.alert(
+      'Move to this vehicle?',
+      `You currently drive ${current.model} (${current.plateNumber}). You can drive one vehicle at a time.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Move', onPress: () => void assignOwnerToNewVehicle() },
+      ],
+    );
+  };
+
+  const handleAddDriver = () => {
+    setShowDriverChoice(false);
+    router.replace({ pathname: '/add-driver' as any, params: { vehicleId: newVehicle?.id } });
   };
 
   const handleSave = async () => {
@@ -175,16 +260,20 @@ export function SetupVehicleScreen() {
           pucPhotoUri: fuelType === 'ELECTRIC' ? null : puc.uri,
           pucExpiry: fuelType === 'ELECTRIC' ? null : toIsoDate(pucExpiry),
         });
-      } else
-        await addFleetVehicle.mutateAsync({
+      } else {
+        const created = await addFleetVehicle.mutateAsync({
           registration_number: cleanPlate,
           vehicle_type_code: vehicleTypeCode,
           make: make.trim(),
           model: model.trim(),
-          capacity_kg: capacityKg ?? undefined,
+          capacity_kg:
+            capacityKg != null && maxPayloadKg != null
+              ? Math.min(capacityKg, maxPayloadKg)
+              : (capacityKg ?? undefined),
           fuel_type: fuelType,
-          assign_driver: assignedDriver?.isOwnerSelf ? { is_owner_self: true } : undefined,
         });
+        setNewVehicle({ id: created.id, label: `${model.trim()} (${cleanPlate})` });
+      }
 
       markSubmitted('vehicle.');
       if (!isFleetOwner) {
@@ -192,11 +281,8 @@ export function SetupVehicleScreen() {
         await goToNextStep(router, queryClient, 'vehicle');
         return;
       }
-      Alert.alert(
-        'Vehicle saved',
-        `Your ${model} (${cleanPlate}) has been registered for review.`,
-        [{ text: 'Continue', onPress: () => goBack(router) }],
-      );
+      // Fleet owner: the sheet asks who will drive it (the vehicle is saved either way).
+      setShowDriverChoice(true);
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || 'Could not add vehicle.';
       setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
@@ -214,6 +300,55 @@ export function SetupVehicleScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {saved ? (
+            <AppView className="gap-3 rounded-3xl border border-border bg-card p-4">
+              <AppText className="text-[15px] font-extrabold text-foreground">
+                Saved vehicle
+              </AppText>
+              <AppView row className="items-center gap-3">
+                <VehicleImage
+                  imageUrl={null}
+                  type={
+                    vehicleTypes.find((t) => t.id === saved.vehicleTypeId)?.code ??
+                    saved.vehicleTypeName
+                  }
+                  className="h-12 w-16"
+                />
+                <AppView className="flex-1">
+                  <AppText className="text-[15px] font-bold text-foreground">
+                    {saved.plateNumber}
+                  </AppText>
+                  <AppText className="text-[12px] text-muted">
+                    {[saved.vehicleTypeName, saved.model, saved.fuelType]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </AppText>
+                </AppView>
+              </AppView>
+              {vehicleDocs.map((d) => {
+                const status = docStatus(d.status);
+                return (
+                  <AppView
+                    key={d.type}
+                    row
+                    className="items-center justify-between border-t border-border/60 pt-2.5"
+                  >
+                    <AppText className="text-[13px] text-foreground">
+                      {DOC_LABEL[d.type] ?? d.type}
+                      {d.expiryDate ? ` · valid till ${toFormDate(d.expiryDate)}` : ''}
+                    </AppText>
+                    <AppText className={`text-[12px] font-bold ${status.className}`}>
+                      {status.label}
+                    </AppText>
+                  </AppView>
+                );
+              })}
+              <AppText className="text-[12px] leading-5 text-muted">
+                The photos you sent are kept safely and not shown again. Add new ones only to
+                replace them.
+              </AppText>
+            </AppView>
+          ) : null}
           {ownershipType === 'FLEET' ? (
             <AppView className="gap-4 rounded-3xl border border-border bg-card p-5 shadow-sm">
               <AppView row className="items-center gap-3">
@@ -245,6 +380,15 @@ export function SetupVehicleScreen() {
                 maxLength={10}
               />
 
+              <DriverChoiceSheet
+                visible={showDriverChoice}
+                vehicleLabel={newVehicle?.label ?? 'Your vehicle'}
+                busy={assigningVehicleId != null}
+                onDriveMyself={handleDriveMyself}
+                onAddDriver={handleAddDriver}
+                onLater={finishAfterSave}
+              />
+
               {error ? (
                 <AppText className="text-[13px] font-medium text-error">{error}</AppText>
               ) : null}
@@ -267,7 +411,11 @@ export function SetupVehicleScreen() {
                   className="items-center justify-between rounded-2xl border border-border bg-surface px-4 py-3.5"
                 >
                   <AppView row className="items-center gap-3">
-                    <Icon name="box.truck" size={20} tone="brand" />
+                    <VehicleImage
+                      imageUrl={selectedType.imageUrl}
+                      type={selectedType.code || selectedType.name}
+                      className="h-10 w-14"
+                    />
                     <AppView>
                       <AppText className="text-[12px] text-muted">Vehicle type</AppText>
                       <AppText className="text-[15px] font-bold text-foreground">
@@ -294,7 +442,15 @@ export function SetupVehicleScreen() {
                     className="flex-row items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
                   >
                     <AppView row className="items-center gap-3">
-                      <Icon name="box.truck" size={20} tone="brand" />
+                      {selectedType ? (
+                        <VehicleImage
+                          imageUrl={selectedType.imageUrl}
+                          type={selectedType.code || selectedType.name}
+                          className="h-10 w-14"
+                        />
+                      ) : (
+                        <Icon name="box.truck" size={20} tone="brand" />
+                      )}
                       <AppText className="text-[15px] font-semibold text-foreground">
                         {selectedType?.name || 'Select vehicle type'}
                       </AppText>
@@ -322,15 +478,22 @@ export function SetupVehicleScreen() {
                               : 'active:bg-neutral-100 dark:active:bg-neutral-800'
                           }`}
                         >
-                          <AppText
-                            className={`text-[14px] ${
-                              typeId === type.id
-                                ? 'font-bold text-[#FF5722]'
-                                : 'font-medium text-foreground'
-                            }`}
-                          >
-                            {type.name}
-                          </AppText>
+                          <AppView row className="flex-1 items-center gap-3">
+                            <VehicleImage
+                              imageUrl={type.imageUrl}
+                              type={type.code || type.name}
+                              className="h-9 w-12"
+                            />
+                            <AppText
+                              className={`text-[14px] ${
+                                typeId === type.id
+                                  ? 'font-bold text-[#FF5722]'
+                                  : 'font-medium text-foreground'
+                              }`}
+                            >
+                              {type.name}
+                            </AppText>
+                          </AppView>
                           <AppText className="text-[12px] text-muted">
                             {type.capacityKg == null ? '—' : `${type.capacityKg} kg`}
                           </AppText>
@@ -385,7 +548,7 @@ export function SetupVehicleScreen() {
 
                   {showCapacityPicker ? (
                     <AppView className="mt-2 rounded-2xl border border-border bg-card p-2 shadow-md">
-                      {CAPACITIES.map((cap) => (
+                      {capacityOptions.map((cap) => (
                         <AppPressable
                           key={cap.value}
                           onPress={() => {
@@ -513,113 +676,7 @@ export function SetupVehicleScreen() {
                     </AppText>
                   </AppView>
                 )}
-                {/* Add a driver card matching screenshot 1 screen 5 */}
-                {isFleetOwner ? (
-                  <AppView className="rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
-                    <AppView row className="items-center justify-between">
-                      <AppView row className="flex-1 items-center gap-3">
-                        <AppView className="h-12 w-12 items-center justify-center rounded-2xl bg-[#FFEFE9] dark:bg-[#3D1E12]">
-                          <Icon name="person.badge.plus" size={22} tone="brand" />
-                        </AppView>
-                        <AppView className="flex-1 pr-2">
-                          <AppText className="text-[16px] font-bold text-foreground">
-                            {assignedDriver ? `Driver: ${assignedDriver.name}` : 'Add a driver'}
-                          </AppText>
-                          <AppText className="text-[12px] text-muted" numberOfLines={1}>
-                            {assignedDriver
-                              ? assignedDriver.isOwnerSelf
-                                ? 'Owner driving myself'
-                                : assignedDriver.phone
-                              : 'Vehicle type, registration and photos'}
-                          </AppText>
-                        </AppView>
-                      </AppView>
-                      <AppView
-                        className={`rounded-full px-3 py-1 ${
-                          assignedDriver ? 'bg-emerald-500/15' : 'bg-[#F3ECE6] dark:bg-neutral-800'
-                        }`}
-                      >
-                        <AppText
-                          className={`text-[11px] font-bold ${
-                            assignedDriver
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-[#8C7A6B] dark:text-neutral-300'
-                          }`}
-                        >
-                          {assignedDriver ? 'Assigned' : 'Pending'}
-                        </AppText>
-                      </AppView>
-                    </AppView>
-
-                    <AppPressable
-                      onPress={() => setShowDriverChoiceModal(true)}
-                      pressScale={0.98}
-                      className="mt-3.5 w-full items-center justify-center rounded-full border border-border bg-background py-2.5 active:bg-neutral-100 dark:active:bg-neutral-800"
-                    >
-                      <AppText className="text-[14px] font-bold text-foreground">
-                        {assignedDriver ? 'Change Driver' : 'Add Driver'}
-                      </AppText>
-                    </AppPressable>
-                  </AppView>
-                ) : null}
               </AppView>
-
-              {/* Driver selection modal */}
-              {showDriverChoiceModal ? (
-                <AppView className="rounded-3xl border border-[#FF5722]/40 bg-card p-5 shadow-lg">
-                  <AppText className="text-[16px] font-extrabold text-foreground">
-                    Who will drive this vehicle?
-                  </AppText>
-                  <AppText className="mt-1 text-[13px] text-muted">
-                    Owners can drive their own vehicle or add designated drivers:
-                  </AppText>
-
-                  <AppView className="mt-4 gap-2.5">
-                    <AppPressable
-                      onPress={handleSelfDrive}
-                      className="flex-row items-center justify-between rounded-2xl border border-border bg-background p-3.5 active:bg-neutral-100 dark:active:bg-neutral-800"
-                    >
-                      <AppView row className="items-center gap-3">
-                        <Icon name="steeringwheel" size={20} tone="brand" />
-                        <AppView>
-                          <AppText className="text-[14px] font-bold text-foreground">
-                            I will drive myself ({company?.ownerName || 'Owner'})
-                          </AppText>
-                          <AppText className="text-[11px] text-muted">
-                            Assign owner self as active driver
-                          </AppText>
-                        </AppView>
-                      </AppView>
-                      <Icon name="check" size={18} tone="brand" />
-                    </AppPressable>
-
-                    <AppPressable
-                      onPress={handleOpenAddDriver}
-                      className="flex-row items-center justify-between rounded-2xl border border-border bg-background p-3.5 active:bg-neutral-100 dark:active:bg-neutral-800"
-                    >
-                      <AppView row className="items-center gap-3">
-                        <Icon name="person.badge.plus" size={20} tone="foreground" />
-                        <AppView>
-                          <AppText className="text-[14px] font-bold text-foreground">
-                            Add a new driver
-                          </AppText>
-                          <AppText className="text-[11px] text-muted">
-                            Enter full name, DL, phone number
-                          </AppText>
-                        </AppView>
-                      </AppView>
-                      <Icon name="chevron.right" size={16} tone="icon-subtle" />
-                    </AppPressable>
-                  </AppView>
-
-                  <Button
-                    variant="outline"
-                    label="Cancel"
-                    className="mt-4"
-                    onPress={() => setShowDriverChoiceModal(false)}
-                  />
-                </AppView>
-              ) : null}
 
               {error ? (
                 <AppText className="text-[13px] font-medium text-error">{error}</AppText>

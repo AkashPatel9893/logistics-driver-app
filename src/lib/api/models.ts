@@ -109,9 +109,16 @@ export interface VehicleTypeOption {
 }
 
 export interface VehicleDetails {
+  /** Backend id, used to read this vehicle's documents. */
+  id: string;
   vehicleTypeId: string;
   vehicleTypeName: string;
+  /** Make and model together, for display. */
   model: string;
+  /** The two parts as entered, to fill the form again. */
+  makeName: string;
+  modelName: string;
+  fuelType: FuelType | null;
   plateNumber: string;
   rcPhotoUrl: string;
   frontPhotoUrl: string;
@@ -148,10 +155,11 @@ export interface KycDetails {
 export interface KycInput {
   panNumber: string;
   panPhotoUri: string;
-  dlNumber: string;
+  /** Licence details: left out for a fleet owner, who only needs them to drive. */
+  dlNumber?: string;
   /** ISO date (YYYY-MM-DD). */
-  dlExpiry: string;
-  dlPhotoUri: string;
+  dlExpiry?: string;
+  dlPhotoUri?: string;
   selfieUri: string;
 }
 

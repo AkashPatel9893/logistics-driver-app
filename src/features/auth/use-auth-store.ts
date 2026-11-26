@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { authApi } from '@/lib/api/auth';
 import { setUnauthorizedHandler } from '@/lib/api/client';
 import type { AuthSession, User } from '@/lib/api/models';
@@ -126,6 +127,13 @@ export async function refreshOnboardingStatus(): Promise<void> {
     _useAuthStore
       .getState()
       .setOnboarding({ isOnboarded: me.isOnboarded, onboardingStatus: me.onboardingStatus });
+    // The backend's record of the mode wins, so a new phone opens in the right one.
+    if (me.activeRole) {
+      const role = me.activeRole === 'FLEET_OWNER' ? 'owner' : 'driver';
+      if (useFleetStore.getState().dashboardRole !== role) {
+        useFleetStore.getState().setDashboardRole(role);
+      }
+    }
   } catch {
     // Offline or server error: keep the saved status; the next refresh tries again.
   } finally {

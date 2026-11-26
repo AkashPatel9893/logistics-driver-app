@@ -181,12 +181,39 @@ export function findDocument(docs: DriverDocument[] | undefined, type: string) {
 }
 
 /** The registration steps in the order the driver should do them. */
+/** A vehicle a fleet owner assigned to this driver (the driver does not own or register it). */
+export interface FleetAssignedVehicle {
+  typeCode: string;
+  plate: string;
+}
+
+/**
+ * The server says how a vehicle relates to the driver (`relationship_type`); a fleet one means the
+ * owner added this driver, so the driver is not asked for a vehicle of their own. The exact values
+ * are not documented yet, so anything that names a fleet counts.
+ */
+export async function fetchFleetAssignedVehicle(): Promise<FleetAssignedVehicle | null> {
+  const list = await onboardingApi.listVehicles().catch(() => []);
+  const vehicle = (list ?? []).find((v: any) => /FLEET/i.test(String(v?.relationship_type ?? '')));
+  return vehicle
+    ? { typeCode: vehicle.vehicle_type_code, plate: vehicle.registration_number }
+    : null;
+}
+
+export function useFleetAssignedVehicle() {
+  return useQuery({
+    queryKey: queryKeys.fleetAssignedVehicle,
+    queryFn: fetchFleetAssignedVehicle,
+  });
+}
+
 export function buildRegistrationSteps(
   snapshot: RegistrationSnapshot,
   docs: DriverDocument[] | undefined,
   vehicleTypes: VehicleTypeOption[],
   pickedTypeId: string | null,
   fleetDriver = false,
+  fleetVehicle: FleetAssignedVehicle | null = null,
 ): RegistrationStep[] {
   const pickedType = vehicleTypes.find((t) => t.id === pickedTypeId);
   const typeName = snapshot.vehicle?.typeName ?? pickedType?.name ?? null;
@@ -247,7 +274,7 @@ export function buildRegistrationSteps(
         : 'review'
     : 'todo';
 
-  return [
+  const steps: RegistrationStep[] = [
     {
       id: 'vehicle-type',
       title: typeName
@@ -323,6 +350,22 @@ export function buildRegistrationSteps(
       route: '/setup-bank',
     },
   ];
+
+  // A vehicle the fleet owner assigned: the driver has nothing of their own to add.
+  if (!fleetVehicle) return steps;
+  const assignedType = vehicleTypes.find((t) => t.code === fleetVehicle.typeCode);
+  return steps
+    .filter((step) => step.id !== 'vehicle')
+    .map((step) =>
+      step.id === 'vehicle-type'
+        ? {
+            ...step,
+            title: `Vehicle - ${assignedType?.name ?? fleetVehicle.plate}`,
+            detail: `Assigned by your fleet owner · ${fleetVehicle.plate}`,
+            state: 'selected' as const,
+          }
+        : step,
+    );
 }
 
 export function isStepDone(state: StepState) {

@@ -1,10 +1,11 @@
 import { Redirect, Tabs, useRouter, useSegments } from 'expo-router';
 
 import { FloatingTabBar, FloatingTabBarSpacer, type TabName } from '@/components/floating-tab-bar';
-import { AppView } from '@/components/ui';
+import { AppSpinner, AppView } from '@/components/ui';
+import { useFleetSetup } from '@/features/fleet/use-fleet-setup';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { isAwaitingApproval, useAuthStore } from '@/features/auth/use-auth-store';
-import { useEffect } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { useDriverProfile } from '@/hooks/use-driver';
 import { useActiveJob, useOffers } from '@/hooks/use-jobs';
@@ -34,6 +35,27 @@ function DriverSession({ userId }: { userId: string }) {
   return null;
 }
 
+/**
+ * A fleet owner opens the dashboard only once Fleet setup is complete (company, verified ID,
+ * bank account and one vehicle). If the check itself fails, the owner is let through rather than
+ * locked out by a network error.
+ */
+function OwnerSetupGate({ children }: { children: ReactNode }) {
+  const setup = useFleetSetup();
+  // Spinner only until the first answer: a later refetch must not tear the dashboard down.
+  const [settled, setSettled] = useState(false);
+  if (!setup.loading && !settled) setSettled(true);
+  if (setup.loading && !settled) {
+    return (
+      <AppView className="flex-1 items-center justify-center bg-background">
+        <AppSpinner size="large" />
+      </AppView>
+    );
+  }
+  if (!setup.error && !setup.complete) return <Redirect href={'/fleet-setup' as any} />;
+  return <>{children}</>;
+}
+
 const TAB_NAMES: readonly TabName[] = ['home', 'orders', 'account'];
 
 function isTabName(value: string | undefined): value is TabName {
@@ -60,7 +82,7 @@ export default function TabsLayout() {
     return <Redirect href={'/registration' as any} />;
   }
 
-  return (
+  const dashboard = (
     <AppView className="flex-1">
       {userId ? <DriverSession userId={userId} /> : null}
       <Tabs screenOptions={{ headerShown: false, tabBarStyle: { display: 'none' } }}>
@@ -77,4 +99,5 @@ export default function TabsLayout() {
       />
     </AppView>
   );
+  return dashboardRole === 'owner' ? <OwnerSetupGate>{dashboard}</OwnerSetupGate> : dashboard;
 }

@@ -83,6 +83,7 @@ export default function RootLayout() {
         <Stack.Screen name="choose-role" />
         <Stack.Screen name="add-driver" />
         <Stack.Screen name="vehicle-details" />
+        <Stack.Screen name="fleet-setup" />
         <Stack.Screen name="registration" />
         <Stack.Screen name="register-vehicle-type" />
         <Stack.Screen name="register-licence" />

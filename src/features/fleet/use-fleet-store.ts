@@ -19,6 +19,12 @@ function loadPersistedRole(): DashboardRole {
   return role === 'owner' ? 'owner' : 'driver';
 }
 
+/** The role this phone was last switched to, or null when it was never chosen. */
+export function getSavedDashboardRole(): DashboardRole | null {
+  const role = kvStorage.getString(STORAGE_KEYS.DASHBOARD_ROLE);
+  return role === 'owner' || role === 'driver' ? role : null;
+}
+
 const _useFleetStore = create<FleetUIState>((set) => ({
   dashboardRole: loadPersistedRole(),
   selectedVehicleId: null,

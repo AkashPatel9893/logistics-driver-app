@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { switchDashboardRole } from '@/features/fleet/switch-role';
 import { useCanGoBack, useRouter } from 'expo-router';
 import { Alert, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -43,7 +44,7 @@ export function OnboardingScreen() {
   const canGoBack = useCanGoBack();
   const form = useOnboardingForm();
   const registerCompany = useRegisterCompany();
-  const setDashboardRole = useFleetStore.use.setDashboardRole();
+  const setDashboardRole = switchDashboardRole;
   const cityName = useCityStore((state) => state.city?.name);
 
   const [companySubmitting, setCompanySubmitting] = useState(false);
@@ -65,6 +66,9 @@ export function OnboardingScreen() {
   const isValidGstin = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(
     gstin.trim().toUpperCase(),
   );
+
+  // GSTIN is optional, but if it is typed it must be valid.
+  const gstinOk = gstin.trim().length === 0 || isValidGstin;
 
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(companyEmail.trim());
 
@@ -89,14 +93,14 @@ export function OnboardingScreen() {
     getDobError(form.dob) && 'date of birth',
     companyPhone.trim().length < 10 && 'phone number',
     !isValidEmail && 'email',
-    !isValidGstin && 'valid GSTIN',
+    !gstinOk && 'valid GSTIN',
     registeredAddress.trim().length < 5 && 'address',
   ].filter(Boolean) as string[];
   const isCompanyValid = missing.length === 0 && Boolean(companyType);
 
   const handleCompanySubmit = async () => {
     if (!isCompanyValid) {
-      if (!isValidGstin) {
+      if (!gstinOk) {
         Alert.alert(
           'Invalid GSTIN',
           'Please enter a valid 15-character GSTIN (e.g. 29ABCDE1234F1Z5).',
@@ -117,7 +121,11 @@ export function OnboardingScreen() {
         marketCode: useCityStore.getState().city?.marketCode,
       });
       const company = await fleetApi.getCompany();
-      if (company.is_registered && company.gstin?.toUpperCase() !== gstin.trim().toUpperCase()) {
+      if (
+        company.is_registered &&
+        gstin.trim() &&
+        company.gstin?.toUpperCase() !== gstin.trim().toUpperCase()
+      ) {
         throw new Error('A different company is already registered to this account.');
       }
       if (!company.is_registered) {
@@ -128,7 +136,7 @@ export function OnboardingScreen() {
           email: companyEmail.trim(),
           company_type: companyType,
           registered_address: registeredAddress.trim(),
-          gstin: gstin.trim().toUpperCase(),
+          ...(gstin.trim() ? { gstin: gstin.trim().toUpperCase() } : {}),
         });
       }
       setDashboardRole('owner');
@@ -221,6 +229,7 @@ export function OnboardingScreen() {
                   required
                   value={form.dob}
                   onChangeText={form.handleDobChange}
+                  onBlur={form.handleDobBlur}
                   placeholder="DD / MM / YYYY"
                   keyboardType="number-pad"
                   maxLength={14}
@@ -303,6 +312,7 @@ export function OnboardingScreen() {
                   required
                   value={form.dob}
                   onChangeText={form.handleDobChange}
+                  onBlur={form.handleDobBlur}
                   placeholder="DD / MM / YYYY"
                   keyboardType="number-pad"
                   maxLength={14}
@@ -357,8 +367,7 @@ export function OnboardingScreen() {
                 {/* GSTIN */}
                 <TextField
                   variant="outlined"
-                  label="GSTIN"
-                  required
+                  label="GSTIN (optional)"
                   value={gstin}
                   onChangeText={(text) =>
                     setGstin(
@@ -370,7 +379,7 @@ export function OnboardingScreen() {
                   }
                   placeholder="e.g. 29ABCDE1234F1Z5"
                   error={gstinError}
-                  hint="15 characters, as on your GST certificate"
+                  hint="Add it if your business is GST registered. 15 characters."
                   autoCapitalize="characters"
                   autoCorrect={false}
                   leading={<Icon name="document" size={20} tone="icon-subtle" />}
@@ -438,13 +447,13 @@ export function OnboardingScreen() {
                 {/* Registered address */}
                 <AppView>
                   <AppText className="mb-2 text-[12px] font-bold uppercase tracking-wider text-muted">
-                    ADDRESS
+                    ADDRESS <AppText className="text-brand">*</AppText>
                   </AppText>
                   <TextField
                     variant="outlined"
                     value={registeredAddress}
                     onChangeText={setRegisteredAddress}
-                    placeholder="Enter registered address"
+                    placeholder="Enter your registered address"
                     multiline
                     numberOfLines={3}
                     inputClassName="text-[15px] min-h-[70px] pt-2"
