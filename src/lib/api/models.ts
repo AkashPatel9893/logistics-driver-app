@@ -181,13 +181,6 @@ export interface OnboardingState {
 
 export type SetupStep = 'vehicle' | 'kyc' | 'bank';
 
-export interface DailyCheck {
-  /** True once today's vehicle selfie is in. Resets at local midnight. */
-  completedToday: boolean;
-  photoUrl: string | null;
-  reward: number;
-}
-
 export interface WelcomeBonus {
   amount: number;
   targetTrips: number;
@@ -227,7 +220,6 @@ export interface DriverProfile {
   pendingSteps: SetupStep[];
   canGoOnline: boolean;
   onboarding: OnboardingState;
-  dailyCheck: DailyCheck;
   welcomeBonus: WelcomeBonus;
   walletBalance: number;
   lifetimeTrips: number;

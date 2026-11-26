@@ -7,7 +7,6 @@ import { request } from './client';
 import { onboardingApi, type OnboardingStatus } from './onboarding';
 import type {
   BankInput,
-  DailyCheck,
   DocumentAlert,
   DriverProfile,
   FuelType,
@@ -202,12 +201,6 @@ export const driverApi = {
           pendingSteps: pendingSteps(status),
           canGoOnline: eligibility.allowed,
           onboarding: toOnboardingState(status, eligibility.reasons),
-          dailyCheck: {
-            // No daily-check or bonus data from the backend: claim no reward.
-            completedToday: true,
-            photoUrl: null,
-            reward: 0,
-          },
           welcomeBonus: {
             status: 'expired',
             seen: true,
@@ -373,37 +366,6 @@ export const driverApi = {
   submitOnboarding: async (): Promise<DriverProfile> => {
     await onboardingApi.submit();
     return driverApi.getProfile();
-  },
-
-  submitDailyCheck: async (photoUrl: string): Promise<DailyCheck> => {
-    try {
-      const vehicles = await onboardingApi.listVehicles().catch(() => []);
-      const vehicleId = vehicles[0]?.id;
-      if (vehicleId) {
-        await request<any>({
-          method: 'POST',
-          url: '/partner/daily-check',
-          data: {
-            vehicle_id: vehicleId,
-            odometer_km: 0,
-            photo_upload_id: photoUrl,
-            checklist: {
-              brakes_ok: true,
-              lights_ok: true,
-              tyres_ok: true,
-              cargo_deck_ok: true,
-            },
-          },
-        });
-      }
-    } catch {
-      // In development or when the check checklist is recording
-    }
-    return {
-      completedToday: true,
-      photoUrl,
-      reward: 0,
-    };
   },
 
   markWelcomeBonusSeen: async (): Promise<DriverProfile> => {

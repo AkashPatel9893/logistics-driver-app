@@ -6,6 +6,7 @@ import {
   AppSpinner,
   AppText,
   AppView,
+  Button,
   Icon,
   LiquidGlassBackButton,
 } from '@/components/ui';
@@ -101,52 +102,105 @@ export function DriverProfileScreen() {
           <AppView className="w-10" />
         </AppView>
 
-        {/* Company & Owner Info Card */}
-        <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
-          <AppView row className="items-center justify-between">
-            <AppText className="text-[20px] font-black text-foreground">
-              {company?.companyName || 'Company Profile'}
-            </AppText>
-            <AppPressable
-              onPress={() => router.push('/company-details' as any)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <AppText className="text-[14px] font-bold text-[#FF5722]">
-                {company?.isRegistered ? 'Edit' : 'Register'}
+        {/* Company card for a fleet owner. A rider has no company: just who they are. */}
+        {isOwnerMode ? (
+          <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+            <AppView row className="items-center justify-between">
+              <AppText className="text-[20px] font-black text-foreground">
+                {company?.companyName || 'Company Profile'}
               </AppText>
-            </AppPressable>
+              <AppPressable
+                onPress={() => router.push('/company-details' as any)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <AppText className="text-[14px] font-bold text-[#FF5722]">
+                  {company?.isRegistered ? 'Edit' : 'Register'}
+                </AppText>
+              </AppPressable>
+            </AppView>
+
+            <AppText className="mt-1 text-[15px] font-semibold text-foreground">
+              {company?.ownerName || profile.name}
+            </AppText>
+
+            {user?.phone || profile.phone ? (
+              <AppText className="mt-1 text-[13px] font-medium text-foreground-secondary">
+                Phone: {user?.phone || profile.phone}
+              </AppText>
+            ) : null}
+
+            {company?.registeredAddress ? (
+              <AppText className="mt-0.5 text-[13px] text-muted">
+                Registered Address: {company.registeredAddress}
+              </AppText>
+            ) : null}
+
+            {company?.phone && company.phone !== user?.phone ? (
+              <AppText className="mt-0.5 text-[13px] font-medium text-foreground-secondary">
+                Company phone: {company.phone}
+              </AppText>
+            ) : null}
           </AppView>
+        ) : (
+          <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+            <AppText className="text-[20px] font-black text-foreground">{profile.name}</AppText>
+            {user?.phone || profile.phone ? (
+              <AppText className="mt-1 text-[13px] font-medium text-foreground-secondary">
+                Phone: {user?.phone || profile.phone}
+              </AppText>
+            ) : null}
+          </AppView>
+        )}
 
-          <AppText className="mt-1 text-[15px] font-semibold text-foreground">
-            {company?.ownerName || profile.name}
-          </AppText>
-
-          {user?.phone || profile.phone ? (
-            <AppText className="mt-1 text-[13px] font-medium text-foreground-secondary">
-              Phone: {user?.phone || profile.phone}
+        {/* A fleet owner manages the fleet's vehicles; a rider sees the one they drive. */}
+        {isOwnerMode ? (
+          <FleetVehiclesSection />
+        ) : (
+          <AppView className="gap-2.5">
+            <AppText className="px-1 text-[18px] font-extrabold text-foreground">
+              My vehicle
             </AppText>
-          ) : null}
-
-          {company?.registeredAddress ? (
-            <AppText className="mt-0.5 text-[13px] text-muted">
-              Registered Address: {company.registeredAddress}
-            </AppText>
-          ) : null}
-
-          {company?.phone && company.phone !== user?.phone ? (
-            <AppText className="mt-0.5 text-[13px] font-medium text-foreground-secondary">
-              Company phone: {company.phone}
-            </AppText>
-          ) : null}
-        </AppView>
-
-        {/* My Vehicles Section matching Screenshot 1 Screen 7 */}
-        <FleetVehiclesSection />
+            {profile.vehicle ? (
+              <AppView
+                row
+                className="items-center justify-between gap-3 rounded-3xl border border-border bg-card p-4 shadow-sm"
+              >
+                <AppView className="flex-1">
+                  <AppText className="text-[15px] font-bold text-foreground">
+                    {profile.vehicle.vehicleTypeName} · {profile.vehicle.plateNumber}
+                  </AppText>
+                  {profile.vehicle.model ? (
+                    <AppText className="mt-0.5 text-[12px] text-muted">
+                      {profile.vehicle.model}
+                    </AppText>
+                  ) : null}
+                </AppView>
+                <AppView className={`rounded-lg px-2.5 py-1 ${STATUS[profile.vehicle.status].bg}`}>
+                  <AppText
+                    className={`text-[11px] font-black ${STATUS[profile.vehicle.status].color}`}
+                  >
+                    {STATUS[profile.vehicle.status].label}
+                  </AppText>
+                </AppView>
+              </AppView>
+            ) : (
+              <AppView className="items-center gap-3 rounded-3xl border border-border bg-card p-5">
+                <AppText className="text-[13px] text-muted">No vehicle added yet.</AppText>
+                <Button
+                  variant="brand"
+                  size="sm"
+                  label="Add vehicle"
+                  onPress={() => router.push('/setup-vehicle')}
+                />
+              </AppView>
+            )}
+          </AppView>
+        )}
 
         {/* Verification & KYC Documents */}
         <AppView className="gap-2.5">
           <AppText className="px-1 text-[18px] font-extrabold text-foreground">
-            Owner-Driver Verification
+            {isOwnerMode ? 'Owner-Driver Verification' : 'My verification'}
           </AppText>
 
           <AppView className="rounded-3xl border border-border bg-card overflow-hidden shadow-sm">

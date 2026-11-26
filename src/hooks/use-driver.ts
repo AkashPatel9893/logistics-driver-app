@@ -54,19 +54,6 @@ export function useVehicleTypes() {
   });
 }
 
-export function useSubmitDailyCheck() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (photoUrl: string) => driverApi.submitDailyCheck(photoUrl),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.profile });
-      queryClient.invalidateQueries({ queryKey: queryKeys.wallet });
-      queryClient.invalidateQueries({ queryKey: ['driver', 'earnings'] });
-    },
-  });
-}
-
-/** What the backend has for one saved vehicle's documents: status and expiry per type. */
 export interface VehicleDocumentInfo {
   type: string;
   status: string;

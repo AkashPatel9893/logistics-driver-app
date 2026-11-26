@@ -1,6 +1,5 @@
 export * from './active-delivery-screen';
 export * from './customer-chat-screen';
-export * from './daily-check-screen';
 export * from './driver-account-screen';
 export * from './driver-home-screen';
 export * from './driver-profile-screen';

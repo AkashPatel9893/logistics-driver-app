@@ -48,6 +48,7 @@ export function DriverAccountScreen() {
   const { data: vehicles = [] } = useFleetVehicles();
   const { data: activeJob } = useActiveJob();
   const dashboardRole = useFleetStore.use.dashboardRole();
+  const isOwner = dashboardRole === 'owner';
   const setDashboardRole = switchDashboardRole;
   const modeSwitch = modeSwitchState(profile);
   const { assigningVehicleId, driveVehicle } = useDriveVehicle();
@@ -94,12 +95,13 @@ export function DriverAccountScreen() {
     router.push('/setup-vehicle');
   };
 
-  const name = company?.ownerName || profile?.name || '—';
+  const name = (isOwner ? company?.ownerName : null) || profile?.name || '—';
   // The backend may send the rating as a string (decimal) or a number.
   const rating = profile?.rating != null ? Number(profile.rating) : NaN;
   const ratingLabel = Number.isFinite(rating) ? rating.toFixed(1) : '—';
 
-  const MENU_ITEMS: MenuItem[] = [
+  // Company and fleet management: only in Fleet Owner mode.
+  const FLEET_ITEMS: MenuItem[] = [
     {
       icon: 'building.2',
       label: 'Company Details',
@@ -111,7 +113,7 @@ export function DriverAccountScreen() {
     {
       icon: 'box.truck.fill',
       label: 'My Fleet & Vehicles',
-      sublabel: `${vehicles.length} vehicle${vehicles.length === 1 ? '' : 's'} with assigned drivers`,
+      sublabel: `${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'} in your fleet`,
       route: '/driver-profile',
     },
     {
@@ -120,6 +122,10 @@ export function DriverAccountScreen() {
       sublabel: 'Add a new vehicle and assign driver',
       route: '/setup-vehicle',
     },
+  ];
+
+  const MENU_ITEMS: MenuItem[] = [
+    ...(isOwner ? FLEET_ITEMS : []),
     {
       icon: 'person.fill',
       label: 'Driver Profile & Badges',
@@ -141,12 +147,11 @@ export function DriverAccountScreen() {
     {
       icon: 'checkmark.shield.fill',
       label: 'KYC Documents',
-      sublabel:
-        dashboardRole === 'owner'
-          ? 'PAN and selfie'
-          : profile?.kyc
-            ? `Licence ${profile.kyc.dlNumber || 'submitted'}`
-            : 'Driving licence, PAN and selfie',
+      sublabel: isOwner
+        ? 'PAN and selfie'
+        : profile?.kyc
+          ? `Licence ${profile.kyc.dlNumber || 'submitted'}`
+          : 'Driving licence, PAN and selfie',
       route: '/setup-kyc',
     },
     {
@@ -156,12 +161,6 @@ export function DriverAccountScreen() {
         ? `${profile.bank.bankName} •• ${profile.bank.accountLast4}`
         : 'Account for wallet payouts',
       route: '/setup-bank',
-    },
-    {
-      icon: 'calendar',
-      label: 'Daily Vehicle Check',
-      sublabel: 'Unavailable',
-      route: '/daily-check',
     },
     {
       icon: 'questionmark.circle',
@@ -224,11 +223,11 @@ export function DriverAccountScreen() {
                   Phone: {user?.phone || profile?.phone}
                 </AppText>
               ) : null}
-              <AppText className="text-[13px] text-muted">
-                {company?.companyName
-                  ? `${company.companyName} • ${company.phone || profile?.phone || ''}`
-                  : (profile?.phone ?? profile?.email)}
-              </AppText>
+              {isOwner && company?.companyName ? (
+                <AppText className="text-[13px] text-muted">
+                  {`${company.companyName} • ${company.phone || profile?.phone || ''}`}
+                </AppText>
+              ) : null}
 
               <AppView row className="mt-1.5 items-center gap-2">
                 <AppView
@@ -324,11 +323,7 @@ export function DriverAccountScreen() {
           {MENU_ITEMS.map((item, idx) => (
             <AppPressable
               key={item.label}
-              onPress={() =>
-                item.route === '/daily-check'
-                  ? Alert.alert('Unavailable', 'Daily vehicle checks are not available yet.')
-                  : router.push(item.route as any)
-              }
+              onPress={() => router.push(item.route as any)}
               pressScale={0.98}
               className={`flex-row items-center justify-between p-4 ${
                 idx !== MENU_ITEMS.length - 1 ? 'border-b border-border/60' : ''
