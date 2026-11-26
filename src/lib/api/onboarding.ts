@@ -1,5 +1,7 @@
+import { ApiError } from './api-error';
 import { request, uploadMultipart } from './client';
 import { filePart } from './file-part';
+import { rejectionMessage } from './rejection-reason';
 
 /** Must equal the backend's current partner agreement version. */
 const AGREEMENT_VERSION = '2026-01';
@@ -60,7 +62,7 @@ function uploadFile(url: string, fileUri: string, side: 'front' | 'back' = 'fron
 }
 
 /** Creates the document record, uploads its photo, then asks the backend to verify it. */
-async function submitDocument(baseUrl: string, input: DocumentInput): Promise<void> {
+export async function submitDocument(baseUrl: string, input: DocumentInput): Promise<void> {
   const doc = await request<any>({
     method: 'POST',
     url: baseUrl,
@@ -74,7 +76,12 @@ async function submitDocument(baseUrl: string, input: DocumentInput): Promise<vo
   if (input.backFileUri) await uploadFile(`${baseUrl}/${doc.id}/files`, input.backFileUri, 'back');
   const result = await request<any>({ method: 'POST', url: `${baseUrl}/${doc.id}/verify` });
   if (['FAILED', 'REJECTED', 'RESUBMISSION_REQUIRED'].includes(result.verification_status)) {
-    throw new Error(`${input.type} verification failed. Please check the document and try again.`);
+    // An ApiError, so the screen shows this text instead of the general fallback.
+    throw new ApiError(
+      rejectionMessage(result.rejection_reason) ??
+        'This document could not be verified. Check the photo and details, then try again.',
+      'unknown',
+    );
   }
 }
 

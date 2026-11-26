@@ -22,13 +22,12 @@ export function ChooseRoleScreen() {
   // This screen's own stack: no back button when it is the first screen (e.g. after a restart).
   const canGoBack = useCanGoBack();
   const insets = useSafeAreaInsets();
-  const setDashboardRole = switchDashboardRole;
   const currentRole = useFleetStore.use.dashboardRole();
 
   const [selectedRole, setSelectedRole] = useState<RoleType>(currentRole || 'driver');
 
   const handleContinue = () => {
-    setDashboardRole(selectedRole);
+    switchDashboardRole(selectedRole);
 
     if (selectedRole === 'driver') {
       // Rider: vehicle type first, then driver details.
@@ -103,7 +102,7 @@ export function ChooseRoleScreen() {
                 {isFleet ? <Icon name="check" size={18} tone="brand" /> : null}
               </AppView>
               <AppText className="mt-1.5 text-[13px] leading-5 text-muted">
-                Own a vehicle and manage your business.
+                Add your vehicles and drivers, and manage your business.
               </AppText>
             </AppPressable>
           </AppView>

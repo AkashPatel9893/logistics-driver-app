@@ -60,6 +60,7 @@ const _useAuthStore = create<AuthState>((set, get) => ({
     queryClient.clear();
     useCityStore.getState().clear();
     useRegistrationStore.getState().reset();
+    useFleetStore.getState().reset();
     set({ status: 'signOut', token: null, user: null });
   },
 

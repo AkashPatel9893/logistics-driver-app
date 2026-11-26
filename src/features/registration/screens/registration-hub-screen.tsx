@@ -1,6 +1,6 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { switchDashboardRole } from '@/features/fleet/switch-role';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, RefreshControl } from 'react-native';
 
 import {
@@ -10,6 +10,7 @@ import {
   AppText,
   AppView,
   Button,
+  FocusAwareStatusBar,
   Icon,
 } from '@/components/ui';
 import {
@@ -27,34 +28,20 @@ import {
   buildRegistrationSteps,
   isStepDone,
   snapshotFromStatus,
+  type RegistrationStep,
+} from '../registration-steps';
+import {
   useDriverDocuments,
   useFleetAssignedVehicle,
   useOnboardingStatus,
-  type RegistrationStep,
 } from '../use-registration';
 import { usePermissionStatus } from '../use-permission-status';
 import { useRegistrationStore } from '../use-registration-store';
-import { isAutoStartRequested, takeAutoStart } from '../next-step';
+import { useAutoStartStep } from '../use-auto-start-step';
 
 /** The driver's registration checklist: one row per document, each with its own status. */
 export function RegistrationHubScreen() {
   const router = useRouter();
-  // Right after sign-up: open the first pending step at once, so a new driver goes through the
-  // steps in a row. Opening the app later (resume) shows this list instead.
-  // `holding` keeps the spinner up until the step is on screen, so the list never flashes.
-  const [holding, setHolding] = useState(isAutoStartRequested);
-  const pushedStep = useRef(false);
-  const leftForStep = useRef(false);
-  useFocusEffect(
-    useCallback(() => {
-      // Back on Documents from the step it opened: show the list. Only once Documents has lost
-      // focus to that step; it can report focus more than once while it first appears.
-      if (leftForStep.current) setHolding(false);
-      return () => {
-        if (pushedStep.current) leftForStep.current = true;
-      };
-    }, []),
-  );
   // Only the onboarding status and the documents: two light requests, not the full profile.
   const statusQuery = useOnboardingStatus();
   const docsQuery = useDriverDocuments();
@@ -105,20 +92,21 @@ export function RegistrationHubScreen() {
       )
     : [];
   const nextStep = steps.find((s) => !isStepDone(s.state));
-  const ready = holding && snapshot !== null && !docsQuery.isPending;
-  useEffect(() => {
-    // Once only: the step data refreshes after the push and would re-run this.
-    if (!ready || pushedStep.current) return;
-    if (takeAutoStart() && nextStep) {
-      pushedStep.current = true;
-      router.push(nextStep.route);
-      return;
-    }
-    // Nothing to open (or another Documents screen already did): show the list.
-    void Promise.resolve().then(() => setHolding(false));
-  }, [ready, nextStep, router]);
+  // Right after sign-up the first pending step opens by itself.
+  const holding = useAutoStartStep(snapshot !== null && !docsQuery.isPending, nextStep?.route);
 
-  // Spinner while loading, and while about to open the first step (no flash of the list).
+  // About to open the first step: a plain spinner, without the Documents header, so sign-up goes
+  // from Driver details to that step with no other screen showing in between.
+  if (holding && !statusQuery.isError) {
+    return (
+      <AppView className="flex-1 items-center justify-center bg-background">
+        <FocusAwareStatusBar />
+        <AppSpinner size="large" />
+      </AppView>
+    );
+  }
+
+  // Spinner while loading.
   if (!snapshot || holding) {
     return (
       <SetupScreenLayout title="Documents" subtitle="Driver registration">
@@ -157,19 +145,27 @@ export function RegistrationHubScreen() {
             className: 'bg-red-500/10',
             icon: 'exclamationmark.triangle.fill' as const,
           }
-        : onboarding.status === 'submitted' || allSubmitted
+        : onboarding.status === 'in_progress' && allSubmitted && onboarding.canSubmit
           ? {
-              title: 'Documents under verification',
-              body: 'This may take up to 24 hours. Please wait!',
-              className: 'bg-brand-soft',
-              icon: 'clock' as const,
-            }
-          : {
-              title: 'Complete your registration',
-              body: `${doneCount} of ${steps.length} steps done. Upload each document to start driving with RYNO.`,
+              // Nothing is with the team until the driver submits: don't ask them to wait.
+              title: 'Ready to submit',
+              body: 'All steps are done. Tap Submit for review below to send your application.',
               className: 'bg-brand-soft',
               icon: 'doc.text.fill' as const,
-            };
+            }
+          : onboarding.status === 'submitted' || allSubmitted
+            ? {
+                title: 'Documents under verification',
+                body: 'This may take up to 24 hours. Please wait!',
+                className: 'bg-brand-soft',
+                icon: 'clock' as const,
+              }
+            : {
+                title: 'Complete your registration',
+                body: `${doneCount} of ${steps.length} steps done. Upload each document to start driving with RYNO.`,
+                className: 'bg-brand-soft',
+                icon: 'doc.text.fill' as const,
+              };
 
   // Every step opens its screen, showing what was sent (to look at or update) once submitted.
   // A submitted profile photo opens Profile information (photo + details), not the camera.

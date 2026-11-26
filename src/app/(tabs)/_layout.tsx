@@ -36,9 +36,9 @@ function DriverSession({ userId }: { userId: string }) {
 }
 
 /**
- * A fleet owner opens the dashboard only once Fleet setup is complete (company, verified ID,
- * bank account and one vehicle). If the check itself fails, the owner is let through rather than
- * locked out by a network error.
+ * A fleet owner opens the dashboard only once Fleet setup is complete (company, verified ID and
+ * bank account). If the check itself fails, the owner is let through rather than locked out by a
+ * network error.
  */
 function OwnerSetupGate({ children }: { children: ReactNode }) {
   const setup = useFleetSetup();

@@ -1,5 +1,6 @@
 import { request } from './client';
 import type { FuelType } from './models';
+import { submitDocument, type DocumentInput } from './onboarding';
 
 export interface CompanyCreateRequest {
   company_name: string;
@@ -161,6 +162,10 @@ export interface FleetPayoutResponse {
 }
 
 export const fleetApi = {
+  /** Creates one of the vehicle's documents, uploads its photo and sends it for verification. */
+  submitVehicleDocument: (vehicleId: string, input: DocumentInput) =>
+    submitDocument(`/fleet/vehicles/${vehicleId}/documents`, input),
+
   getCompany: (signal?: AbortSignal) =>
     request<CompanyResponse>({
       url: '/fleet/company',

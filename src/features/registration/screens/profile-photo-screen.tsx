@@ -20,12 +20,8 @@ import { authApi } from '@/lib/api/auth';
 import { queryKeys } from '@/lib/queries/keys';
 
 import { DocumentStatusNote, StickyFooter, TipsCard } from '../components';
-import {
-  documentState,
-  findDocument,
-  useDriverDocuments,
-  useSubmitDriverDocument,
-} from '../use-registration';
+import { documentState, findDocument } from '../registration-steps';
+import { useDriverDocuments, useSubmitDriverDocument } from '../use-registration';
 import { markSubmitted, readDraftPhoto, useDraftText } from '../drafts';
 import { useSelfieStore } from '../use-selfie-store';
 import { goToNextStep } from '../next-step';

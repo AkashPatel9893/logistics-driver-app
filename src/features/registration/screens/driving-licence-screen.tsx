@@ -22,12 +22,8 @@ import {
   TipsCard,
 } from '../components';
 import { DocumentPreview } from '../document-preview';
-import {
-  documentState,
-  findDocument,
-  useDriverDocuments,
-  useSubmitDriverDocument,
-} from '../use-registration';
+import { documentState, findDocument } from '../registration-steps';
+import { useDriverDocuments, useSubmitDriverDocument } from '../use-registration';
 import { markSubmitted, useDraftText } from '../drafts';
 import { goToNextStep } from '../next-step';
 

@@ -5,13 +5,8 @@ import { useVehicleTypes } from '@/hooks/use-driver';
 import type { DriverProfile } from '@/lib/api/models';
 
 import { StepStatusIcon } from './components';
-import {
-  buildRegistrationSteps,
-  isStepDone,
-  snapshotFromProfile,
-  useDriverDocuments,
-  useFleetAssignedVehicle,
-} from './use-registration';
+import { buildRegistrationSteps, isStepDone, snapshotFromProfile } from './registration-steps';
+import { useDriverDocuments, useFleetAssignedVehicle } from './use-registration';
 import { useRegistrationStore } from './use-registration-store';
 
 /** Home card for a driver who cannot go online yet: progress plus a link to the Documents screen. */

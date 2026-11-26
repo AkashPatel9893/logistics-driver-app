@@ -1,5 +1,7 @@
 import type { CompanyResponse, FleetVehicleResponse } from '@/lib/api/fleet';
 
+import { FLEET_VEHICLE_DOCUMENTS_ENABLED } from './config';
+
 export interface FleetDriver {
   id: string;
   name: string;
@@ -106,4 +108,19 @@ export function toCompanyDetails(res: CompanyResponse): CompanyDetails {
     gstin: res.gstin ?? '',
     isRegistered: res.is_registered,
   };
+}
+
+/**
+ * True when the vehicle's RC, insurance and (unless electric) pollution certificate are verified: what a driver
+ * needs before an owner can assign them. The backend decides (it also asks for fitness or permits by vehicle
+ * type) and answers 409 VEHICLE_DOCUMENTS_NOT_VERIFIED when something else is missing.
+ */
+export function vehicleDocumentsReady(vehicle: FleetVehicle): boolean {
+  if (!FLEET_VEHICLE_DOCUMENTS_ENABLED) return true;
+  const { rc, insurance, pollution } = vehicle.documents;
+  return (
+    rc.verified === true &&
+    insurance.verified === true &&
+    (vehicle.fuelType === 'ELECTRIC' || pollution.verified === true)
+  );
 }

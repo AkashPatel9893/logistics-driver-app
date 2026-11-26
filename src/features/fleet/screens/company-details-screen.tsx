@@ -1,12 +1,11 @@
 import { useRouter } from 'expo-router';
 import { switchDashboardRole } from '@/features/fleet/switch-role';
 import { useState } from 'react';
-import { Alert, Keyboard } from 'react-native';
+import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   AppKeyboardAvoidingView,
-  AppPressable,
   AppScrollView,
   AppSpinner,
   AppText,
@@ -18,20 +17,13 @@ import {
   TextField,
 } from '@/components/ui';
 import { useFleetCompany, useRegisterCompany, useUpdateCompany } from '@/hooks/use-fleet';
+import { DEFAULT_COMPANY_TYPE, isValidGstin } from '../company';
+import { CompanyTypePicker } from '../components/company-type-picker';
 import type { CompanyDetails } from '../types';
 
 import { ApiError } from '@/lib/api/api-error';
 import type { CompanyUpdateRequest } from '@/lib/api/fleet';
 import { goBack } from '@/lib/go-back';
-
-const COMPANY_TYPES = [
-  'Fleet Owner / Transport',
-  'Proprietorship',
-  'Private Limited',
-  'Partnership',
-  'LLP',
-  'Individual Fleet',
-];
 
 interface CompanyDetailsFormProps {
   initialCompany?: CompanyDetails;
@@ -42,7 +34,6 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
   const insets = useSafeAreaInsets();
   const registerCompany = useRegisterCompany();
   const updateCompany = useUpdateCompany();
-  const setDashboardRole = switchDashboardRole;
 
   const [companyName, setCompanyName] = useState(initialCompany?.companyName || '');
   const [ownerName, setOwnerName] = useState(initialCompany?.ownerName || '');
@@ -53,20 +44,15 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
   );
   const [email, setEmail] = useState(initialCompany?.email || '');
   const [companyType, setCompanyType] = useState(
-    initialCompany?.companyType || 'Fleet Owner / Transport',
+    initialCompany?.companyType || DEFAULT_COMPANY_TYPE,
   );
   const [registeredAddress, setRegisteredAddress] = useState(
     initialCompany?.registeredAddress || '',
   );
   const [gstin, setGstin] = useState(initialCompany?.gstin || '');
-  const [showTypePicker, setShowTypePicker] = useState(false);
-
-  const isValidGstin = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(
-    gstin.trim().toUpperCase(),
-  );
 
   // GSTIN is optional, but if it is typed it must be valid.
-  const gstinOk = gstin.trim().length === 0 || isValidGstin;
+  const gstinOk = gstin.trim().length === 0 || isValidGstin(gstin);
 
   const isValid =
     companyName.trim().length >= 2 &&
@@ -131,7 +117,7 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
           registered_address: registeredAddress.trim(),
           ...(gstin.trim() ? { gstin: gstin.trim().toUpperCase() } : {}),
         });
-        setDashboardRole('owner');
+        switchDashboardRole('owner');
       }
 
       Alert.alert(
@@ -265,61 +251,7 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
             inputClassName="ml-2 text-[15px]"
           />
 
-          {/* Company type */}
-          <AppView>
-            <AppText className="mb-2 text-[13px] font-semibold text-foreground-secondary">
-              Company type
-            </AppText>
-            <AppPressable
-              onPress={() => {
-                Keyboard.dismiss();
-                setShowTypePicker((prev) => !prev);
-              }}
-              className="flex-row items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
-            >
-              <AppView row className="items-center gap-3">
-                <Icon name="briefcase" size={20} tone="icon-subtle" />
-                <AppText className="text-[15px] font-semibold text-foreground">
-                  {companyType || 'Select company type'}
-                </AppText>
-              </AppView>
-              <Icon
-                name={showTypePicker ? 'chevron.up' : 'chevron.down'}
-                size={18}
-                tone="icon-subtle"
-              />
-            </AppPressable>
-
-            {showTypePicker ? (
-              <AppView className="mt-2 rounded-2xl border border-border bg-card p-2 shadow-md">
-                {COMPANY_TYPES.map((typeItem) => (
-                  <AppPressable
-                    key={typeItem}
-                    onPress={() => {
-                      setCompanyType(typeItem);
-                      setShowTypePicker(false);
-                    }}
-                    className={`flex-row items-center justify-between rounded-xl px-3 py-2.5 ${
-                      companyType === typeItem
-                        ? 'bg-[#FF5722]/10'
-                        : 'active:bg-neutral-100 dark:active:bg-neutral-800'
-                    }`}
-                  >
-                    <AppText
-                      className={`text-[14px] ${
-                        companyType === typeItem
-                          ? 'font-bold text-[#FF5722]'
-                          : 'font-medium text-foreground'
-                      }`}
-                    >
-                      {typeItem}
-                    </AppText>
-                    {companyType === typeItem ? <Icon name="check" size={16} tone="brand" /> : null}
-                  </AppPressable>
-                ))}
-              </AppView>
-            ) : null}
-          </AppView>
+          <CompanyTypePicker value={companyType} onChange={setCompanyType} />
 
           {/* Registered address */}
           <AppView>

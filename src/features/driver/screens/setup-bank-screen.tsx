@@ -82,12 +82,19 @@ function SetupBankForm({ profile }: { profile: DriverProfile }) {
     saveBank.mutate(
       { holderName, accountNumber, ifscCode },
       {
-        onSuccess: (updated) =>
-          Alert.alert(
-            'Bank account submitted',
-            `Account ending ${updated.bank?.accountLast4 ?? ''} has been added.`,
-            [{ text: 'OK', onPress: () => goToNextStep(router, queryClient, 'bank') }],
-          ),
+        onSuccess: (updated) => {
+          const last4 = updated.bank?.accountLast4 ?? '';
+          // Saved but refused by the bank check: stay here so it can be corrected.
+          if (updated.bank?.status === 'rejected') {
+            setError(
+              `The account ending ${last4} could not be verified. Check the account number and IFSC code, then submit again.`,
+            );
+            return;
+          }
+          Alert.alert('Bank account submitted', `Account ending ${last4} has been added.`, [
+            { text: 'OK', onPress: () => goToNextStep(router, queryClient, 'bank') },
+          ]);
+        },
         onError: (e) => setError(getErrorMessage(e)),
       },
     );
@@ -161,7 +168,7 @@ function SetupBankForm({ profile }: { profile: DriverProfile }) {
                 }
                 value={accountNumber}
                 onChangeText={(t) => setAccountNumber(t.replace(/\D/g, ''))}
-                placeholder="9–18 digits"
+                placeholder="6–18 digits"
                 keyboardType="number-pad"
                 maxLength={18}
                 secureTextEntry

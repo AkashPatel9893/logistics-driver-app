@@ -8,6 +8,7 @@ import {
   type FleetVehicleCreateRequest,
   type LinkRequestCreate,
 } from '@/lib/api/fleet';
+import type { DocumentInput } from '@/lib/api/onboarding';
 import { queryKeys } from '@/lib/queries/keys';
 import { toCompanyDetails, toFleetVehicle } from '@/features/fleet/types';
 
@@ -68,6 +69,15 @@ export function useAddFleetVehicle() {
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.vehicles });
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.stats });
     },
+  });
+}
+
+export function useSubmitFleetVehicleDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ vehicleId, input }: { vehicleId: string; input: DocumentInput }) =>
+      fleetApi.submitVehicleDocument(vehicleId, input),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.fleet.vehicles }),
   });
 }
 

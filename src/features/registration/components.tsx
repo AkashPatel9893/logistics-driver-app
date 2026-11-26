@@ -3,7 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppImage, AppPressable, AppText, AppView, Button, Icon } from '@/components/ui';
 
-import type { StepState } from './use-registration';
+import type { StepState } from './registration-steps';
 
 // ─── Photo slot ─────────────────────────────────────────────────────────────
 

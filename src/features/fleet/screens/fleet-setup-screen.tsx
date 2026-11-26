@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { switchDashboardRole } from '@/features/fleet/switch-role';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, RefreshControl } from 'react-native';
+import { useCallback, useState } from 'react';
+import { RefreshControl } from 'react-native';
 
 import {
   AppPressable,
@@ -10,10 +10,13 @@ import {
   AppText,
   AppView,
   Button,
+  FocusAwareStatusBar,
   Icon,
 } from '@/components/ui';
 import { SetupScreenLayout } from '@/features/driver/components/setup-screen-layout';
 import { StepRow } from '@/features/registration/components';
+import { useAutoStartStep } from '@/features/registration/use-auto-start-step';
+import { isStepDone } from '@/features/registration/registration-steps';
 
 import { useFleetSetup, type FleetSetupStep } from '../use-fleet-setup';
 
@@ -21,7 +24,6 @@ import { useFleetSetup, type FleetSetupStep } from '../use-fleet-setup';
 export function FleetSetupScreen() {
   const router = useRouter();
   const setup = useFleetSetup();
-  const setDashboardRole = switchDashboardRole;
   const [refreshing, setRefreshing] = useState(false);
 
   // Back from a step: re-check, so a finished step turns green without a pull.
@@ -32,27 +34,40 @@ export function FleetSetupScreen() {
     }, [refetch]),
   );
 
-  // Everything done: open the dashboard.
-  useEffect(() => {
-    if (setup.complete) router.replace('/home');
-  }, [setup.complete, router]);
+  // Everything done: open the dashboard. Only while this list is on screen: the last step's data
+  // arrives while that step is still open, and redirecting then would replace the step instead,
+  // leaving this list stuck underneath.
+  useFocusEffect(
+    useCallback(() => {
+      if (setup.complete) router.replace('/home');
+    }, [setup.complete, router]),
+  );
+
+  // Right after sign-up the first pending step opens by itself.
+  const firstPending = setup.steps.find((s) => !isStepDone(s.state));
+  const holding = useAutoStartStep(!setup.loading && setup.steps.length > 0, firstPending?.route);
 
   const openStep = (step: FleetSetupStep) => {
-    if (step.locked) {
-      Alert.alert('Not yet', step.lockedReason ?? 'Finish the earlier steps first.');
-      return;
-    }
     router.push(step.route as never);
   };
 
   const switchToRider = () => {
-    setDashboardRole('driver');
+    switchDashboardRole('driver');
     router.replace('/home');
   };
 
   const done = setup.steps.filter(
     (s) => s.state === 'verified' || (s.id === 'bank' && s.state === 'review'),
   ).length;
+
+  if (holding && !setup.error) {
+    return (
+      <AppView className="flex-1 items-center justify-center bg-background">
+        <FocusAwareStatusBar />
+        <AppSpinner size="large" />
+      </AppView>
+    );
+  }
 
   return (
     <SetupScreenLayout
@@ -103,8 +118,8 @@ export function FleetSetupScreen() {
                 Complete your registration
               </AppText>
               <AppText className="text-[13px] leading-5 text-muted">
-                {done} of {setup.steps.length} steps done. Add at least one vehicle to start
-                managing your fleet. Photo and ID are checked by the Ryno team.
+                {done} of {setup.steps.length} steps done. Photo and ID are checked by the Ryno
+                team.
               </AppText>
               <AppView className="mt-1 h-2 overflow-hidden rounded-full bg-surface-muted">
                 <AppView
@@ -120,7 +135,7 @@ export function FleetSetupScreen() {
                 title={step.title}
                 detail={step.detail}
                 state={step.state}
-                highlighted={step.id === setup.nextStepId && !step.locked}
+                highlighted={step.id === setup.nextStepId}
                 onPress={() => openStep(step)}
               />
             ))}

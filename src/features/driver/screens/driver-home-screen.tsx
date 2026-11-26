@@ -21,7 +21,13 @@ import { useActiveJob, useOffers } from '@/hooks/use-jobs';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { RegistrationProgressCard } from '@/features/registration/registration-progress-card';
 import { syncOnboardingStatus } from '@/features/auth/use-auth-store';
-import { FleetStatsRow, FleetVehiclesSection } from '@/features/fleet/components';
+import {
+  DriveVehiclePicker,
+  FleetStatsRow,
+  FleetVehiclesSection,
+} from '@/features/fleet/components';
+import { useDriveVehicle } from '@/features/fleet/use-drive-vehicle';
+import type { FleetVehicle } from '@/features/fleet/types';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DocumentAlert, JobOffer, SetupStep } from '@/lib/api/models';
 import { canDrawOverlays, isBubbleSupported, openOverlaySettings } from '@/lib/driver-bubble';
@@ -30,7 +36,6 @@ import { greetingFor } from '@/lib/format';
 import { ActiveDeliveryCard } from '../components/active-delivery-card';
 import { DeliveryRequestCard } from '../components/delivery-request-card';
 import { DriverOnlineToggle } from '../components/driver-online-toggle';
-import { DriverSetupChecklist } from '../components/driver-setup-checklist';
 import { HomeMenu } from '../components/home-menu';
 import { EarningsStrip } from '../components/earnings-strip';
 import { TripTracker } from '../components/trip-tracker';
@@ -130,10 +135,10 @@ export function DriverHomeScreen() {
   const dashboardRole = useFleetStore.use.dashboardRole();
   const fleetVehiclesQuery = useFleetVehicles();
   const { data: vehicles = [] } = fleetVehiclesQuery;
+  const { assigningVehicleId, driveVehicle } = useDriveVehicle();
+  const [showVehiclePicker, setShowVehiclePicker] = useState(false);
   const fleetCompanyQuery = useFleetCompany();
   const { data: company } = fleetCompanyQuery;
-  const activeDriverVehicleId = useFleetStore.use.activeDriverVehicleId();
-  const setActiveDriverVehicleId = useFleetStore.use.setActiveDriverVehicleId();
 
   // Like Rapido, a driver whose application is not approved yet lives on the Documents
   // screen, not Home: there is nothing to do here until then.
@@ -207,7 +212,8 @@ export function DriverHomeScreen() {
   const showBonus =
     !profile.welcomeBonus.seen && profile.welcomeBonus.status === 'active' && isFocused;
 
-  const activeDriverVehicle = vehicles.find((v) => v.id === activeDriverVehicleId) ?? vehicles[0];
+  // The vehicle the owner is assigned to as its driver.
+  const activeDriverVehicle = vehicles.find((v) => v.driver?.isOwnerSelf);
 
   const vehicleSubtitle = profile.vehicle
     ? `${profile.vehicle.vehicleTypeName} · ${profile.vehicle.plateNumber}`
@@ -216,14 +222,18 @@ export function DriverHomeScreen() {
       : 'No vehicle assigned';
 
   const handleSwitchActiveVehicle = () => {
-    if (vehicles.length <= 1) return;
-    Alert.alert('Switch Active Vehicle', 'Select which vehicle you are driving right now:', [
-      ...vehicles.map((v) => ({
-        text: `${v.model} (${v.plateNumber})${v.id === activeDriverVehicle?.id ? '  ✓ Active' : ''}`,
-        onPress: () => setActiveDriverVehicleId(v.id),
-      })),
-      { text: 'Cancel', style: 'cancel' as const },
-    ]);
+    if (profile.isOnline || activeJob) {
+      Alert.alert(
+        'Go offline first',
+        'Finish your delivery and go offline before switching to another vehicle.',
+      );
+      return;
+    }
+    setShowVehiclePicker(true);
+  };
+
+  const handleDriveVehicle = async (vehicle: FleetVehicle) => {
+    if (await driveVehicle(vehicle)) setShowVehiclePicker(false);
   };
 
   const isDriverMode = dashboardRole === 'driver';
@@ -251,13 +261,13 @@ export function DriverHomeScreen() {
             </AppText>
             <AppPressable
               onPress={handleSwitchActiveVehicle}
-              disabled={vehicles.length <= 1}
+              disabled={dashboardRole !== 'driver' || vehicles.length === 0}
               className="flex-row items-center gap-1.5 mt-0.5"
             >
               <AppText className="text-[15px] font-medium text-muted" numberOfLines={1}>
                 {vehicleSubtitle}
               </AppText>
-              {vehicles.length > 1 ? (
+              {dashboardRole === 'driver' && vehicles.length > 0 ? (
                 <Icon name="chevron.down" size={13} tone="icon-subtle" />
               ) : null}
             </AppPressable>
@@ -358,13 +368,9 @@ export function DriverHomeScreen() {
               onPressVehicles={() => router.push('/driver-profile')}
             />
 
-            {/* The setup checklist only while the owner's own account still needs it: once it is
-                approved, an empty fleet gets the fleet's own "add your first vehicle" prompt. */}
-            {!profile.canGoOnline && vehicles.length === 0 ? (
-              <DriverSetupChecklist profile={profile} />
-            ) : (
-              <FleetVehiclesSection />
-            )}
+            {/* Fleet setup covers the owner's own account, so no driver checklist here: an empty
+                fleet gets its own "add your first vehicle" prompt. */}
+            <FleetVehiclesSection />
           </>
         )}
 
@@ -386,6 +392,19 @@ export function DriverHomeScreen() {
 
       <HomeMenu visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
+      <DriveVehiclePicker
+        visible={showVehiclePicker}
+        vehicles={vehicles}
+        assigningVehicleId={assigningVehicleId}
+        title="Switch vehicle"
+        subtitle="Choose a vehicle with no driver. You'll move off the one you drive now."
+        onSelect={handleDriveVehicle}
+        onAddVehicle={() => {
+          setShowVehiclePicker(false);
+          router.push('/setup-vehicle');
+        }}
+        onClose={() => setShowVehiclePicker(false)}
+      />
       <WelcomeBonusModal
         bonus={profile.welcomeBonus}
         visible={showBonus && !markBonusSeen.isPending}

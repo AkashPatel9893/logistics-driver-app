@@ -3,15 +3,15 @@ import { useRouter } from 'expo-router';
 
 import { requestAutoStart } from '@/features/registration/next-step';
 import { useState } from 'react';
-import { Alert, Keyboard } from 'react-native';
+import { Alert } from 'react-native';
 
 import { getErrorMessage } from '@/lib/api/api-error';
 import { authApi } from '@/lib/api/auth';
-import { getDobBlurError, getDobTypingError } from '@/lib/dob';
 
 import { driverProfileSchema } from '../schema';
 import { useAuthStore } from '../use-auth-store';
 import { useCityStore } from '../use-city-store';
+import { useDobField } from './use-dob-field';
 
 type FieldErrors = { name?: string; phone?: string; dob?: string };
 
@@ -26,7 +26,8 @@ export function useOnboardingForm() {
 
   const [name, setName] = useState(user?.name ?? '');
   const [phone, setPhone] = useState(localDigits(user?.phone));
-  const [dob, setDob] = useState(user?.dob ?? '');
+  const dobField = useDobField(user?.dob ?? '');
+  const { dob } = dobField;
   const [validationErrors, setValidationErrors] = useState<FieldErrors>({});
 
   const updateProfile = useMutation({
@@ -56,27 +57,6 @@ export function useOnboardingForm() {
     setPhone(text.replace(/\D/g, '').slice(0, 10));
   };
 
-  const handleDobChange = (text: string) => {
-    const cleaned = text.replace(/[^0-9]/g, '');
-    let formatted = cleaned;
-    if (cleaned.length > 2 && cleaned.length <= 4) {
-      formatted = `${cleaned.slice(0, 2)} / ${cleaned.slice(2)}`;
-    } else if (cleaned.length > 4) {
-      formatted = `${cleaned.slice(0, 2)} / ${cleaned.slice(2, 4)} / ${cleaned.slice(4, 8)}`;
-    }
-    setDob(formatted);
-    // Checked as it is typed (day, month, year), so a wrong part shows its message at once.
-    setValidationErrors((current) => ({ ...current, dob: getDobTypingError(formatted) }));
-    // Complete: get the keyboard out of the way of the message.
-    if (formatted.length === 14) Keyboard.dismiss();
-  };
-
-  /** Leaving the field half-filled is an error too. */
-  const handleDobBlur = () => {
-    const error = getDobBlurError(dob);
-    if (error) setValidationErrors((current) => ({ ...current, dob: error }));
-  };
-
   const handleSubmit = () => {
     if (updateProfile.isPending) return;
     const result = driverProfileSchema.safeParse({ name, phone, dob });
@@ -87,6 +67,7 @@ export function useOnboardingForm() {
         errors[field] ??= issue.message;
       }
       setValidationErrors(errors);
+      if (errors.dob) dobField.setError(errors.dob);
       return;
     }
     updateProfile.mutate({
@@ -101,11 +82,11 @@ export function useOnboardingForm() {
     dob,
     isLoading: updateProfile.isPending,
     isFormValid: name.trim().length >= 2 && phone.length === 10 && dob.length === 14,
-    validationErrors,
+    validationErrors: { ...validationErrors, dob: dobField.error },
     handleNameChange,
     handlePhoneChange,
-    handleDobChange,
-    handleDobBlur,
+    handleDobChange: dobField.handleChange,
+    handleDobBlur: dobField.handleBlur,
     handleSubmit,
   };
 }

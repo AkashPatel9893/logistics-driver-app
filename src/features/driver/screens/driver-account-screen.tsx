@@ -2,6 +2,7 @@ import { useWallet } from '@/hooks/use-earnings';
 import { switchDashboardRole } from '@/features/fleet/switch-role';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -16,10 +17,11 @@ import {
   type IconName,
 } from '@/components/ui';
 import { signOut, useAuthStore } from '@/features/auth/use-auth-store';
-import { RoleSwitcher } from '@/features/fleet/components';
+import { DriveVehiclePicker, RoleSwitcher } from '@/features/fleet/components';
 import { modeSwitchState, registrationLinkLabel } from '@/features/fleet/mode-switch';
+import { useDriveVehicle } from '@/features/fleet/use-drive-vehicle';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
-import type { DashboardRole } from '@/features/fleet/types';
+import type { DashboardRole, FleetVehicle } from '@/features/fleet/types';
 import { useDriverProfile, useSetOnline } from '@/hooks/use-driver';
 import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import { useActiveJob } from '@/hooks/use-jobs';
@@ -48,6 +50,8 @@ export function DriverAccountScreen() {
   const dashboardRole = useFleetStore.use.dashboardRole();
   const setDashboardRole = switchDashboardRole;
   const modeSwitch = modeSwitchState(profile);
+  const { assigningVehicleId, driveVehicle } = useDriveVehicle();
+  const [showVehiclePicker, setShowVehiclePicker] = useState(false);
 
   // A Fleet Owner with no approved driver profile has no other way into driver registration.
   const openDriverRegistration = () => {
@@ -68,8 +72,26 @@ export function DriverAccountScreen() {
       );
       return;
     }
+    // An owner who is not driving any vehicle yet picks the one to drive before entering Driver mode.
+    const isDrivingAVehicle = vehicles.some((vehicle) => vehicle.driver?.isOwnerSelf);
+    if (next === 'driver' && !isDrivingAVehicle) {
+      setShowVehiclePicker(true);
+      return;
+    }
     setDashboardRole(next);
     router.navigate('/home');
+  };
+
+  const handleDriveVehicle = async (vehicle: FleetVehicle) => {
+    if (!(await driveVehicle(vehicle))) return;
+    setShowVehiclePicker(false);
+    setDashboardRole('driver');
+    router.navigate('/home');
+  };
+
+  const handleAddVehicleToDrive = () => {
+    setShowVehiclePicker(false);
+    router.push('/setup-vehicle');
   };
 
   const name = company?.ownerName || profile?.name || '—';
@@ -243,6 +265,14 @@ export function DriverAccountScreen() {
             role={dashboardRole}
             onChangeRole={handleChangeRole}
             locked={!modeSwitch.allowed}
+          />
+          <DriveVehiclePicker
+            visible={showVehiclePicker}
+            vehicles={vehicles}
+            assigningVehicleId={assigningVehicleId}
+            onSelect={handleDriveVehicle}
+            onAddVehicle={handleAddVehicleToDrive}
+            onClose={() => setShowVehiclePicker(false)}
           />
           {modeSwitch.lockedReason ? (
             <AppText className="mt-3 text-[12px] text-muted">{modeSwitch.lockedReason}</AppText>

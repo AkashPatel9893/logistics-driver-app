@@ -7,20 +7,18 @@ import { onboardingApi } from '@/lib/api/onboarding';
 import { goBack } from '@/lib/go-back';
 import { queryKeys } from '@/lib/queries/keys';
 
-import {
-  buildRegistrationSteps,
-  fetchDriverDocuments,
-  fetchFleetAssignedVehicle,
-  isStepDone,
-  snapshotFromStatus,
-} from './use-registration';
+import { buildRegistrationSteps, isStepDone, snapshotFromStatus } from './registration-steps';
+import { fetchDriverDocuments, fetchFleetAssignedVehicle } from './use-registration';
 import { useRegistrationStore } from './use-registration-store';
 
 // Set right after sign-up so Documents opens the first pending step at once (a new driver goes
 // through the steps in a row). In memory only: opening the app later shows the list instead.
 let autoStartRequested = false;
 
-/** Asks the next Documents screen that opens to go straight to the first pending step. */
+/** The steps of Fleet setup that follow one another (company details are given at sign-up). */
+const FLEET_STEP_IDS = ['photo', 'identity', 'bank'];
+
+/** Asks the next checklist screen (Documents or Fleet setup) that opens to go straight to the first pending step. */
 export function requestAutoStart() {
   autoStartRequested = true;
 }
@@ -38,7 +36,8 @@ export function takeAutoStart(): boolean {
 
 /**
  * After a registration step is done, opens the next unfinished one in its place, so the driver
- * goes through the steps one after another; to Documents once nothing is left.
+ * goes through the steps one after another; to Documents once nothing is left. A fleet owner goes
+ * through the Fleet setup steps only, then back to where they came from.
  *
  * Looks forward from the step just finished (then wraps round), never at that step itself: a step
  * the backend has not marked complete yet (e.g. waiting for a fleet owner) can't loop back.
@@ -48,8 +47,9 @@ export async function goToNextStep(
   queryClient: QueryClient,
   currentStepId: string,
 ): Promise<void> {
-  // A fleet owner's checklist (Fleet setup) decides what is next, not the driver's step order.
-  if (useFleetStore.getState().dashboardRole === 'owner') {
+  const isOwner = useFleetStore.getState().dashboardRole === 'owner';
+  // A fleet owner's other screens (e.g. adding a vehicle) are not part of a sequence.
+  if (isOwner && !FLEET_STEP_IDS.includes(currentStepId)) {
     goBack(router);
     return;
   }
@@ -80,7 +80,7 @@ export async function goToNextStep(
     ]);
     registrationInProgress = snapshotFromStatus(status).onboarding.status !== 'approved';
     const { vehicleTypeId, fleetDriver } = useRegistrationStore.getState();
-    const steps = buildRegistrationSteps(
+    const allSteps = buildRegistrationSteps(
       snapshotFromStatus(status),
       docs,
       vehicleTypes,
@@ -88,6 +88,7 @@ export async function goToNextStep(
       fleetDriver,
       fleetVehicle,
     );
+    const steps = isOwner ? allSteps.filter((s) => FLEET_STEP_IDS.includes(s.id)) : allSteps;
     const index = steps.findIndex((s) => s.id === currentStepId);
     const pending = (s: (typeof steps)[number]) => s.id !== currentStepId && !isStepDone(s.state);
     const next =
@@ -100,7 +101,8 @@ export async function goToNextStep(
     // Couldn't check what is left: Documents shows it.
   }
   // Last step done: show the Documents list (with Submit for review). Already approved, so this
-  // was an edit made from Account or Wallet: back to where it came from.
-  if (registrationInProgress) router.dismissTo('/registration');
+  // was an edit made from Account or Wallet: back to where it came from. A fleet owner goes back
+  // too: to Fleet setup, or wherever the edit was made from.
+  if (registrationInProgress && !isOwner) router.dismissTo('/registration');
   else goBack(router);
 }

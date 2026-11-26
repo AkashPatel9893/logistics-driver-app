@@ -12,6 +12,8 @@ interface FleetUIState {
   setDashboardRole: (role: DashboardRole) => void;
   setSelectedVehicleId: (id: string | null) => void;
   setActiveDriverVehicleId: (id: string | null) => void;
+  /** Forget the account's choices (log out). */
+  reset: () => void;
 }
 
 function loadPersistedRole(): DashboardRole {
@@ -38,6 +40,13 @@ const _useFleetStore = create<FleetUIState>((set) => ({
   setSelectedVehicleId: (id: string | null) => set({ selectedVehicleId: id }),
 
   setActiveDriverVehicleId: (id: string | null) => set({ activeDriverVehicleId: id }),
+
+  // The mode belongs to the account, not the phone: sent with the next login it would overwrite
+  // another account's. The backend returns each account's own saved mode.
+  reset: () => {
+    kvStorage.delete(STORAGE_KEYS.DASHBOARD_ROLE);
+    set({ dashboardRole: 'driver', selectedVehicleId: null, activeDriverVehicleId: null });
+  },
 }));
 
 export const useFleetStore = createSelectors(_useFleetStore);

@@ -14,14 +14,26 @@ import {
   Icon,
   LiquidGlassBackButton,
 } from '@/components/ui';
+import { VehicleDocumentSheet, type VehicleDocumentType } from '@/features/fleet/components';
 import {
   useAssignFleetDriver,
   useFleetCompany,
   useFleetVehicles,
   useRemoveFleetVehicle,
+  useSubmitFleetVehicleDocument,
   useUnassignFleetDriver,
 } from '@/hooks/use-fleet';
+import { getErrorMessage } from '@/lib/api/api-error';
 import { goBack } from '@/lib/go-back';
+
+import { FLEET_VEHICLE_DOCUMENTS_ENABLED } from '../config';
+import { vehicleDocumentsReady } from '../types';
+
+const DOCUMENT_ROWS = [
+  { type: 'RC', key: 'rc', label: 'Vehicle RC', icon: 'doc.text.fill' },
+  { type: 'INSURANCE', key: 'insurance', label: 'Insurance', icon: 'shield.fill' },
+  { type: 'PUC', key: 'pollution', label: 'Pollution certificate', icon: 'leaf.fill' },
+] as const;
 
 export function VehicleDetailsScreen() {
   const router = useRouter();
@@ -33,6 +45,8 @@ export function VehicleDetailsScreen() {
   const assignDriverMutation = useAssignFleetDriver();
   const unassignDriverMutation = useUnassignFleetDriver();
   const removeVehicleMutation = useRemoveFleetVehicle();
+  const submitDocument = useSubmitFleetVehicleDocument();
+  const [documentToUpload, setDocumentToUpload] = useState<VehicleDocumentType | null>(null);
 
   const vehicleId = params.vehicleId || vehicles?.[0]?.id;
   const vehicle = vehicles?.find((v) => v.id === vehicleId) ?? vehicles?.[0];
@@ -57,6 +71,29 @@ export function VehicleDetailsScreen() {
   }
 
   const driver = vehicle.driver;
+  const documentsReady = vehicleDocumentsReady(vehicle);
+
+  const handleSubmitDocument = async (submission: {
+    type: VehicleDocumentType;
+    photoUri: string;
+    expiryDate?: string;
+  }) => {
+    try {
+      await submitDocument.mutateAsync({
+        vehicleId: vehicle.id,
+        input: {
+          type: submission.type,
+          fileUri: submission.photoUri,
+          expiryDate: submission.expiryDate,
+          ...(submission.type === 'RC' ? { identifier: vehicle.plateNumber } : {}),
+        },
+      });
+      setDocumentToUpload(null);
+      Alert.alert('Sent for verification', 'We will let you know once an admin has verified it.');
+    } catch (err) {
+      Alert.alert('Could not send the document', getErrorMessage(err));
+    }
+  };
 
   const handleSelfAssign = async () => {
     try {
@@ -165,82 +202,59 @@ export function VehicleDetailsScreen() {
           <AppText className="px-1 text-[18px] font-extrabold text-foreground">Documents</AppText>
 
           <AppView className="rounded-3xl border border-border bg-card overflow-hidden shadow-sm">
-            {/* Vehicle RC */}
-            <AppView row className="items-center justify-between border-b border-border/60 p-4">
-              <AppView row className="items-center gap-3">
-                <AppView className="h-10 w-10 items-center justify-center rounded-xl bg-surface-muted">
-                  <Icon name="doc.text.fill" size={18} tone="foreground" />
-                </AppView>
-                <AppText className="text-[15px] font-bold text-foreground">Vehicle RC</AppText>
-              </AppView>
-              <AppView
-                className={`rounded-full px-3 py-1 ${
-                  vehicle.documents?.rc?.verified ? 'bg-emerald-500/15' : 'bg-amber-500/15'
-                }`}
-              >
-                <AppText
-                  className={`text-[12px] font-bold ${
-                    vehicle.documents?.rc?.verified
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : 'text-amber-700 dark:text-amber-400'
+            {DOCUMENT_ROWS.map((row, index) => {
+              const state = vehicle.documents?.[row.key];
+              const verified = state?.verified === true;
+              const hidden = row.type === 'PUC' && vehicle.fuelType === 'ELECTRIC';
+              if (hidden) return null;
+              return (
+                <AppView
+                  key={row.type}
+                  row
+                  className={`items-center justify-between p-4 ${
+                    index < DOCUMENT_ROWS.length - 1 ? 'border-b border-border/60' : ''
                   }`}
                 >
-                  {vehicle.documents?.rc?.label || '—'}
-                </AppText>
-              </AppView>
-            </AppView>
-
-            {/* Insurance */}
-            <AppView row className="items-center justify-between border-b border-border/60 p-4">
-              <AppView row className="items-center gap-3">
-                <AppView className="h-10 w-10 items-center justify-center rounded-xl bg-surface-muted">
-                  <Icon name="shield.fill" size={18} tone="foreground" />
+                  <AppView row className="flex-1 items-center gap-3">
+                    <AppView className="h-10 w-10 items-center justify-center rounded-xl bg-surface-muted">
+                      <Icon name={row.icon} size={18} tone="foreground" />
+                    </AppView>
+                    <AppText className="flex-1 text-[15px] font-bold text-foreground">
+                      {row.label}
+                    </AppText>
+                  </AppView>
+                  <AppView className="items-end gap-1.5">
+                    <AppView
+                      className={`rounded-full px-3 py-1 ${
+                        verified ? 'bg-emerald-500/15' : 'bg-amber-500/15'
+                      }`}
+                    >
+                      <AppText
+                        className={`text-[12px] font-bold ${
+                          verified
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-amber-700 dark:text-amber-400'
+                        }`}
+                      >
+                        {state?.label || '—'}
+                      </AppText>
+                    </AppView>
+                    {FLEET_VEHICLE_DOCUMENTS_ENABLED && !verified ? (
+                      <AppPressable
+                        onPress={() => setDocumentToUpload(row.type)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <AppText className="text-[13px] font-bold text-[#FF5722]">
+                          {state?.label && state.label !== 'Not uploaded'
+                            ? 'Upload again'
+                            : 'Upload'}
+                        </AppText>
+                      </AppPressable>
+                    ) : null}
+                  </AppView>
                 </AppView>
-                <AppText className="text-[15px] font-bold text-foreground">Insurance</AppText>
-              </AppView>
-              <AppView
-                className={`rounded-full px-3 py-1 ${
-                  vehicle.documents?.insurance?.verified ? 'bg-emerald-500/15' : 'bg-amber-500/15'
-                }`}
-              >
-                <AppText
-                  className={`text-[12px] font-bold ${
-                    vehicle.documents?.insurance?.verified
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : 'text-amber-700 dark:text-amber-400'
-                  }`}
-                >
-                  {vehicle.documents?.insurance?.label || '—'}
-                </AppText>
-              </AppView>
-            </AppView>
-
-            {/* Pollution certificate */}
-            <AppView row className="items-center justify-between p-4">
-              <AppView row className="items-center gap-3">
-                <AppView className="h-10 w-10 items-center justify-center rounded-xl bg-surface-muted">
-                  <Icon name="leaf.fill" size={18} color="#10b981" />
-                </AppView>
-                <AppText className="text-[15px] font-bold text-foreground">
-                  Pollution certificate
-                </AppText>
-              </AppView>
-              <AppView
-                className={`rounded-full px-3 py-1 ${
-                  vehicle.documents?.pollution?.verified ? 'bg-emerald-500/15' : 'bg-amber-500/15'
-                }`}
-              >
-                <AppText
-                  className={`text-[12px] font-bold ${
-                    vehicle.documents?.pollution?.verified
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : 'text-amber-700 dark:text-amber-400'
-                  }`}
-                >
-                  {vehicle.documents?.pollution?.label || '—'}
-                </AppText>
-              </AppView>
-            </AppView>
+              );
+            })}
           </AppView>
         </AppView>
 
@@ -248,73 +262,133 @@ export function VehicleDetailsScreen() {
         <AppView className="gap-2.5">
           <AppView row className="items-center justify-between px-1">
             <AppText className="text-[18px] font-extrabold text-foreground">Driver</AppText>
-            <AppPressable
-              onPress={() => setShowDriverSheet(true)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <AppText className="text-[13px] font-bold text-[#FF5722]">Edit</AppText>
-            </AppPressable>
-          </AppView>
-
-          <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
-            <AppView row className="items-center gap-4">
-              <AppView className="h-14 w-14 items-center justify-center rounded-full bg-[#FF5722]/10 border-2 border-[#FF5722]/30">
-                <AppText className="text-[20px] font-black text-[#FF5722]">
-                  {driver?.name ? driver.name.slice(0, 1).toUpperCase() : 'D'}
-                </AppText>
-              </AppView>
-
-              <AppView className="flex-1">
-                <AppView row className="items-center gap-2">
-                  <AppText className="text-[17px] font-black text-foreground">
-                    {driver?.name || 'Unassigned'}
-                  </AppText>
-                  {driver?.isOwnerSelf ? (
-                    <AppView className="rounded-full bg-[#FF5722]/15 px-2 py-0.5">
-                      <AppText className="text-[10px] font-extrabold text-[#FF5722]">
-                        OWNER (YOU)
-                      </AppText>
-                    </AppView>
-                  ) : null}
-                </AppView>
-
-                <AppView row className="mt-1 items-center gap-2">
-                  {driver?.rating != null ? (
-                    <AppView
-                      row
-                      className="items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5"
-                    >
-                      <Icon name="star.fill" size={11} color="#f59e0b" />
-                      <AppText className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
-                        {Number(driver.rating).toFixed(1)}
-                      </AppText>
-                    </AppView>
-                  ) : null}
-
-                  {driver?.phone ? (
-                    <AppText className="text-[13px] font-medium text-muted">{driver.phone}</AppText>
-                  ) : null}
-                </AppView>
-              </AppView>
-
+            {driver ? (
               <AppPressable
                 onPress={() => setShowDriverSheet(true)}
-                className="h-9 w-9 items-center justify-center rounded-full bg-surface-muted"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Icon name="chevron.right" size={16} tone="icon-subtle" />
+                <AppText className="text-[13px] font-bold text-[#FF5722]">Change</AppText>
               </AppPressable>
-            </AppView>
+            ) : null}
           </AppView>
+
+          {!driver && !documentsReady ? (
+            <AppView className="rounded-3xl border border-dashed border-border bg-card p-5 shadow-sm">
+              <AppView row className="items-center gap-4">
+                <AppView className="h-14 w-14 items-center justify-center rounded-full bg-amber-500/15">
+                  <Icon name="lock.fill" size={22} tone="icon-subtle" />
+                </AppView>
+                <AppView className="flex-1">
+                  <AppText className="text-[17px] font-black text-foreground">
+                    Verify this vehicle first
+                  </AppText>
+                  <AppText className="mt-0.5 text-[13px] text-muted">
+                    Upload and get its RC, insurance and pollution certificate verified. Then you
+                    can add a driver or drive it yourself.
+                  </AppText>
+                </AppView>
+              </AppView>
+            </AppView>
+          ) : null}
+
+          {!driver && documentsReady ? (
+            <AppView className="rounded-3xl border border-dashed border-[#FF5722]/50 bg-card p-5 shadow-sm">
+              <AppView row className="items-center gap-4">
+                <AppView className="h-14 w-14 items-center justify-center rounded-full bg-[#FF5722]/10">
+                  <Icon name="person.badge.plus" size={24} tone="brand" />
+                </AppView>
+                <AppView className="flex-1">
+                  <AppText className="text-[17px] font-black text-foreground">
+                    No driver yet
+                  </AppText>
+                  <AppText className="mt-0.5 text-[13px] text-muted">
+                    Add a driver, or drive this vehicle yourself.
+                  </AppText>
+                </AppView>
+              </AppView>
+              <Button
+                variant="brand"
+                label="Add driver"
+                className="mt-4"
+                onPress={() => setShowDriverSheet(true)}
+              />
+            </AppView>
+          ) : driver ? (
+            <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+              <AppView row className="items-center gap-4">
+                <AppView className="h-14 w-14 items-center justify-center rounded-full bg-[#FF5722]/10 border-2 border-[#FF5722]/30">
+                  <AppText className="text-[20px] font-black text-[#FF5722]">
+                    {driver?.name ? driver.name.slice(0, 1).toUpperCase() : 'D'}
+                  </AppText>
+                </AppView>
+
+                <AppView className="flex-1">
+                  <AppView row className="items-center gap-2">
+                    <AppText className="text-[17px] font-black text-foreground">
+                      {driver?.name}
+                    </AppText>
+                    {driver?.isOwnerSelf ? (
+                      <AppView className="rounded-full bg-[#FF5722]/15 px-2 py-0.5">
+                        <AppText className="text-[10px] font-extrabold text-[#FF5722]">
+                          OWNER (YOU)
+                        </AppText>
+                      </AppView>
+                    ) : null}
+                  </AppView>
+
+                  <AppView row className="mt-1 items-center gap-2">
+                    {driver?.rating != null ? (
+                      <AppView
+                        row
+                        className="items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5"
+                      >
+                        <Icon name="star.fill" size={11} color="#f59e0b" />
+                        <AppText className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                          {Number(driver.rating).toFixed(1)}
+                        </AppText>
+                      </AppView>
+                    ) : null}
+
+                    {driver?.phone ? (
+                      <AppText className="text-[13px] font-medium text-muted">
+                        {driver.phone}
+                      </AppText>
+                    ) : null}
+                  </AppView>
+                </AppView>
+
+                <AppPressable
+                  onPress={() => setShowDriverSheet(true)}
+                  className="h-9 w-9 items-center justify-center rounded-full bg-surface-muted"
+                >
+                  <Icon name="chevron.right" size={16} tone="icon-subtle" />
+                </AppPressable>
+              </AppView>
+            </AppView>
+          ) : null}
         </AppView>
+
+        {documentToUpload ? (
+          <VehicleDocumentSheet
+            key={documentToUpload}
+            visible
+            type={documentToUpload}
+            title={DOCUMENT_ROWS.find((row) => row.type === documentToUpload)?.label ?? 'Document'}
+            submitting={submitDocument.isPending}
+            onSubmit={handleSubmitDocument}
+            onClose={() => setDocumentToUpload(null)}
+          />
+        ) : null}
 
         {/* Change driver modal/dialog */}
         {showDriverSheet ? (
           <AppView className="rounded-3xl border border-[#FF5722]/40 bg-card p-5 shadow-lg">
             <AppText className="text-[16px] font-extrabold text-foreground">
-              Assign driver for {vehicle.model}
+              {driver ? 'Change driver' : 'Add a driver'} for {vehicle.model}
             </AppText>
             <AppText className="mt-1 text-[13px] text-muted">
-              Choose who will drive this vehicle on delivery trips:
+              Choose who will drive this vehicle on delivery trips. A vehicle has one driver at a
+              time.
             </AppText>
 
             <AppView className="mt-4 gap-2.5">
@@ -342,7 +416,7 @@ export function VehicleDetailsScreen() {
                   <Icon name="person.badge.plus" size={20} tone="foreground" />
                   <AppView>
                     <AppText className="text-[14px] font-bold text-foreground">
-                      Add / Assign another driver
+                      {driver ? 'Assign a different driver' : 'Add a new driver'}
                     </AppText>
                     <AppText className="text-[11px] text-muted">
                       Enter full name, DL, and phone

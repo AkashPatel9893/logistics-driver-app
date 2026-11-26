@@ -23,6 +23,7 @@ import {
 } from '@/hooks/use-driver';
 import { useAddFleetVehicle, useFleetVehicles, useRequestFleetLink } from '@/hooks/use-fleet';
 import { DriverChoiceSheet } from '@/features/fleet/components';
+import { FLEET_VEHICLE_DOCUMENTS_ENABLED } from '@/features/fleet/config';
 import { useDriveVehicle } from '@/features/fleet/use-drive-vehicle';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { useRegistrationStore } from '@/features/registration/use-registration-store';
@@ -153,7 +154,6 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
   const { assigningVehicleId, driveVehicle } = useDriveVehicle();
   const [newVehicle, setNewVehicle] = useState<{ id: string; label: string } | null>(null);
   const [showDriverChoice, setShowDriverChoice] = useState(false);
-
   const selectedType = vehicleTypes.find((t) => t.id === typeId);
   const maxPayloadKg = selectedType?.capacityKg ?? null;
   const capacityOptions = capacityOptionsFor(maxPayloadKg);
@@ -245,6 +245,7 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
     }
     setError(undefined);
     const vehicleTypeCode = selectedType.code;
+    let created: { id: string } | null = null;
 
     try {
       if (!isFleetOwner) {
@@ -261,7 +262,7 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
           pucExpiry: fuelType === 'ELECTRIC' ? null : toIsoDate(pucExpiry),
         });
       } else {
-        const created = await addFleetVehicle.mutateAsync({
+        created = await addFleetVehicle.mutateAsync({
           registration_number: cleanPlate,
           vehicle_type_code: vehicleTypeCode,
           make: make.trim(),
@@ -272,7 +273,6 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
               : (capacityKg ?? undefined),
           fuel_type: fuelType,
         });
-        setNewVehicle({ id: created.id, label: `${model.trim()} (${cleanPlate})` });
       }
 
       markSubmitted('vehicle.');
@@ -281,8 +281,15 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
         await goToNextStep(router, queryClient, 'vehicle');
         return;
       }
-      // Fleet owner: the sheet asks who will drive it (the vehicle is saved either way).
-      setShowDriverChoice(true);
+      if (created && FLEET_VEHICLE_DOCUMENTS_ENABLED) {
+        // Its documents come next; a driver can be added once they are verified.
+        router.replace({ pathname: '/vehicle-details' as any, params: { vehicleId: created.id } });
+      } else if (created) {
+        setNewVehicle({ id: created.id, label: `${model.trim()} (${cleanPlate})` });
+        setShowDriverChoice(true);
+      } else {
+        goBack(router);
+      }
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || 'Could not add vehicle.';
       setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
@@ -626,7 +633,9 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
                 </AppText>
                 {isFleetOwner ? (
                   <AppText className="text-[13px] text-muted">
-                    Fleet vehicle document and photo uploads are not yet available.
+                    {FLEET_VEHICLE_DOCUMENTS_ENABLED
+                      ? 'Save the vehicle first, then upload its RC, insurance and pollution certificate from its page.'
+                      : 'Fleet vehicle document and photo uploads are not yet available.'}
                   </AppText>
                 ) : (
                   <AppView className="gap-4">
@@ -699,7 +708,9 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
                 />
                 <AppText className="text-center text-[12px] text-muted">
                   {isFleetOwner
-                    ? 'Fleet documents are not yet available in the app.'
+                    ? FLEET_VEHICLE_DOCUMENTS_ENABLED
+                      ? 'You add the documents next, and a driver once they are verified.'
+                      : 'Fleet documents are not yet available in the app.'
                     : 'Your documents will be submitted for verification.'}
                 </AppText>
               </AppView>
