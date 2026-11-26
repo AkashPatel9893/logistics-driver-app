@@ -122,7 +122,8 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
   const [pucExpiry, setPucExpiry] = useDraftText(draft('pucExpiry'), savedExpiry('PUC'));
   const requestFleetLink = useRequestFleetLink();
 
-  const current = profile?.vehicle ?? null;
+  // The rider's own vehicle. Never for a fleet owner: the one they drive must not prefill a new one.
+  const current = saved;
 
   // Chosen on Select Vehicle ("I drive for a fleet owner"); fleet owners always add their own.
   const fleetDriver = useRegistrationStore.use.fleetDriver();
@@ -407,15 +408,6 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
                 onChangeText={setOwnerPhone}
                 keyboardType="phone-pad"
                 maxLength={10}
-              />
-
-              <DriverChoiceSheet
-                visible={showDriverChoice}
-                vehicleLabel={newVehicle?.label ?? 'Your vehicle'}
-                busy={assigningVehicleId != null}
-                onDriveMyself={handleDriveMyself}
-                onAddDriver={handleAddDriver}
-                onLater={finishAfterSave}
               />
 
               {error ? (
@@ -740,6 +732,15 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
           )}
         </AppScrollView>
       </AppKeyboardAvoidingView>
+      {/* Outside the form's branches: it asks the fleet owner who drives the vehicle just saved. */}
+      <DriverChoiceSheet
+        visible={showDriverChoice}
+        vehicleLabel={newVehicle?.label ?? 'Your vehicle'}
+        busy={assigningVehicleId != null}
+        onDriveMyself={handleDriveMyself}
+        onAddDriver={handleAddDriver}
+        onLater={finishAfterSave}
+      />
     </SetupScreenLayout>
   );
 }

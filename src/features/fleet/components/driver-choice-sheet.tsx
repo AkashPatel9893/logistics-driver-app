@@ -61,9 +61,7 @@ export function DriverChoiceSheet({
                 <Icon name="person.badge.plus" size={20} tone="foreground" />
                 <AppView>
                   <AppText className="text-[14px] font-bold text-foreground">Add a driver</AppText>
-                  <AppText className="text-[11px] text-muted">
-                    Enter full name, DL, and phone
-                  </AppText>
+                  <AppText className="text-[11px] text-muted">By name and mobile number</AppText>
                 </AppView>
               </AppView>
               <Icon name="chevron.right" size={16} tone="icon-subtle" />

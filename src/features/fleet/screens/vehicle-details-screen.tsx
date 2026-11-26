@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Image } from 'react-native';
+import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -14,11 +14,13 @@ import {
   Icon,
   LiquidGlassBackButton,
 } from '@/components/ui';
+import { VehicleImage } from '@/features/driver/components/vehicle-image';
 import { VehicleDocumentSheet, type VehicleDocumentType } from '@/features/fleet/components';
 import {
   useAssignFleetDriver,
   useFleetCompany,
   useFleetVehicles,
+  useRemoveFleetDriver,
   useRemoveFleetVehicle,
   useSubmitFleetVehicleDocument,
   useUnassignFleetDriver,
@@ -27,6 +29,7 @@ import { getErrorMessage } from '@/lib/api/api-error';
 import { goBack } from '@/lib/go-back';
 
 import { FLEET_VEHICLE_DOCUMENTS_ENABLED } from '../config';
+import { DriverOptionsSheet, type DriverOption } from '../components/driver-options-sheet';
 import { vehicleDocumentsReady } from '../types';
 
 const DOCUMENT_ROWS = [
@@ -45,6 +48,7 @@ export function VehicleDetailsScreen() {
   const assignDriverMutation = useAssignFleetDriver();
   const unassignDriverMutation = useUnassignFleetDriver();
   const removeVehicleMutation = useRemoveFleetVehicle();
+  const removeDriverMutation = useRemoveFleetDriver();
   const submitDocument = useSubmitFleetVehicleDocument();
   const [documentToUpload, setDocumentToUpload] = useState<VehicleDocumentType | null>(null);
 
@@ -95,35 +99,80 @@ export function VehicleDetailsScreen() {
     }
   };
 
-  const handleSelfAssign = async () => {
+  const run = async (action: () => Promise<unknown>, failure: string, done?: string) => {
     try {
-      await assignDriverMutation.mutateAsync({
-        vehicleId: vehicle.id,
-        body: { is_owner_self: true },
-      });
-      setShowDriverSheet(false);
-      Alert.alert('Driver updated', 'You (Owner) are now assigned as the driver for this vehicle.');
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Could not assign driver.';
-      Alert.alert('Assignment Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
+      await action();
+      if (done) Alert.alert(done);
+    } catch (err) {
+      Alert.alert(failure, getErrorMessage(err));
     }
   };
 
-  const handleUnassignDriver = async () => {
-    try {
-      await unassignDriverMutation.mutateAsync(vehicle.id);
-      setShowDriverSheet(false);
-      Alert.alert('Driver Unassigned', `${vehicle.model} is now unassigned.`);
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Could not unassign driver.';
-      Alert.alert('Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
-    }
+  /** Closes the sheet, asks first, then runs: every one of these takes a driver off the vehicle. */
+  const confirm = (
+    title: string,
+    message: string,
+    label: string,
+    action: () => void,
+    keep = 'Cancel',
+  ) => {
+    setShowDriverSheet(false);
+    Alert.alert(title, message, [
+      { text: keep, style: 'cancel' },
+      { text: label, style: 'destructive', onPress: action },
+    ]);
   };
+
+  const assignSelf = () =>
+    run(
+      () =>
+        assignDriverMutation.mutateAsync({
+          vehicleId: vehicle.id,
+          body: { is_owner_self: true },
+        }),
+      'Could not assign you',
+      'You now drive this vehicle',
+    );
+
+  const handleSelfAssign = () => {
+    setShowDriverSheet(false);
+    const drivenByMe = vehicles?.find((v) => v.id !== vehicle.id && v.driver?.isOwnerSelf);
+    const leaving = [
+      driver ? `${driver.name} will no longer be on this vehicle.` : null,
+      drivenByMe ? `You will stop driving ${drivenByMe.plateNumber}.` : null,
+    ].filter(Boolean);
+    if (leaving.length === 0) {
+      void assignSelf();
+      return;
+    }
+    Alert.alert('Drive this vehicle yourself?', leaving.join(' '), [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Drive it', onPress: () => void assignSelf() },
+    ]);
+  };
+
+  const unassign = (title: string, message: string, label: string) =>
+    confirm(title, message, label, () => {
+      void run(() => unassignDriverMutation.mutateAsync(vehicle.id), 'Could not unassign');
+    });
+
+  const removeDriver = (id: string, title: string, message: string, label: string, keep?: string) =>
+    confirm(
+      title,
+      message,
+      label,
+      () => {
+        void run(() => removeDriverMutation.mutateAsync(id), 'Could not remove the driver');
+      },
+      keep,
+    );
 
   const handleDeleteVehicle = () => {
     Alert.alert(
       'Remove Vehicle',
-      `Are you sure you want to remove ${vehicle.model} (${vehicle.plateNumber}) from your fleet?`,
+      `Remove ${vehicle.model} (${vehicle.plateNumber}) from your fleet?${
+        driver ? ` ${driver.isOwnerSelf ? 'You' : driver.name} will no longer be on it.` : ''
+      }`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -133,10 +182,8 @@ export function VehicleDetailsScreen() {
             try {
               await removeVehicleMutation.mutateAsync(vehicle.id);
               goBack(router);
-            } catch (err: any) {
-              const msg =
-                err?.response?.data?.detail || err?.message || 'Could not remove vehicle.';
-              Alert.alert('Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
+            } catch (err) {
+              Alert.alert('Could not remove the vehicle', getErrorMessage(err));
             }
           },
         },
@@ -148,6 +195,77 @@ export function VehicleDetailsScreen() {
     setShowDriverSheet(false);
     router.push({ pathname: '/add-driver' as any, params: { vehicleId: vehicle.id } });
   };
+
+  const driverOptions: DriverOption[] = [];
+  if (!driver?.isOwnerSelf) {
+    driverOptions.push({
+      key: 'self',
+      icon: 'steeringwheel',
+      title: `Drive myself${company?.ownerName ? ` (${company.ownerName})` : ''}`,
+      detail: 'You drive one vehicle at a time',
+      onPress: handleSelfAssign,
+    });
+  }
+  driverOptions.push({
+    key: 'new',
+    icon: 'person.badge.plus',
+    title: driver ? 'Assign a different driver' : 'Add a driver',
+    detail: 'By name and mobile number',
+    onPress: handleAddNewDriver,
+  });
+  if (driver?.isInvited && driver.inviteId) {
+    const inviteId = driver.inviteId;
+    driverOptions.push({
+      key: 'cancel-invite',
+      icon: 'xmark',
+      danger: true,
+      title: 'Cancel invite',
+      detail: 'They will not join your fleet',
+      onPress: () =>
+        removeDriver(
+          inviteId,
+          'Cancel this invite?',
+          `${driver.name} will not join your fleet.`,
+          'Cancel invite',
+          'Keep invite',
+        ),
+    });
+  } else if (driver?.isOwnerSelf) {
+    driverOptions.push({
+      key: 'stop',
+      icon: 'xmark',
+      danger: true,
+      title: 'Stop driving this vehicle',
+      detail: 'The vehicle will have no driver',
+      onPress: () => unassign('Stop driving?', 'This vehicle will have no driver.', 'Stop driving'),
+    });
+  } else if (driver) {
+    driverOptions.push(
+      {
+        key: 'unassign',
+        icon: 'xmark',
+        danger: true,
+        title: 'Unassign from this vehicle',
+        detail: 'They stay in your fleet',
+        onPress: () =>
+          unassign('Unassign driver?', `${driver.name} stays in your fleet.`, 'Unassign'),
+      },
+      {
+        key: 'remove',
+        icon: 'trash.fill',
+        danger: true,
+        title: 'Remove from fleet',
+        detail: 'Takes them off your fleet and its vehicles',
+        onPress: () =>
+          removeDriver(
+            driver.id,
+            'Remove from fleet?',
+            `${driver.name} will leave your fleet.`,
+            'Remove',
+          ),
+      },
+    );
+  }
 
   return (
     <AppView className="flex-1 bg-background">
@@ -168,10 +286,10 @@ export function VehicleDetailsScreen() {
         <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
           <AppView row className="items-center gap-4">
             <AppView className="h-20 w-24 items-center justify-center rounded-2xl bg-surface-muted overflow-hidden border border-border/40">
-              <Image
-                source={require('@/assets/images/vehicles/mini-truck.png')}
-                style={{ width: '92%', height: '92%' }}
-                resizeMode="contain"
+              <VehicleImage
+                imageUrl={null}
+                type={vehicle.vehicleTypeCode}
+                className="h-full w-full"
               />
             </AppView>
 
@@ -323,10 +441,17 @@ export function VehicleDetailsScreen() {
                 </AppView>
 
                 <AppView className="flex-1">
-                  <AppView row className="items-center gap-2">
+                  <AppView row className="flex-wrap items-center gap-2">
                     <AppText className="text-[17px] font-black text-foreground">
                       {driver?.name}
                     </AppText>
+                    {driver?.isInvited ? (
+                      <AppView className="rounded-full bg-amber-500/15 px-2 py-0.5">
+                        <AppText className="text-[10px] font-extrabold text-amber-700 dark:text-amber-400">
+                          INVITED · NOT JOINED
+                        </AppText>
+                      </AppView>
+                    ) : null}
                     {driver?.isOwnerSelf ? (
                       <AppView className="rounded-full bg-[#FF5722]/15 px-2 py-0.5">
                         <AppText className="text-[10px] font-extrabold text-[#FF5722]">
@@ -380,80 +505,13 @@ export function VehicleDetailsScreen() {
           />
         ) : null}
 
-        {/* Change driver modal/dialog */}
-        {showDriverSheet ? (
-          <AppView className="rounded-3xl border border-[#FF5722]/40 bg-card p-5 shadow-lg">
-            <AppText className="text-[16px] font-extrabold text-foreground">
-              {driver ? 'Change driver' : 'Add a driver'} for {vehicle.model}
-            </AppText>
-            <AppText className="mt-1 text-[13px] text-muted">
-              Choose who will drive this vehicle on delivery trips. A vehicle has one driver at a
-              time.
-            </AppText>
-
-            <AppView className="mt-4 gap-2.5">
-              <AppPressable
-                onPress={handleSelfAssign}
-                className="flex-row items-center justify-between rounded-2xl border border-border bg-background p-3.5 active:bg-neutral-100 dark:active:bg-neutral-800"
-              >
-                <AppView row className="items-center gap-3">
-                  <Icon name="steeringwheel" size={20} tone="brand" />
-                  <AppView>
-                    <AppText className="text-[14px] font-bold text-foreground">
-                      Drive myself {company?.ownerName ? `(${company.ownerName})` : ''}
-                    </AppText>
-                    <AppText className="text-[11px] text-muted">Owner self-drive mode</AppText>
-                  </AppView>
-                </AppView>
-                {driver?.isOwnerSelf ? <Icon name="check" size={18} tone="brand" /> : null}
-              </AppPressable>
-
-              <AppPressable
-                onPress={handleAddNewDriver}
-                className="flex-row items-center justify-between rounded-2xl border border-border bg-background p-3.5 active:bg-neutral-100 dark:active:bg-neutral-800"
-              >
-                <AppView row className="items-center gap-3">
-                  <Icon name="person.badge.plus" size={20} tone="foreground" />
-                  <AppView>
-                    <AppText className="text-[14px] font-bold text-foreground">
-                      {driver ? 'Assign a different driver' : 'Add a new driver'}
-                    </AppText>
-                    <AppText className="text-[11px] text-muted">
-                      Enter full name, DL, and phone
-                    </AppText>
-                  </AppView>
-                </AppView>
-                <Icon name="chevron.right" size={16} tone="icon-subtle" />
-              </AppPressable>
-
-              {driver ? (
-                <AppPressable
-                  onPress={handleUnassignDriver}
-                  className="flex-row items-center justify-between rounded-2xl border border-red-500/20 bg-red-500/5 p-3.5 active:bg-red-500/10"
-                >
-                  <AppView row className="items-center gap-3">
-                    <Icon name="xmark" size={20} tone="error" />
-                    <AppView>
-                      <AppText className="text-[14px] font-bold text-red-600 dark:text-red-400">
-                        Unassign current driver
-                      </AppText>
-                      <AppText className="text-[11px] text-muted">
-                        Vehicle will be marked unassigned
-                      </AppText>
-                    </AppView>
-                  </AppView>
-                </AppPressable>
-              ) : null}
-            </AppView>
-
-            <Button
-              variant="outline"
-              label="Cancel"
-              className="mt-4"
-              onPress={() => setShowDriverSheet(false)}
-            />
-          </AppView>
-        ) : null}
+        <DriverOptionsSheet
+          visible={showDriverSheet}
+          title={`${driver ? 'Driver of' : 'Add a driver to'} ${vehicle.plateNumber}`}
+          options={driverOptions}
+          busy={assignDriverMutation.isPending}
+          onClose={() => setShowDriverSheet(false)}
+        />
 
         {/* Remove vehicle button */}
         <AppView className="mt-4 pt-4 border-t border-border/60">

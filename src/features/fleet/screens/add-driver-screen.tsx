@@ -17,6 +17,7 @@ import {
 } from '@/components/ui';
 import { useAssignFleetDriver, useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import type { AssignDriverRequest } from '@/lib/api/fleet';
+import { getErrorMessage } from '@/lib/api/api-error';
 import { goBack } from '@/lib/go-back';
 
 export function AddDriverScreen() {
@@ -70,24 +71,46 @@ export function AddDriverScreen() {
           phone: `+91 ${phone.trim().slice(-10)}`,
         };
 
-    try {
-      await assignDriverMutation.mutateAsync({ vehicleId: targetVehicleId, body });
-      Alert.alert(
-        'Driver assigned',
-        isSelfDrive
-          ? 'You have been assigned as the active driver for this vehicle.'
-          : `${fullName.trim()} has been assigned to the vehicle.`,
-        [
-          {
-            text: 'Continue',
-            onPress: () => goBack(router),
-          },
-        ],
-      );
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Failed to assign driver.';
-      Alert.alert('Assignment Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    const send = async () => {
+      try {
+        const vehicle = await assignDriverMutation.mutateAsync({
+          vehicleId: targetVehicleId,
+          body,
+        });
+        const invited = Boolean(vehicle.driver?.invite_id);
+        Alert.alert(
+          invited ? 'Driver invited' : 'Driver assigned',
+          isSelfDrive
+            ? 'You now drive this vehicle.'
+            : invited
+              ? `${fullName.trim()} is invited. They join when they sign in to Ryno Partner with this number.`
+              : `${fullName.trim()} now drives this vehicle.`,
+          [{ text: 'Continue', onPress: () => goBack(router) }],
+        );
+      } catch (err) {
+        Alert.alert('Could not add the driver', getErrorMessage(err));
+      }
+    };
+
+    // A driver already on another vehicle moves here: say so before it happens.
+    const last10 = (value: string) => value.replace(/\D/g, '').slice(-10);
+    const elsewhere = isSelfDrive
+      ? vehicles?.find((v) => v.id !== targetVehicleId && v.driver?.isOwnerSelf)
+      : vehicles?.find(
+          (v) => v.id !== targetVehicleId && last10(v.driver?.phone ?? '') === last10(phone),
+        );
+    if (!elsewhere) {
+      await send();
+      return;
     }
+    Alert.alert(
+      'Move to this vehicle?',
+      `${elsewhere.driver?.name ?? 'This driver'} is on ${elsewhere.plateNumber}. A driver has one vehicle, so that one will be left without a driver.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Move', onPress: () => void send() },
+      ],
+    );
   };
 
   return (

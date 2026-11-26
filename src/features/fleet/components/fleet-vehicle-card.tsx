@@ -16,7 +16,9 @@ export function FleetVehicleCard({
   onEdit,
   className = '',
 }: FleetVehicleCardProps) {
-  const driverName = vehicle.driver?.name || 'Unassigned';
+  const driverName = vehicle.driver
+    ? `${vehicle.driver.name}${vehicle.driver.isInvited ? ' (invited)' : ''}`
+    : 'Unassigned';
 
   return (
     <AppPressable

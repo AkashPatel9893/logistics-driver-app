@@ -78,6 +78,22 @@ through `PATCH /partner/profile`; `PUT` is refused.
 - Open: the owner's Wallet uses the driver wallet (`/partner` wallet), while `/fleet/wallet` also
   exists. Confirm with the backend which one owners should see before changing it.
 
+## Fleet vehicles and drivers
+
+- One driver per vehicle, one vehicle per driver. Putting a driver (or the owner) on a second
+  vehicle moves them; the app asks first when it can see where they are.
+- A driver added by name and phone is only **invited** (`driver.invite_id`) until they sign in.
+- To drop an invite call `DELETE /fleet/drivers/{invite_id}`. Unassign
+  (`DELETE /fleet/vehicles/{id}/drivers`) does not remove a pending invite.
+- Joined driver: Unassign keeps them in the fleet; Remove from fleet is the same
+  `DELETE /fleet/drivers/{driver_id}`.
+- The last vehicle cannot be removed while another driver or invite is on it
+  (`LAST_VEHICLE_HAS_DRIVERS`). A removed vehicle can be added again.
+- QA 26 November 2026, fleet `9000045871`: add (with driver prompt), validation, drive myself, move
+  warning, invite, invite moved between vehicles, cancel invite, stop driving, remove, add again,
+  last-vehicle refusal. Not tested: a driver who has joined (unassign / remove from fleet), link
+  requests, vehicle documents (off in the app). Test vehicles removed afterwards.
+
 ## Errors the partner sees
 
 - A refused document shows the backend's `rejection_reason` through

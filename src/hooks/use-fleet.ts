@@ -104,6 +104,17 @@ export function useUnassignFleetDriver() {
   });
 }
 
+export function useRemoveFleetDriver() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (driverOrInviteId: string) => fleetApi.removeDriver(driverOrInviteId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.vehicles });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.stats });
+    },
+  });
+}
+
 export function useRemoveFleetVehicle() {
   const queryClient = useQueryClient();
   return useMutation({

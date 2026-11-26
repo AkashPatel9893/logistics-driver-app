@@ -13,6 +13,9 @@ export interface FleetDriver {
   aadhaarUploaded?: boolean;
   dlUploaded?: boolean;
   assignmentStatus?: string;
+  /** Set while the driver is invited and has not joined: cancels the invite. */
+  inviteId?: string;
+  isInvited?: boolean;
 }
 
 export interface DocumentVerificationInfo {
@@ -74,6 +77,8 @@ export function toFleetVehicle(res: FleetVehicleResponse): FleetVehicle {
           rating: res.driver.rating ?? undefined,
           isOwnerSelf: res.driver.is_owner_self,
           assignmentStatus: res.driver.assignment_status,
+          inviteId: res.driver.invite_id ?? undefined,
+          isInvited: Boolean(res.driver.invite_id),
         }
       : null,
     documents: {

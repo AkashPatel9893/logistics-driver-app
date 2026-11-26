@@ -54,6 +54,10 @@ export interface FleetVehicleDriver {
   rating: number | null;
   is_owner_self: boolean;
   assignment_status: string;
+  /** "INVITED" until an invited driver first signs in. */
+  status?: string | null;
+  /** Set while the driver is only invited: the id DELETE /fleet/drivers takes to cancel it. */
+  invite_id?: string | null;
 }
 
 export interface DocumentState {
@@ -218,6 +222,13 @@ export const fleetApi = {
       url: `/fleet/vehicles/${vehicleId}/drivers`,
       method: 'DELETE',
     }),
+
+  /**
+   * Takes a driver out of the fleet and off its vehicles. Given an invite id, cancels the invite.
+   * Unassigning does not do that: a pending invite stays on the vehicle.
+   */
+  removeDriver: (driverId: string) =>
+    request<void>({ url: `/fleet/drivers/${driverId}`, method: 'DELETE' }),
 
   removeVehicle: (vehicleId: string) =>
     request<void>({
