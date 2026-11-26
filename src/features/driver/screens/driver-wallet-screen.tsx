@@ -237,22 +237,6 @@ export function WalletContent() {
         ) : null}
       </AppView>
 
-      <AppPressable
-        onPress={() => router.push('/refer')}
-        accessibilityRole="button"
-        className="flex-row items-center justify-between rounded-2xl bg-brand/10 px-5 py-4"
-      >
-        <AppView>
-          <AppText className="text-[12px] font-medium text-foreground-secondary">
-            Refer and earn
-          </AppText>
-          <AppText className="text-[18px] font-extrabold text-foreground">
-            Invite friends to drive
-          </AppText>
-        </AppView>
-        <Icon name="gift.fill" size={28} tone="brand" />
-      </AppPressable>
-
       <AppView className="gap-3">
         <AppView row className="items-center justify-between px-1">
           <AppText className="text-[16px] font-extrabold text-foreground">

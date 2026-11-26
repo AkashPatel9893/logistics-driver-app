@@ -6,41 +6,21 @@ import {
   AppSpinner,
   AppText,
   AppView,
-  Button,
-  Icon,
   LiquidGlassBackButton,
 } from '@/components/ui';
 import { useDriverProfile } from '@/hooks/use-driver';
 import { useFleetCompany } from '@/hooks/use-fleet';
-import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { FleetVehiclesSection } from '@/features/fleet/components';
-import type { VerificationStatus } from '@/lib/api/models';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { goBack } from '@/lib/go-back';
 import { useAuthStore } from '@/features/auth/use-auth-store';
 
-const STATUS: Record<VerificationStatus | 'missing', { label: string; color: string; bg: string }> =
-  {
-    verified: {
-      label: 'VERIFIED',
-      color: 'text-emerald-600 dark:text-emerald-400',
-      bg: 'bg-emerald-500/15',
-    },
-    under_review: {
-      label: 'IN REVIEW',
-      color: 'text-amber-700 dark:text-amber-400',
-      bg: 'bg-amber-500/15',
-    },
-    rejected: { label: 'REJECTED', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-500/15' },
-    missing: { label: 'NOT ADDED', color: 'text-muted', bg: 'bg-surface-muted' },
-  };
-
+/** The fleet owner's company profile and vehicles. A rider's details are on Account. */
 export function DriverProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { data: profile } = useDriverProfile();
   const { data: company } = useFleetCompany();
-  const isOwnerMode = useFleetStore.use.dashboardRole() === 'owner';
   const user = useAuthStore.use.user();
 
   if (!profile) {
@@ -50,43 +30,6 @@ export function DriverProfileScreen() {
       </AppView>
     );
   }
-
-  const { vehicle, kyc, bank } = profile;
-  const documents: {
-    name: string;
-    id: string | undefined;
-    status: VerificationStatus | 'missing';
-    route: '/setup-kyc' | '/setup-vehicle' | '/setup-bank';
-  }[] = [
-    {
-      name: 'Driving licence',
-      id: kyc?.dlNumber,
-      status: kyc?.status ?? 'missing',
-      route: '/setup-kyc' as const,
-    },
-    {
-      name: 'PAN card',
-      id: kyc?.panNumber,
-      status: kyc?.status ?? 'missing',
-      route: '/setup-kyc' as const,
-    },
-    {
-      name: 'Registration certificate',
-      id: vehicle?.plateNumber,
-      status: vehicle?.status ?? (vehicle?.plateNumber ? 'verified' : 'missing'),
-      route: '/setup-vehicle' as const,
-    },
-    {
-      name: 'Bank account',
-      id: bank ? `${bank.bankName} •• ${bank.accountLast4}` : undefined,
-      status: bank?.status ?? (bank ? 'verified' : 'missing'),
-      route: '/setup-bank' as const,
-    },
-  ];
-  // A fleet owner is only asked for what the fleet needs; licence and RC are for driving.
-  const visibleDocuments = isOwnerMode
-    ? documents.filter((d) => d.name !== 'Driving licence' && d.name !== 'Registration certificate')
-    : documents;
 
   return (
     <AppView className="flex-1 bg-background">
@@ -102,139 +45,46 @@ export function DriverProfileScreen() {
           <AppView className="w-10" />
         </AppView>
 
-        {/* Company card for a fleet owner. A rider has no company: just who they are. */}
-        {isOwnerMode ? (
-          <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
-            <AppView row className="items-center justify-between">
-              <AppText className="text-[20px] font-black text-foreground">
-                {company?.companyName || 'Company Profile'}
-              </AppText>
-              <AppPressable
-                onPress={() => router.push('/company-details' as any)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <AppText className="text-[14px] font-bold text-[#FF5722]">
-                  {company?.isRegistered ? 'Edit' : 'Register'}
-                </AppText>
-              </AppPressable>
-            </AppView>
-
-            <AppText className="mt-1 text-[15px] font-semibold text-foreground">
-              {company?.ownerName || profile.name}
+        {/* Company and owner */}
+        <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+          <AppView row className="items-center justify-between">
+            <AppText className="text-[20px] font-black text-foreground">
+              {company?.companyName || 'Company Profile'}
             </AppText>
-
-            {user?.phone || profile.phone ? (
-              <AppText className="mt-1 text-[13px] font-medium text-foreground-secondary">
-                Phone: {user?.phone || profile.phone}
+            <AppPressable
+              onPress={() => router.push('/company-details' as any)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <AppText className="text-[14px] font-bold text-[#FF5722]">
+                {company?.isRegistered ? 'Edit' : 'Register'}
               </AppText>
-            ) : null}
-
-            {company?.registeredAddress ? (
-              <AppText className="mt-0.5 text-[13px] text-muted">
-                Registered Address: {company.registeredAddress}
-              </AppText>
-            ) : null}
-
-            {company?.phone && company.phone !== user?.phone ? (
-              <AppText className="mt-0.5 text-[13px] font-medium text-foreground-secondary">
-                Company phone: {company.phone}
-              </AppText>
-            ) : null}
+            </AppPressable>
           </AppView>
-        ) : (
-          <AppView className="rounded-3xl border border-border bg-card p-5 shadow-sm">
-            <AppText className="text-[20px] font-black text-foreground">{profile.name}</AppText>
-            {user?.phone || profile.phone ? (
-              <AppText className="mt-1 text-[13px] font-medium text-foreground-secondary">
-                Phone: {user?.phone || profile.phone}
-              </AppText>
-            ) : null}
-          </AppView>
-        )}
 
-        {/* A fleet owner manages the fleet's vehicles; a rider sees the one they drive. */}
-        {isOwnerMode ? (
-          <FleetVehiclesSection />
-        ) : (
-          <AppView className="gap-2.5">
-            <AppText className="px-1 text-[18px] font-extrabold text-foreground">
-              My vehicle
-            </AppText>
-            {profile.vehicle ? (
-              <AppView
-                row
-                className="items-center justify-between gap-3 rounded-3xl border border-border bg-card p-4 shadow-sm"
-              >
-                <AppView className="flex-1">
-                  <AppText className="text-[15px] font-bold text-foreground">
-                    {profile.vehicle.vehicleTypeName} · {profile.vehicle.plateNumber}
-                  </AppText>
-                  {profile.vehicle.model ? (
-                    <AppText className="mt-0.5 text-[12px] text-muted">
-                      {profile.vehicle.model}
-                    </AppText>
-                  ) : null}
-                </AppView>
-                <AppView className={`rounded-lg px-2.5 py-1 ${STATUS[profile.vehicle.status].bg}`}>
-                  <AppText
-                    className={`text-[11px] font-black ${STATUS[profile.vehicle.status].color}`}
-                  >
-                    {STATUS[profile.vehicle.status].label}
-                  </AppText>
-                </AppView>
-              </AppView>
-            ) : (
-              <AppView className="items-center gap-3 rounded-3xl border border-border bg-card p-5">
-                <AppText className="text-[13px] text-muted">No vehicle added yet.</AppText>
-                <Button
-                  variant="brand"
-                  size="sm"
-                  label="Add vehicle"
-                  onPress={() => router.push('/setup-vehicle')}
-                />
-              </AppView>
-            )}
-          </AppView>
-        )}
-
-        {/* Verification & KYC Documents */}
-        <AppView className="gap-2.5">
-          <AppText className="px-1 text-[18px] font-extrabold text-foreground">
-            {isOwnerMode ? 'Owner-Driver Verification' : 'My verification'}
+          <AppText className="mt-1 text-[15px] font-semibold text-foreground">
+            {company?.ownerName || profile.name}
           </AppText>
 
-          <AppView className="rounded-3xl border border-border bg-card overflow-hidden shadow-sm">
-            {visibleDocuments.map((doc, idx) => {
-              const meta = STATUS[doc.status];
-              return (
-                <AppPressable
-                  key={doc.name}
-                  onPress={() => router.push(doc.route)}
-                  pressScale={0.98}
-                  className={`flex-row items-center justify-between p-4 ${
-                    idx !== visibleDocuments.length - 1 ? 'border-b border-border/60' : ''
-                  } active:bg-neutral-100 dark:active:bg-neutral-800`}
-                >
-                  <AppView className="flex-1 pr-3">
-                    <AppText className="text-[14px] font-bold text-foreground">{doc.name}</AppText>
-                    {doc.id ? (
-                      <AppText className="mt-0.5 text-[12px] text-muted">{doc.id}</AppText>
-                    ) : null}
-                  </AppView>
+          {user?.phone || profile.phone ? (
+            <AppText className="mt-1 text-[13px] font-medium text-foreground-secondary">
+              Phone: {user?.phone || profile.phone}
+            </AppText>
+          ) : null}
 
-                  <AppView row className="items-center gap-2">
-                    <AppView className={`rounded-full px-2.5 py-0.5 ${meta.bg}`}>
-                      <AppText className={`text-[11px] font-extrabold ${meta.color}`}>
-                        {meta.label}
-                      </AppText>
-                    </AppView>
-                    <Icon name="chevron.right" size={14} tone="icon-subtle" />
-                  </AppView>
-                </AppPressable>
-              );
-            })}
-          </AppView>
+          {company?.registeredAddress ? (
+            <AppText className="mt-0.5 text-[13px] text-muted">
+              Registered Address: {company.registeredAddress}
+            </AppText>
+          ) : null}
+
+          {company?.phone && company.phone !== user?.phone ? (
+            <AppText className="mt-0.5 text-[13px] font-medium text-foreground-secondary">
+              Company phone: {company.phone}
+            </AppText>
+          ) : null}
         </AppView>
+
+        <FleetVehiclesSection />
       </AppScrollView>
     </AppView>
   );

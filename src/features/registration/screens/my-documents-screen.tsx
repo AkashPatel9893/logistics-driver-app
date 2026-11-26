@@ -65,6 +65,15 @@ const BADGES: Record<StepState, { label: string; box: string; text: string }> = 
   rejected: { label: 'Fix needed', box: 'bg-red-500/15', text: 'text-red-600 dark:text-red-400' },
 };
 
+function StatusBadge({ state }: { state: StepState }) {
+  const badge = BADGES[state];
+  return (
+    <AppView className={`rounded-full px-3 py-1 ${badge.box}`}>
+      <AppText className={`text-[12px] font-bold ${badge.text}`}>{badge.label}</AppText>
+    </AppView>
+  );
+}
+
 /** The documents on file, each with its status and its own Update button. */
 export function MyDocumentsScreen() {
   const router = useRouter();
@@ -79,8 +88,11 @@ export function MyDocumentsScreen() {
   );
 
   // A fleet owner is not asked for a licence; it is listed only if they sent one.
+  // A rider's profile photo is on My profile.
   const entries = DOCUMENTS.filter(
-    (d) => !(isOwner && d.type === 'DRIVING_LICENCE' && !findDocument(docs, d.type)),
+    (d) =>
+      !(isOwner && d.type === 'DRIVING_LICENCE' && !findDocument(docs, d.type)) &&
+      !(!isOwner && d.type === 'SELFIE'),
   );
 
   const openUpdate = (entry: DocumentEntry, state: StepState) => {
@@ -116,7 +128,6 @@ export function MyDocumentsScreen() {
           ? entries.map((entry) => {
               const doc = findDocument(docs, entry.type);
               const state = documentState(doc?.status);
-              const badge = BADGES[state];
               const photos = state === 'todo' ? [] : entry.photoKeys.map(readSubmittedPhoto);
               const details = [
                 doc?.identifierMasked,
@@ -140,11 +151,7 @@ export function MyDocumentsScreen() {
                         </AppText>
                       ) : null}
                     </AppView>
-                    <AppView className={`rounded-full px-3 py-1 ${badge.box}`}>
-                      <AppText className={`text-[12px] font-bold ${badge.text}`}>
-                        {badge.label}
-                      </AppText>
-                    </AppView>
+                    <StatusBadge state={state} />
                   </AppView>
 
                   {state === 'rejected' && doc?.rejectionReason ? (

@@ -50,6 +50,25 @@ checklist shows only when nothing is left, on back, or after an app restart.
 - PAN, driving licence and RC go to a verification provider; selfie and Aadhaar go to manual
   review in the CMS.
 
+## One main place per detail
+
+Don't repeat a partner's details across screens.
+
+| Detail                                         | Main place                                             |
+| ---------------------------------------------- | ------------------------------------------------------ |
+| Rider's photo, name, birth date, phone, gender | My profile (`/my-profile`), from the Account name card |
+| Owner's company and fleet                      | Profile (owners only)                                  |
+| Licence, PAN, Aadhaar (and an owner's photo)   | My documents (`/setup-kyc`)                            |
+| Rider's vehicle and its papers                 | My vehicle (`/setup-vehicle`), own Account row         |
+| Bank account                                   | Bank details                                           |
+| Balance, payouts, history                      | Wallet (Earnings has no wallet tab)                    |
+
+Account menu rows carry no numbers, only "Needs attention". Ratings show only once there is one.
+Home keeps first name and current vehicle; the ID card shows its details together on purpose.
+
+After submission the backend lists `locked_fields` (name, birth date). Gender stays editable only
+through `PATCH /partner/profile`; `PUT` is refused.
+
 ## Errors the partner sees
 
 - A refused document shows the backend's `rejection_reason` through

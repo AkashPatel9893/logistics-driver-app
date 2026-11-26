@@ -74,6 +74,7 @@ export default function RootLayout() {
         <Stack.Screen name="trip-complete" />
         <Stack.Screen name="customer-chat" />
         <Stack.Screen name="driver-profile" />
+        <Stack.Screen name="my-profile" />
         <Stack.Screen name="driver-id-card" />
         <Stack.Screen name="setup-vehicle" />
         <Stack.Screen name="setup-kyc" />

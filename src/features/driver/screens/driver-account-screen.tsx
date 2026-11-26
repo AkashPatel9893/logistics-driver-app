@@ -36,6 +36,8 @@ interface MenuItem {
   badge?: string;
 }
 
+const NEEDS_ATTENTION = 'Needs attention';
+
 export function DriverAccountScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -98,16 +100,14 @@ export function DriverAccountScreen() {
   const name = (isOwner ? company?.ownerName : null) || profile?.name || '—';
   // The backend may send the rating as a string (decimal) or a number.
   const rating = profile?.rating != null ? Number(profile.rating) : NaN;
-  const ratingLabel = Number.isFinite(rating) ? rating.toFixed(1) : '—';
+  const hasRating = Number.isFinite(rating);
 
   // Company and fleet management: only in Fleet Owner mode.
   const FLEET_ITEMS: MenuItem[] = [
     {
       icon: 'building.2',
       label: 'Company Details',
-      sublabel: company?.companyName
-        ? `${company.companyName} • ${company.companyType || 'Fleet Owner'}`
-        : 'Register company profile',
+      sublabel: company?.companyName ? 'Your company details' : 'Register company profile',
       route: '/company-details',
     },
     {
@@ -124,14 +124,20 @@ export function DriverAccountScreen() {
     },
   ];
 
+  // Numbers and statuses are shown on their own screens; here only what needs the partner.
+  const documentsNeedAttention = profile?.kyc?.status === 'rejected';
+
+  const VEHICLE_ITEM: MenuItem = {
+    icon: 'box.truck.fill',
+    label: 'My vehicle',
+    sublabel:
+      profile?.vehicle?.status === 'rejected' ? NEEDS_ATTENTION : 'Vehicle details and papers',
+    route: '/setup-vehicle',
+  };
+
   const MENU_ITEMS: MenuItem[] = [
     ...(isOwner ? FLEET_ITEMS : []),
-    {
-      icon: 'person.fill',
-      label: 'Driver Profile & Badges',
-      sublabel: 'View verification status and personal info',
-      route: '/driver-profile',
-    },
+    ...(isOwner ? [] : [VEHICLE_ITEM]),
     {
       icon: 'gift.fill',
       label: 'Incentives',
@@ -146,27 +152,20 @@ export function DriverAccountScreen() {
     },
     {
       icon: 'checkmark.shield.fill',
-      label: 'KYC Documents',
-      sublabel: isOwner
-        ? 'PAN and selfie'
-        : profile?.kyc
-          ? `Licence ${profile.kyc.dlNumber || 'submitted'}`
-          : 'Driving licence, PAN and selfie',
+      label: 'My documents',
+      sublabel: documentsNeedAttention
+        ? NEEDS_ATTENTION
+        : isOwner
+          ? 'ID and profile photo'
+          : 'Licence and ID',
       route: '/setup-kyc',
     },
     {
       icon: 'banknote',
       label: 'Bank Details & Payouts',
-      sublabel: profile?.bank
-        ? `${profile.bank.bankName} •• ${profile.bank.accountLast4}`
-        : 'Account for wallet payouts',
+      sublabel:
+        profile?.bank?.status === 'rejected' ? NEEDS_ATTENTION : 'Account for wallet payouts',
       route: '/setup-bank',
-    },
-    {
-      icon: 'questionmark.circle',
-      label: 'Help & 24/7 Driver Support',
-      sublabel: 'FAQs, call or email partner care',
-      route: '/support',
     },
   ];
 
@@ -203,9 +202,9 @@ export function DriverAccountScreen() {
         contentContainerClassName="px-5 pb-36 pt-4 gap-4"
         showsVerticalScrollIndicator={false}
       >
-        {/* Driver Profile Header Card */}
+        {/* Who is signed in: opens the company profile for an owner, My profile for a rider. */}
         <AppPressable
-          onPress={() => router.push('/driver-profile')}
+          onPress={() => router.push(isOwner ? '/driver-profile' : '/my-profile')}
           pressScale={0.98}
           className="rounded-3xl border border-border bg-card p-5 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
         >
@@ -223,28 +222,26 @@ export function DriverAccountScreen() {
                   Phone: {user?.phone || profile?.phone}
                 </AppText>
               ) : null}
-              {isOwner && company?.companyName ? (
-                <AppText className="text-[13px] text-muted">
-                  {`${company.companyName} • ${company.phone || profile?.phone || ''}`}
-                </AppText>
-              ) : null}
-
-              <AppView row className="mt-1.5 items-center gap-2">
-                <AppView
-                  row
-                  className="items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5"
-                >
-                  <Icon name="star.fill" size={12} color="#f59e0b" />
-                  <AppText className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
-                    {ratingLabel}
-                  </AppText>
+              {hasRating || (isOwner && vehicles.length > 0) ? (
+                <AppView row className="mt-1.5 items-center gap-2">
+                  {hasRating ? (
+                    <AppView
+                      row
+                      className="items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5"
+                    >
+                      <Icon name="star.fill" size={12} color="#f59e0b" />
+                      <AppText className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                        {rating.toFixed(1)}
+                      </AppText>
+                    </AppView>
+                  ) : null}
+                  {isOwner && vehicles.length > 0 ? (
+                    <AppText className="text-[12px] font-medium text-foreground-secondary">
+                      {vehicles.length} {vehicles.length === 1 ? 'vehicle' : 'vehicles'}
+                    </AppText>
+                  ) : null}
                 </AppView>
-                {vehicles.length > 0 ? (
-                  <AppText className="text-[12px] font-medium text-foreground-secondary">
-                    • {vehicles.length} vehicles
-                  </AppText>
-                ) : null}
-              </AppView>
+              ) : null}
             </AppView>
 
             <Icon name="chevron.right" size={18} tone="icon-subtle" />

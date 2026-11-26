@@ -34,7 +34,7 @@ function Figure({ label, value, onPress }: { label: string; value: string; onPre
   );
 }
 
-/** Today's earnings in one line; tap to open wallet balance, today's total and the last trip. */
+/** Today's earnings in one line; tap to open wallet balance and the last trip. */
 export function EarningsStrip({ earningsToday, tripsToday, walletBalance }: EarningsStripProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -58,7 +58,7 @@ export function EarningsStrip({ earningsToday, tripsToday, walletBalance }: Earn
           <AppText className="text-[15px] font-bold text-foreground">Today&apos;s earnings</AppText>
           {tripsToday != null ? (
             <AppText className="text-[12px] text-muted">
-              {tripsToday} {tripsToday === 1 ? 'trip' : 'trips'} completed
+              {tripsToday} {tripsToday === 1 ? 'trip' : 'trips'} today
             </AppText>
           ) : null}
         </AppView>
@@ -77,11 +77,6 @@ export function EarningsStrip({ earningsToday, tripsToday, walletBalance }: Earn
               label="Wallet balance"
               value={money(walletBalance)}
               onPress={() => router.push('/wallet')}
-            />
-            <Figure
-              label="Today's earnings"
-              value={money(earningsToday)}
-              onPress={() => router.push('/earnings')}
             />
             <Figure
               label="Last trip"

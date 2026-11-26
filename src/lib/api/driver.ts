@@ -9,6 +9,7 @@ import type {
   BankInput,
   DocumentAlert,
   DriverProfile,
+  Gender,
   FuelType,
   GeoPoint,
   BankDetails,
@@ -185,6 +186,8 @@ export const driverApi = {
           email: p.email ?? '',
           city: p.city ?? null,
           dob: p.date_of_birth ? String(p.date_of_birth) : null,
+          gender: ['MALE', 'FEMALE', 'OTHER'].includes(p.gender) ? p.gender : null,
+          lockedFields: Array.isArray(p.locked_fields) ? p.locked_fields : [],
           joinedAt: p.created_at ?? new Date().toISOString(),
           rating: p.rating != null && Number.isFinite(Number(p.rating)) ? Number(p.rating) : null,
           ratingCount: p.rating_count ?? 0,
@@ -350,6 +353,12 @@ export const driverApi = {
         fileUri: input.pucPhotoUri,
       });
     }
+    return driverApi.getProfile();
+  },
+
+  /** PATCH changes only what is sent, so gender stays editable after submission (PUT does not). */
+  updateGender: async (gender: Gender): Promise<DriverProfile> => {
+    await request<any>({ method: 'PATCH', url: '/partner/profile', data: { gender } });
     return driverApi.getProfile();
   },
 

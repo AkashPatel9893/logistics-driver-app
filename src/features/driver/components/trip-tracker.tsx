@@ -22,7 +22,7 @@ export function TripTracker({ completedTrips }: TripTrackerProps) {
         </AppText>
       </AppView>
       <AppText className="text-[15px] font-bold text-foreground">
-        {done} of {TARGET} trips done
+        Target: {done} of {TARGET} trips
       </AppText>
       <AppView row className="items-center justify-between border-t border-border/60 pt-3">
         {Array.from({ length: TARGET }, (_, i) => (

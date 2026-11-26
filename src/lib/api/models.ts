@@ -200,6 +200,8 @@ export interface DocumentAlert {
   expired: boolean;
 }
 
+export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
+
 export interface DriverProfile {
   id: string;
   name: string;
@@ -207,6 +209,9 @@ export interface DriverProfile {
   email: string;
   city: string | null;
   dob: string | null;
+  gender: Gender | null;
+  /** Backend field names the partner can no longer change (after submission). */
+  lockedFields: string[];
   joinedAt: string;
   /** Null until the first customer rating. */
   rating: number | null;

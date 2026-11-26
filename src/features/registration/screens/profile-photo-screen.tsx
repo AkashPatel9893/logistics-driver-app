@@ -17,6 +17,7 @@ import { SetupScreenLayout } from '@/features/driver/components/setup-screen-lay
 import { useDriverProfile } from '@/hooks/use-driver';
 import { ApiError, getErrorMessage } from '@/lib/api/api-error';
 import { authApi } from '@/lib/api/auth';
+import { driverApi } from '@/lib/api/driver';
 import { queryKeys } from '@/lib/queries/keys';
 
 import { DocumentStatusNote, StickyFooter, TipsCard } from '../components';
@@ -93,7 +94,11 @@ export function ProfilePhotoScreen() {
     setSaving(true);
     try {
       // Name and gender go together: the backend clears gender on a save without it.
-      if (profile?.dob && (nameChanged || genderChanged || !hasSelfie)) {
+      if (nameLocked && genderChanged && gender) {
+        // After submission only gender can change, and only through PATCH.
+        await driverApi.updateGender(gender);
+        queryClient.invalidateQueries({ queryKey: queryKeys.profile });
+      } else if (profile?.dob && (nameChanged || genderChanged || !hasSelfie)) {
         try {
           const updated = await authApi.updateProfile({
             name: name.trim(),

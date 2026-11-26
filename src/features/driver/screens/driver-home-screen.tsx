@@ -370,7 +370,8 @@ export function DriverHomeScreen() {
 
             {/* Fleet setup covers the owner's own account, so no driver checklist here: an empty
                 fleet gets its own "add your first vehicle" prompt. */}
-            <FleetVehiclesSection />
+            {/* With vehicles, the count above links to the full list on Profile. */}
+            {vehicles.length === 0 ? <FleetVehiclesSection /> : null}
           </>
         )}
 

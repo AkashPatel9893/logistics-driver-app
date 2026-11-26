@@ -14,6 +14,7 @@ import {
   Avatar,
   Icon,
 } from '@/components/ui';
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { useDriverProfile } from '@/hooks/use-driver';
 import { DURATION, ENTER_EASE_OUT, SHEET_EASE } from '@/lib/motion';
 
@@ -91,6 +92,7 @@ export function HomeMenu({ visible, onClose }: HomeMenuProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { data: profile } = useDriverProfile();
+  const isOwner = useFleetStore.use.dashboardRole() === 'owner';
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(width * PANEL_SHARE, PANEL_MAX_WIDTH);
   // 0 closed, 1 open. One value drives the panel and the dimming, so they always move together.
@@ -157,7 +159,7 @@ export function HomeMenu({ visible, onClose }: HomeMenuProps) {
           className="flex-1 bg-background"
         >
           <AppPressable
-            onPress={() => go('/driver-profile')}
+            onPress={() => go(isOwner ? '/driver-profile' : '/my-profile')}
             accessibilityRole="button"
             accessibilityLabel="My profile"
             className="flex-row items-center gap-3.5 border-b border-border/70 bg-surface-muted px-5 py-5"
@@ -167,12 +169,14 @@ export function HomeMenu({ visible, onClose }: HomeMenuProps) {
               <AppText numberOfLines={1} className="text-[17px] font-black text-foreground">
                 {profile?.name ?? 'My profile'}
               </AppText>
-              <AppView row className="items-center gap-1">
-                <AppText className="text-[13px] font-semibold text-muted">
-                  {profile?.rating != null ? profile.rating.toFixed(1) : '--'}
-                </AppText>
-                <Icon name="star.fill" size={12} color="#f59e0b" />
-              </AppView>
+              {profile?.rating != null ? (
+                <AppView row className="items-center gap-1">
+                  <AppText className="text-[13px] font-semibold text-muted">
+                    {profile.rating.toFixed(1)}
+                  </AppText>
+                  <Icon name="star.fill" size={12} color="#f59e0b" />
+                </AppView>
+              ) : null}
             </AppView>
             <Icon name="chevron.right" size={16} tone="icon-subtle" />
           </AppPressable>

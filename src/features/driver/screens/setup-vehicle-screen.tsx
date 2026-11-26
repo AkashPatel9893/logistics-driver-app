@@ -149,6 +149,18 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
 
   const [error, setError] = useState<string>();
 
+  // A saved vehicle with all its documents shows as a summary: the fields would only repeat it.
+  // They open on request, or at once when something is missing or was refused.
+  const [editing, setEditing] = useState(false);
+  const requiredDocs = ['RC', 'INSURANCE', ...(saved?.fuelType === 'ELECTRIC' ? [] : ['PUC'])];
+  const complete =
+    saved != null &&
+    saved.status !== 'rejected' &&
+    requiredDocs.every((type) =>
+      vehicleDocs.some((d) => d.type === type && d.status !== 'PENDING'),
+    );
+  const showForm = !complete || editing;
+
   // Fleet owner: after saving, ask who will drive the new vehicle.
   const { data: fleetVehicles = [] } = useFleetVehicles({ enabled: isFleetOwner });
   const { assigningVehicleId, driveVehicle } = useDriveVehicle();
@@ -298,8 +310,14 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
 
   return (
     <SetupScreenLayout
-      title="Add your vehicle"
-      subtitle="Tell us about the vehicle you'll use for deliveries."
+      title={saved ? 'My vehicle' : 'Add your vehicle'}
+      subtitle={
+        saved
+          ? 'Your vehicle and its documents'
+          : isFleetOwner
+            ? 'Add a vehicle to your fleet.'
+            : "Tell us about the vehicle you'll use for deliveries."
+      }
     >
       <AppKeyboardAvoidingView>
         <AppScrollView
@@ -350,13 +368,17 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
                   </AppView>
                 );
               })}
-              <AppText className="text-[12px] leading-5 text-muted">
-                The photos you sent are kept safely and not shown again. Add new ones only to
-                replace them.
-              </AppText>
+              {showForm ? (
+                <AppText className="text-[12px] leading-5 text-muted">
+                  The photos you sent are kept safely and not shown again. Add new ones only to
+                  replace them.
+                </AppText>
+              ) : null}
             </AppView>
           ) : null}
-          {ownershipType === 'FLEET' ? (
+          {!showForm ? (
+            <Button variant="outline" label="Update vehicle" onPress={() => setEditing(true)} />
+          ) : ownershipType === 'FLEET' ? (
             <AppView className="gap-4 rounded-3xl border border-border bg-card p-5 shadow-sm">
               <AppView row className="items-center gap-3">
                 <AppView className="h-12 w-12 items-center justify-center rounded-2xl bg-[#FF5722]/10">
