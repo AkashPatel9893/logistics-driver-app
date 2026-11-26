@@ -32,7 +32,8 @@ export function FleetVehiclesSection({
     <AppView className={`gap-3 ${className}`}>
       <AppView row className="items-center justify-between px-1">
         <AppText className="text-[18px] font-extrabold text-foreground">My Vehicles</AppText>
-        {showAddButton ? (
+        {/* While the fleet is empty, the card below has the one add button. */}
+        {showAddButton && vehicles.length > 0 ? (
           <AppPressable
             onPress={handleAddVehicle}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

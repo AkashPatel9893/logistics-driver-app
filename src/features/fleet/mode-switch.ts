@@ -35,3 +35,14 @@ export function registrationLinkLabel(
       return 'Register as a driver';
   }
 }
+
+/**
+ * The Ryno ID card identifies a driver: always for a rider, and for a fleet owner only once they
+ * are approved to drive (before that it would show "not approved" with no vehicle or licence).
+ */
+export function showsDriverId(
+  profile: Pick<DriverProfile, 'onboarding'> | null | undefined,
+  isOwner: boolean,
+): boolean {
+  return !isOwner || modeSwitchState(profile).allowed;
+}

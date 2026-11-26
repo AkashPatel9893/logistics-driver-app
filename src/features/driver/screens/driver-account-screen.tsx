@@ -18,7 +18,11 @@ import {
 } from '@/components/ui';
 import { signOut, useAuthStore } from '@/features/auth/use-auth-store';
 import { DriveVehiclePicker, RoleSwitcher } from '@/features/fleet/components';
-import { modeSwitchState, registrationLinkLabel } from '@/features/fleet/mode-switch';
+import {
+  modeSwitchState,
+  registrationLinkLabel,
+  showsDriverId,
+} from '@/features/fleet/mode-switch';
 import { useDriveVehicle } from '@/features/fleet/use-drive-vehicle';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import type { DashboardRole, FleetVehicle } from '@/features/fleet/types';
@@ -116,12 +120,6 @@ export function DriverAccountScreen() {
       sublabel: `${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'} in your fleet`,
       route: '/driver-profile',
     },
-    {
-      icon: 'plus',
-      label: 'Add Vehicle',
-      sublabel: 'Add a new vehicle and assign driver',
-      route: '/setup-vehicle',
-    },
   ];
 
   // Numbers and statuses are shown on their own screens; here only what needs the partner.
@@ -135,6 +133,13 @@ export function DriverAccountScreen() {
     route: '/setup-vehicle',
   };
 
+  const ID_CARD_ITEM: MenuItem = {
+    icon: 'person.text.rectangle',
+    label: 'Ryno ID card',
+    sublabel: 'Your partner identity and approval status',
+    route: '/driver-id-card',
+  };
+
   const MENU_ITEMS: MenuItem[] = [
     ...(isOwner ? FLEET_ITEMS : []),
     ...(isOwner ? [] : [VEHICLE_ITEM]),
@@ -144,12 +149,7 @@ export function DriverAccountScreen() {
       sublabel: 'Daily, weekly and bonus rewards',
       route: '/incentives',
     },
-    {
-      icon: 'person.text.rectangle',
-      label: 'Ryno ID card',
-      sublabel: 'Your partner identity and approval status',
-      route: '/driver-id-card',
-    },
+    ...(showsDriverId(profile, isOwner) ? [ID_CARD_ITEM] : []),
     {
       icon: 'checkmark.shield.fill',
       label: 'My documents',
@@ -202,9 +202,13 @@ export function DriverAccountScreen() {
         contentContainerClassName="px-5 pb-36 pt-4 gap-4"
         showsVerticalScrollIndicator={false}
       >
-        {/* Who is signed in: opens the company profile for an owner, My profile for a rider. */}
+        {/* Who is signed in. A rider taps through to My profile; for an owner it is information
+            only, since My Fleet & Vehicles below opens the fleet profile. */}
         <AppPressable
-          onPress={() => router.push(isOwner ? '/driver-profile' : '/my-profile')}
+          onPress={() => router.push('/my-profile')}
+          // Not `disabled`: that fades the card.
+          pointerEvents={isOwner ? 'none' : 'auto'}
+          accessibilityRole={isOwner ? 'summary' : 'button'}
           pressScale={0.98}
           className="rounded-3xl border border-border bg-card p-5 shadow-sm active:bg-neutral-100 dark:active:bg-neutral-800"
         >
@@ -244,7 +248,7 @@ export function DriverAccountScreen() {
               ) : null}
             </AppView>
 
-            <Icon name="chevron.right" size={18} tone="icon-subtle" />
+            {isOwner ? null : <Icon name="chevron.right" size={18} tone="icon-subtle" />}
           </AppView>
         </AppPressable>
 

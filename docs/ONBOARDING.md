@@ -69,6 +69,15 @@ Home keeps first name and current vehicle; the ID card shows its details togethe
 After submission the backend lists `locked_fields` (name, birth date). Gender stays editable only
 through `PATCH /partner/profile`; `PUT` is refused.
 
+## Owner mode menus
+
+- No "Add Vehicle" row on Account; adding is on the fleet screens (one button while empty).
+- The Account name card is information only; My Fleet & Vehicles opens the fleet profile.
+- The side menu leaves out Rewards, My trips and Refer friends.
+- The Ryno ID card shows to an owner only once approved to drive (`showsDriverId`).
+- Open: the owner's Wallet uses the driver wallet (`/partner` wallet), while `/fleet/wallet` also
+  exists. Confirm with the backend which one owners should see before changing it.
+
 ## Errors the partner sees
 
 - A refused document shows the backend's `rejection_reason` through

@@ -14,6 +14,7 @@ import {
   Avatar,
   Icon,
 } from '@/components/ui';
+import { showsDriverId } from '@/features/fleet/mode-switch';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { useDriverProfile } from '@/hooks/use-driver';
 import { DURATION, ENTER_EASE_OUT, SHEET_EASE } from '@/lib/motion';
@@ -25,6 +26,8 @@ interface MenuItem {
   label: string;
   sublabel: string;
   route: Href;
+  /** Only for someone driving: left out of a fleet owner's menu. */
+  driverOnly?: boolean;
 }
 
 const ITEMS: MenuItem[] = [
@@ -43,12 +46,14 @@ const ITEMS: MenuItem[] = [
   {
     icon: 'tag.fill',
     label: 'Rewards',
+    driverOnly: true,
     sublabel: 'Insurance and discounts',
     route: '/rewards',
   },
   {
     icon: 'box.truck',
     label: 'My trips',
+    driverOnly: true,
     sublabel: 'Completed trips by day, week or month',
     route: '/(tabs)/orders',
   },
@@ -73,6 +78,7 @@ const ITEMS: MenuItem[] = [
   {
     icon: 'person.badge.plus',
     label: 'Refer friends',
+    driverOnly: true,
     sublabel: 'Earn when they start driving',
     route: '/refer',
   },
@@ -182,7 +188,10 @@ export function HomeMenu({ visible, onClose }: HomeMenuProps) {
           </AppPressable>
 
           <AppScrollView showsVerticalScrollIndicator={false}>
-            {ITEMS.map((item) => (
+            {ITEMS.filter((item) => {
+              if (item.route === '/driver-id-card') return showsDriverId(profile, isOwner);
+              return !(isOwner && item.driverOnly);
+            }).map((item) => (
               <AppPressable
                 key={item.label}
                 onPress={() => go(item.route)}
