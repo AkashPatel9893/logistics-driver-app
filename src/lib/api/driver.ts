@@ -14,7 +14,6 @@ import type {
   GeoPoint,
   BankDetails,
   KycDetails,
-  KycInput,
   OnboardingState,
   SetupStep,
   VerificationStatus,
@@ -358,24 +357,6 @@ export const driverApi = {
         fileUri: input.pucPhotoUri,
       });
     }
-    return driverApi.getProfile();
-  },
-
-  saveKyc: async (input: KycInput): Promise<DriverProfile> => {
-    if (input.dlNumber && input.dlExpiry && input.dlPhotoUri) {
-      await onboardingApi.submitDriverDocument({
-        type: 'DRIVING_LICENCE',
-        identifier: input.dlNumber,
-        expiryDate: input.dlExpiry,
-        fileUri: input.dlPhotoUri,
-      });
-    }
-    await onboardingApi.submitDriverDocument({
-      type: 'PAN',
-      identifier: input.panNumber,
-      fileUri: input.panPhotoUri,
-    });
-    await onboardingApi.submitDriverDocument({ type: 'SELFIE', fileUri: input.selfieUri });
     return driverApi.getProfile();
   },
 

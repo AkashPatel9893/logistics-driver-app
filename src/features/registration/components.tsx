@@ -82,8 +82,11 @@ export function DocumentStatusNote({
   masked,
   expiry,
   reason,
+  replacing,
 }: {
   state: StepState;
+  /** A verified document opened to be replaced. */
+  replacing?: boolean;
   masked?: string | null;
   /** ISO date on file, shown as DD/MM/YYYY. */
   expiry?: string | null;
@@ -98,7 +101,9 @@ export function DocumentStatusNote({
         : { box: 'bg-amber-500/10', text: 'text-amber-700 dark:text-amber-400' };
   const message =
     state === 'verified'
-      ? 'Verified. You do not need to upload this again.'
+      ? replacing
+        ? 'Verified. A new one will be checked again.'
+        : 'Verified. You do not need to upload this again.'
       : state === 'rejected'
         ? `Please upload again${reason ? `: ${reason}` : '.'}`
         : 'Under verification. What you sent is shown below: change anything and tap Update.';

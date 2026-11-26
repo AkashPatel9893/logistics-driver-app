@@ -190,6 +190,13 @@ export function RegistrationHubScreen() {
       ],
     );
 
+  // Clears the stack first: replacing only the top screen left the earlier copies of Home and
+  // Documents underneath, adding another each time.
+  const goHome = () => {
+    if (router.canDismiss()) router.dismissAll();
+    router.replace('/home');
+  };
+
   const handleLogOut = () =>
     Alert.alert('Log out?', 'Your uploaded documents stay saved. Log in again to continue.', [
       { text: 'Cancel', style: 'cancel' },
@@ -288,7 +295,7 @@ export function RegistrationHubScreen() {
             variant="brand"
             label="Go to Home"
             className="mt-3"
-            onPress={() => router.replace('/home')}
+            onPress={goHome}
             size="lg"
             textClassName="font-extrabold text-[15px]"
           />

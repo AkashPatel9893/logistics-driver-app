@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 
 import {
@@ -26,6 +26,7 @@ import { documentState, findDocument } from '../registration-steps';
 import { useDriverDocuments, useSubmitDriverDocument } from '../use-registration';
 import { markSubmitted, useDraftText } from '../drafts';
 import { goToNextStep } from '../next-step';
+import { goBack } from '@/lib/go-back';
 
 export function DrivingLicenceScreen() {
   const router = useRouter();
@@ -34,7 +35,9 @@ export function DrivingLicenceScreen() {
   const current = findDocument(docs, 'DRIVING_LICENCE');
   const state = documentState(current?.status);
   // Verified: view only. Under review / rejected: shows what was sent, to update.
-  const locked = state === 'verified';
+  // Opened from My documents to replace it: unlocked, and returns there after saving.
+  const { update } = useLocalSearchParams<{ update?: string }>();
+  const locked = state === 'verified' && !update;
   const submit = useSubmitDriverDocument();
   // Kept on the phone until submitted, so closing the app mid-step loses nothing.
   const front = useLocalPhoto('licence.front');
@@ -64,7 +67,8 @@ export function DrivingLicenceScreen() {
       {
         onSuccess: () => {
           markSubmitted('licence.');
-          goToNextStep(router, queryClient, 'licence');
+          if (update) goBack(router);
+          else goToNextStep(router, queryClient, 'licence');
         },
         onError: (e) => setError(getErrorMessage(e)),
       },
@@ -81,6 +85,7 @@ export function DrivingLicenceScreen() {
         >
           <DocumentStatusNote
             state={state}
+            replacing={!locked}
             masked={current?.identifierMasked}
             expiry={current?.expiryDate}
             reason={current?.rejectionReason}

@@ -91,8 +91,10 @@ Still to check:
 
 - Fixed after the fleet run, not re-run end to end: fleet popup → dashboard, role not carried over
   after logout, refused-bank message, "Ready to submit" banner, document rejection reasons.
-- "Go to Home" on the approved Documents screen: the first tap seemed to stay on Documents. A
-  restart opened Home. Not reproduced.
+- "Go to Home" first tap after approval seemed to stay on Documents. Each `replace('/home')` was
+  stacking another copy of the tabs; the button now clears the stack first (checked: three copies
+  became one). The original tap was not reproduced, so re-check it on the next new rider. Other
+  `replace('/home')` calls may stack the same way and were not checked.
 - Saving a fleet vehicle, going online, iOS.
 - Login keyboard nearly covers Continue. The fleet vehicle form says "you'll use for deliveries".
 
@@ -115,7 +117,10 @@ Still to check:
 | `features/fleet/company.ts`                    | Company types and GSTIN rule                                                        |
 
 Rider vehicle and bank steps live in `features/driver/screens/setup-{vehicle,bank}-screen.tsx`.
-`setup-kyc` is the older KYC screen still opened from Account and Profile.
+`/setup-kyc` (from Account and Profile) is **My documents**
+(`features/registration/screens/my-documents-screen.tsx`): each document with status, the photos
+this phone sent, and its own Update button. Update opens the onboarding screen with `?update=1`,
+which unlocks a verified document (after a warning) and returns to the list on save.
 
 ## Running and testing
 

@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 
 import {
@@ -26,6 +26,7 @@ import { documentState, findDocument } from '../registration-steps';
 import { useDriverDocuments, useSubmitDriverDocument } from '../use-registration';
 import { markSubmitted, useDraftText } from '../drafts';
 import { goToNextStep } from '../next-step';
+import { goBack } from '@/lib/go-back';
 
 type IdType = 'AADHAAR' | 'PAN';
 
@@ -60,14 +61,18 @@ export function IdentityScreen() {
   const aadhaarState = documentState(aadhaar?.status);
   const submit = useSubmitDriverDocument();
 
-  // Open the one still needed: PAN first, then Aadhaar.
-  const [idType, setIdType] = useState<IdType>(() =>
-    panState !== 'todo' &&
-    panState !== 'rejected' &&
-    (aadhaarState === 'todo' || aadhaarState === 'rejected')
+  // From My documents: `type` is the card to replace, `update` unlocks it and returns there.
+  const { update, type: requested } = useLocalSearchParams<{ update?: string; type?: string }>();
+
+  // The requested one, else the one still needed: PAN first, then Aadhaar.
+  const [idType, setIdType] = useState<IdType>(() => {
+    if (requested === 'PAN' || requested === 'AADHAAR') return requested;
+    return panState !== 'todo' &&
+      panState !== 'rejected' &&
+      (aadhaarState === 'todo' || aadhaarState === 'rejected')
       ? 'AADHAAR'
-      : 'PAN',
-  );
+      : 'PAN';
+  });
   // Kept on the phone until submitted, so closing the app mid-step loses nothing.
   const aadhaarFront = useLocalPhoto('aadhaar.front');
   const aadhaarBack = useLocalPhoto('aadhaar.back');
@@ -85,7 +90,7 @@ export function IdentityScreen() {
   const current = isAadhaar ? aadhaar : pan;
   const currentState = documentState(current?.status);
   // Verified: view only. Under review / rejected: shows what was sent, to update.
-  const locked = currentState === 'verified';
+  const locked = currentState === 'verified' && !(update && idType === requested);
 
   const switchTo = (type: IdType) => {
     setError(undefined);
@@ -108,6 +113,10 @@ export function IdentityScreen() {
       {
         onSuccess: () => {
           markSubmitted(isAadhaar ? 'aadhaar.' : 'pan.');
+          if (update) {
+            goBack(router);
+            return;
+          }
           // Both are needed: open the other one if it is still missing, else the next step.
           const otherState = isAadhaar ? panState : aadhaarState;
           if (otherState === 'todo' || otherState === 'rejected')
@@ -163,6 +172,7 @@ export function IdentityScreen() {
 
           <DocumentStatusNote
             state={currentState}
+            replacing={!locked}
             masked={current?.identifierMasked}
             reason={current?.rejectionReason}
           />

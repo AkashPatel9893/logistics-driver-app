@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { driverApi } from '@/lib/api/driver';
 import { onboardingApi } from '@/lib/api/onboarding';
-import type { BankInput, DriverProfile, KycInput, VehicleInput } from '@/lib/api/models';
+import type { BankInput, DriverProfile, VehicleInput } from '@/lib/api/models';
 import { queryKeys } from '@/lib/queries/keys';
 
 export function useDriverProfile(options: { enabled?: boolean } = {}) {
@@ -32,10 +32,6 @@ export function useSetOnline() {
 
 export function useSaveVehicle() {
   return useProfileMutation((input: VehicleInput) => driverApi.saveVehicle(input));
-}
-
-export function useSaveKyc() {
-  return useProfileMutation((input: KycInput) => driverApi.saveKyc(input));
 }
 
 export function useSaveBank() {

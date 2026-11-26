@@ -1,3 +1,3 @@
-import { SetupKycScreen } from '@/features/driver/screens/setup-kyc-screen';
+import { MyDocumentsScreen } from '@/features/registration/screens/my-documents-screen';
 
-export default SetupKycScreen;
+export default MyDocumentsScreen;

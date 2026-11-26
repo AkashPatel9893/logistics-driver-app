@@ -152,17 +152,6 @@ export interface KycDetails {
   missing: string[];
 }
 
-export interface KycInput {
-  panNumber: string;
-  panPhotoUri: string;
-  /** Licence details: left out for a fleet owner, who only needs them to drive. */
-  dlNumber?: string;
-  /** ISO date (YYYY-MM-DD). */
-  dlExpiry?: string;
-  dlPhotoUri?: string;
-  selfieUri: string;
-}
-
 export interface BankDetails {
   holderName: string;
   /** Never the full number — the server keeps that. */

@@ -46,6 +46,12 @@ export function readSubmitted(key: string): string | null {
   return kvStorage.getString(SUBMITTED + key);
 }
 
+/** The photo last submitted from this phone for a key, if its file is still there. */
+export function readSubmittedPhoto(key: string): string | null {
+  const uri = readSubmitted(key);
+  return uri && fileExists(uri) ? uri : null;
+}
+
 /**
  * Text field that survives the app being closed, starting from the draft, else what was last
  * submitted, else `initial`. Without a key it is plain state.

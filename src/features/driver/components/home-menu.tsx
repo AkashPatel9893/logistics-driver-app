@@ -1,7 +1,9 @@
 import { useRouter, type Href } from 'expo-router';
-import { Modal } from 'react-native';
-import { FadeIn, FadeOut, SlideInLeft, SlideOutLeft } from 'react-native-reanimated';
+import { useEffect, useState } from 'react';
+import { Modal, StyleSheet, useWindowDimensions } from 'react-native';
+import { interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import {
   AnimatedView,
@@ -13,7 +15,7 @@ import {
   Icon,
 } from '@/components/ui';
 import { useDriverProfile } from '@/hooks/use-driver';
-import { DURATION } from '@/lib/motion';
+import { DURATION, ENTER_EASE_OUT, SHEET_EASE } from '@/lib/motion';
 
 type MenuIcon = Parameters<typeof Icon>[0]['name'];
 
@@ -75,6 +77,10 @@ const ITEMS: MenuItem[] = [
   },
 ];
 
+/** The panel takes this share of the screen, up to a fixed width on large phones and tablets. */
+const PANEL_SHARE = 0.82;
+const PANEL_MAX_WIDTH = 340;
+
 export interface HomeMenuProps {
   visible: boolean;
   onClose: () => void;
@@ -85,6 +91,32 @@ export function HomeMenu({ visible, onClose }: HomeMenuProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { data: profile } = useDriverProfile();
+  const { width } = useWindowDimensions();
+  const panelWidth = Math.min(width * PANEL_SHARE, PANEL_MAX_WIDTH);
+  // 0 closed, 1 open. One value drives the panel and the dimming, so they always move together.
+  const progress = useSharedValue(0);
+  // The modal outlives `visible` until the panel has slid out; hiding it at once would cut that off.
+  const [mounted, setMounted] = useState(visible);
+  if (visible && !mounted) setMounted(true);
+
+  const open = () => {
+    progress.set(withTiming(1, { duration: DURATION.sheet, easing: SHEET_EASE }));
+  };
+
+  useEffect(() => {
+    if (visible || !mounted) return;
+    progress.set(
+      withTiming(0, { duration: DURATION.small, easing: ENTER_EASE_OUT }, (finished) => {
+        'worklet';
+        if (finished) scheduleOnRN(setMounted, false);
+      }),
+    );
+  }, [visible, mounted, progress]);
+
+  const panelStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: interpolate(progress.get(), [0, 1], [-panelWidth, 0]) }],
+  }));
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.get() }));
 
   const go = (route: Href) => {
     onClose();
@@ -92,16 +124,37 @@ export function HomeMenu({ visible, onClose }: HomeMenuProps) {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <AppView className="flex-1 flex-row">
+    <Modal
+      visible={mounted}
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      animationType="none"
+      // Starts once the modal window is up, so no frames of the slide are lost.
+      onShow={open}
+      onRequestClose={onClose}
+    >
+      <AppView className="flex-1">
+        {/* Dims the whole screen, behind the panel. */}
+        <AnimatedView style={[StyleSheet.absoluteFill, backdropStyle]} className="bg-black/40">
+          <AppPressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close menu"
+            className="flex-1"
+          />
+        </AnimatedView>
+
         <AnimatedView
-          entering={SlideInLeft.duration(DURATION.sheet)}
-          exiting={SlideOutLeft.duration(DURATION.small)}
-          style={{
-            paddingTop: Math.max(insets.top, 12),
-            paddingBottom: Math.max(insets.bottom, 12),
-          }}
-          className="w-[82%] max-w-[340px] bg-background"
+          style={[
+            {
+              width: panelWidth,
+              paddingTop: Math.max(insets.top, 12),
+              paddingBottom: Math.max(insets.bottom, 12),
+            },
+            panelStyle,
+          ]}
+          className="flex-1 bg-background"
         >
           <AppPressable
             onPress={() => go('/driver-profile')}
@@ -142,19 +195,6 @@ export function HomeMenu({ visible, onClose }: HomeMenuProps) {
               </AppPressable>
             ))}
           </AppScrollView>
-        </AnimatedView>
-
-        <AnimatedView
-          entering={FadeIn.duration(DURATION.small)}
-          exiting={FadeOut.duration(DURATION.small)}
-          className="flex-1 bg-black/40"
-        >
-          <AppPressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close menu"
-            className="flex-1"
-          />
         </AnimatedView>
       </AppView>
     </Modal>

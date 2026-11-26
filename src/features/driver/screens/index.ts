@@ -11,7 +11,6 @@ export * from './incoming-job-screen';
 export * from './my-earnings-screen';
 export * from './payment-qr-screen';
 export * from './setup-bank-screen';
-export * from './setup-kyc-screen';
 export * from './setup-vehicle-screen';
 export * from './stop-verification-screen';
 export * from './trip-complete-screen';
