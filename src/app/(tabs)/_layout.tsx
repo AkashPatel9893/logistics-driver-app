@@ -23,22 +23,54 @@ import { useLocationReporter } from '@/hooks/use-location-reporter';
  * each copy must not open the same offer again (two screens stacked on top of each other).
  */
 const ringedOfferIds = new Set<string>();
+const TAB_PATHS = new Set(['/', '/home', '/orders', '/account']);
+
+/** User id for which we already ran the cold-launch active-trip resume (one-shot per app session). */
+let resumedTripForUserId: string | null = null;
+
+function activeJobRoute(
+  status: string,
+): '/pickup-verification' | '/drop-verification' | '/active-delivery' | null {
+  switch (status) {
+    case 'arrived_at_pickup':
+      return '/pickup-verification';
+    case 'arrived_at_drop':
+    case 'awaiting_payment':
+      return '/drop-verification';
+    case 'heading_to_pickup':
+    case 'pickup_complete':
+      return '/active-delivery';
+    default:
+      return null;
+  }
+}
 
 /** Background work for a signed-in driver: server pushes and GPS reporting. */
 function DriverSession({ userId }: { userId: string }) {
   const { data: profile } = useDriverProfile();
   const isOnline = profile?.isOnline ?? false;
   // The only place that polls these two; every other screen reads the cache.
-  const { data: activeJob = null } = useActiveJob({ poll: true });
+  const { data: activeJob = null, isFetched: activeJobLoaded } = useActiveJob({ poll: true });
   const { data: offers } = useOffers(isOnline && !activeJob, { poll: true });
   useDriverRealtime(userId);
   useLocationReporter(isOnline);
 
-  // A new offer takes over the screen like a ringing call, from any tab or screen (not only
-  // Home), so it is never missed. Up to two offers can be open (priority first): each rings once.
   const router = useRouter();
   const pathname = usePathname();
   const dashboardRole = useFleetStore.use.dashboardRole();
+
+  // Cold-launch resume: if the driver already has an active trip, jump straight to its current
+  // screen once on launch (keeping Home in the back stack so Back still works).
+  useEffect(() => {
+    if (resumedTripForUserId === userId || !activeJobLoaded || dashboardRole !== 'driver') return;
+    resumedTripForUserId = userId;
+    if (!activeJob || !TAB_PATHS.has(pathname)) return;
+    const route = activeJobRoute(activeJob.status);
+    if (route) router.push(route);
+  }, [activeJob, activeJobLoaded, dashboardRole, pathname, router, userId]);
+
+  // A new offer takes over the screen like a ringing call, from any tab or screen (not only
+  // Home), so it is never missed. Up to two offers can be open (priority first): each rings once.
   useEffect(() => {
     if (activeJob || dashboardRole !== 'driver' || pathname === '/incoming-job') return;
     const next = offers?.find((o) => !ringedOfferIds.has(o.id));
