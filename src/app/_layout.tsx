@@ -77,11 +77,13 @@ export default function RootLayout() {
         <Stack.Screen name="my-profile" />
         <Stack.Screen name="driver-id-card" />
         <Stack.Screen name="setup-vehicle" />
+        <Stack.Screen name="owner-permission" />
         <Stack.Screen name="setup-kyc" />
         <Stack.Screen name="setup-bank" />
         <Stack.Screen name="company-details" />
         <Stack.Screen name="add-driver" />
         <Stack.Screen name="vehicle-details" />
+        <Stack.Screen name="fleet-drivers" />
         <Stack.Screen name="fleet-setup" />
         <Stack.Screen name="registration" />
         <Stack.Screen name="register-vehicle-type" />

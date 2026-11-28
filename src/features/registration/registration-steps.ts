@@ -48,6 +48,7 @@ export type RegistrationRoute =
   | '/register-photo'
   | '/register-selfie?next=info'
   | '/setup-vehicle'
+  | '/owner-permission'
   | '/register-identity'
   | '/setup-bank'
   | '/register-permissions';
@@ -212,17 +213,23 @@ export function buildRegistrationSteps(
         : 'review'
     : 'todo';
 
+  // A registered vehicle means its type was chosen, even when this response doesn't name the type
+  // (the light status after a fresh login).
+  const typeChosen = Boolean(typeName || snapshot.vehicle);
+
   const steps: RegistrationStep[] = [
     {
       id: 'vehicle-type',
       title: typeName
         ? `Vehicle - ${typeName}`
-        : fleetDriver
-          ? 'Vehicle - from fleet owner'
-          : 'Select your vehicle',
+        : typeChosen
+          ? 'Vehicle type'
+          : fleetDriver
+            ? 'Vehicle - from fleet owner'
+            : 'Select your vehicle',
       subject: 'Your vehicle type is',
-      detail: typeName ? 'Selected' : fleetDriver ? 'Your owner assigns the vehicle' : null,
-      state: typeName || fleetDriver ? 'selected' : 'todo',
+      detail: typeChosen ? 'Selected' : fleetDriver ? 'Your owner assigns the vehicle' : null,
+      state: typeChosen || fleetDriver ? 'selected' : 'todo',
       route: '/register-vehicle-type',
     },
     docStep(
@@ -244,18 +251,28 @@ export function buildRegistrationSteps(
       // Selfie already taken on this phone: open Profile information, not the camera again.
       ...(hasDraft('profile.photo') ? { route: '/register-photo' as const } : {}),
     },
-    {
-      id: 'vehicle',
-      title: 'Vehicle number & RC',
-      subject: 'Your vehicle documents are',
-      detail: snapshot.vehicle
-        ? [snapshot.vehicle.plate, STATE_DETAIL[vehicleState]].filter(Boolean).join(' · ')
-        : stepHasDraft('vehicle')
-          ? DRAFT_DETAIL
-          : 'Vehicle number, RC, insurance and PUC',
-      state: vehicleState,
-      route: '/setup-vehicle',
-    },
+    snapshot.vehicle && snapshot.onboarding.ownerPermissionPending
+      ? {
+          // Saved, but the owner still has to give permission (NOC and OTP) before review.
+          id: 'vehicle',
+          title: 'Vehicle number & RC',
+          subject: 'Your vehicle documents are',
+          detail: [snapshot.vehicle.plate, "Owner's permission needed"].filter(Boolean).join(' · '),
+          state: 'todo',
+          route: '/owner-permission',
+        }
+      : {
+          id: 'vehicle',
+          title: 'Vehicle number & RC',
+          subject: 'Your vehicle documents are',
+          detail: snapshot.vehicle
+            ? [snapshot.vehicle.plate, STATE_DETAIL[vehicleState]].filter(Boolean).join(' · ')
+            : stepHasDraft('vehicle')
+              ? DRAFT_DETAIL
+              : 'Vehicle number, RC, insurance and PUC',
+          state: vehicleState,
+          route: '/setup-vehicle',
+        },
     {
       id: 'identity',
       title: 'PAN & Aadhaar',

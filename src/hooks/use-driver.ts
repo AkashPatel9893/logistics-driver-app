@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { driverApi } from '@/lib/api/driver';
-import { onboardingApi } from '@/lib/api/onboarding';
+import {
+  onboardingApi,
+  type DocumentInput,
+  type OwnerAuthorization,
+  type PartnerVehicle,
+} from '@/lib/api/onboarding';
 import type { BankInput, DriverProfile, Gender, VehicleInput } from '@/lib/api/models';
 import { queryKeys } from '@/lib/queries/keys';
 
@@ -46,10 +51,6 @@ export function useSubmitOnboarding() {
   return useProfileMutation(() => driverApi.submitOnboarding());
 }
 
-export function useMarkWelcomeBonusSeen() {
-  return useProfileMutation(() => driverApi.markWelcomeBonusSeen());
-}
-
 export function useVehicleTypes() {
   return useQuery({
     queryKey: queryKeys.vehicleTypes,
@@ -63,6 +64,68 @@ export interface VehicleDocumentInfo {
   status: string;
   /** ISO date, when the document has one. */
   expiryDate: string | null;
+}
+
+/** Every vehicle the driver has now: their own and any a fleet owner assigned. */
+/** NOC upload and owner OTP for a vehicle someone else owns; refreshes the vehicle and the steps. */
+export function useOwnerPermission(vehicleId: string) {
+  const queryClient = useQueryClient();
+  // The answer is the updated permission: show it at once, then refetch the rest.
+  const refresh = (auth: OwnerAuthorization) => {
+    queryClient.setQueryData<PartnerVehicle[]>(queryKeys.myVehicles, (list) =>
+      list?.map((v) => (v.id === vehicleId ? { ...v, owner_authorization: auth } : v)),
+    );
+    queryClient.invalidateQueries({ queryKey: queryKeys.myVehicles });
+    queryClient.invalidateQueries({ queryKey: queryKeys.onboardingStatus });
+    queryClient.invalidateQueries({ queryKey: queryKeys.profile });
+  };
+  return {
+    uploadNoc: useMutation({
+      mutationFn: (fileUri: string) => onboardingApi.uploadOwnerNoc(vehicleId, fileUri),
+      onSuccess: refresh,
+    }),
+    requestOtp: useMutation({ mutationFn: () => onboardingApi.requestOwnerOtp(vehicleId) }),
+    verifyOtp: useMutation({
+      mutationFn: (code: string) => onboardingApi.verifyOwnerOtp(vehicleId, code),
+      onSuccess: refresh,
+    }),
+  };
+}
+
+export function useMyVehicles(options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.myVehicles,
+    enabled: options.enabled ?? true,
+    queryFn: ({ signal }) => onboardingApi.listVehicles(signal),
+  });
+}
+
+/** Changes which approved vehicle the driver uses. The backend refuses while online or on a trip. */
+export function useSwitchVehicle() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vehicleId: string) => onboardingApi.setActiveVehicle(vehicleId),
+    // Awaited, so the screen never shows the old vehicle as in use after the switch.
+    onSuccess: () =>
+      Promise.all(
+        [queryKeys.profile, queryKeys.myVehicles, queryKeys.onboardingStatus].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      ),
+  });
+}
+
+/** Sends one of the rider's vehicle papers (e.g. fitness, permit), then refreshes what depends on it. */
+export function useSubmitVehicleDocument(vehicleId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DocumentInput) => onboardingApi.submitVehicleDocument(vehicleId!, input),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['driver', 'vehicle-documents', vehicleId ?? ''] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.onboardingStatus });
+      queryClient.invalidateQueries({ queryKey: queryKeys.profile });
+    },
+  });
 }
 
 export function useVehicleDocuments(vehicleId: string | undefined) {

@@ -1,9 +1,12 @@
 import { useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
+import { Alert } from 'react-native';
 
-import { AppScrollView, AppSpinner, AppText, AppView } from '@/components/ui';
+import { AppScrollView, AppSpinner, AppText, AppView, Button } from '@/components/ui';
 import { useTrips } from '@/hooks/use-earnings';
 import { formatDayTime, formatDistance, formatRupees } from '@/lib/format';
 
+import { ReportProblemSheet } from '../components/report-problem-sheet';
 import { SetupScreenLayout } from '../components/setup-screen-layout';
 
 /** Plain words for the earning statuses the backend sends. */
@@ -45,6 +48,7 @@ export function TripDetailsScreen() {
   const { tripId } = useLocalSearchParams<{ tripId?: string }>();
   const tripsQuery = useTrips();
   const trip = tripsQuery.data?.find((t) => t.id === tripId);
+  const [reportOpen, setReportOpen] = useState(false);
 
   return (
     <SetupScreenLayout
@@ -102,8 +106,23 @@ export function TripDetailsScreen() {
                 : (STATUS_LABEL[trip.status] ?? trip.status.replace(/_/g, ' ').toLowerCase())}
             </AppText>
           </AppView>
+
+          <Button variant="outline" label="Report a problem" onPress={() => setReportOpen(true)} />
         </AppScrollView>
       )}
+      {reportOpen && trip ? (
+        <ReportProblemSheet
+          orderId={trip.orderId}
+          onClose={() => setReportOpen(false)}
+          onSent={(incident) => {
+            setReportOpen(false);
+            Alert.alert(
+              'Report sent',
+              `Your report number is ${incident.number}. Our safety team will look into it.`,
+            );
+          }}
+        />
+      ) : null}
     </SetupScreenLayout>
   );
 }

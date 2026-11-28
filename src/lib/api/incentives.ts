@@ -62,7 +62,7 @@ function isMissingEndpoint(error: unknown): boolean {
 }
 
 export const incentivesApi = {
-  /** GET /partner/incentives (proposed, not yet built). */
+  /** GET /partner/incentives and its claims; "not available" if the server lacks them. */
   list: async (type: IncentiveType, signal?: AbortSignal): Promise<IncentivesResult> => {
     try {
       const [programmes, claims] = await Promise.all([

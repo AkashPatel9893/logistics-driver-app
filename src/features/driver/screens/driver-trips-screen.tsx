@@ -12,12 +12,21 @@ import {
   Icon,
   SegmentedControl,
 } from '@/components/ui';
-import { useTrips } from '@/hooks/use-earnings';
+import { useTripOutcomes, useTrips } from '@/hooks/use-earnings';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
+import type { TripOutcome, TripSummary } from '@/lib/api/models';
 import { formatRupees } from '@/lib/format';
-import { isInSlot, MAX_OFFSET, periodSlot, stripOffsets, type TripPeriod } from '@/lib/trip-period';
+import {
+  isInSlot,
+  MAX_OFFSET,
+  periodSlot,
+  slotDays,
+  stripOffsets,
+  type TripPeriod,
+} from '@/lib/trip-period';
 
 import { DriverPastTripCard } from '../components/driver-past-trip-card';
+import { TripOutcomeCard } from '../components/trip-outcome-card';
 
 const PERIODS = [
   { value: 'day', label: 'Day' },
@@ -32,6 +41,20 @@ const STATUSES: { value: TripStatus; label: string }[] = [
   { value: 'cancelled', label: 'Cancelled' },
   { value: 'missed', label: 'Missed' },
 ];
+
+const EMPTY_TITLE: Record<TripStatus, string> = {
+  completed: 'You have not completed any trips in this period',
+  cancelled: 'No cancelled trips in this period',
+  missed: 'No missed requests in this period',
+};
+
+const EMPTY_HINT: Record<TripStatus, string> = {
+  completed: 'Pick another date above, or go online from Home to get requests.',
+  cancelled: 'Trips cancelled by you, the customer or Ryno, and failed deliveries, show here.',
+  missed: 'Requests you declined or did not answer in time show here.',
+};
+
+type ListItem = TripSummary | TripOutcome;
 
 function SummaryCard({ value, label }: { value: string; label: string }) {
   return (
@@ -55,6 +78,11 @@ export function DriverTripsScreen() {
   const trips = allTrips.filter((trip) => isInSlot(trip.endedAt, slot));
   const earned = trips.reduce((sum, trip) => sum + trip.driverEarning, 0);
   const offsets = stripOffsets(offset);
+  const { from, to } = slotDays(slot);
+  const outcomesQuery = useTripOutcomes(status === 'missed' ? 'missed' : 'cancelled', from, to, {
+    enabled: status !== 'completed',
+  });
+  const listQuery = status === 'completed' ? tripsQuery : outcomesQuery;
   const oldest = MAX_OFFSET[period];
 
   const changePeriod = (next: TripPeriod) => {
@@ -72,19 +100,21 @@ export function DriverTripsScreen() {
       >
         <AppText className="text-[24px] font-black text-foreground">My trips</AppText>
         <AppText className="text-[12px] font-medium text-muted">
-          Completed trips and what you earned
+          Your trips and what you earned
         </AppText>
       </AppView>
 
       <AppFlatList
-        data={status === 'completed' ? trips : []}
+        data={(status === 'completed' ? trips : (outcomesQuery.data ?? [])) as ListItem[]}
         keyExtractor={(trip) => trip.id}
-        renderItem={({ item }) => <DriverPastTripCard trip={item} />}
+        renderItem={({ item }) =>
+          'kind' in item ? <TripOutcomeCard trip={item} /> : <DriverPastTripCard trip={item} />
+        }
         contentContainerClassName="gap-3 px-5 pb-32 pt-4"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => void refresh(() => tripsQuery.refetch({ throwOnError: true }))}
+            onRefresh={() => void refresh(() => listQuery.refetch({ throwOnError: true }))}
           />
         }
         ListHeaderComponent={
@@ -168,9 +198,9 @@ export function DriverTripsScreen() {
           </AppView>
         }
         ListEmptyComponent={
-          tripsQuery.isLoading ? (
+          listQuery.isLoading ? (
             <AppSpinner />
-          ) : tripsQuery.isError ? (
+          ) : listQuery.isError ? (
             <AppText className="text-muted">Could not load trips. Pull to retry.</AppText>
           ) : (
             <AppView className="mt-2 items-center justify-center rounded-3xl border border-dashed border-border bg-card p-8">
@@ -178,14 +208,10 @@ export function DriverTripsScreen() {
                 <Icon name="box.truck" size={30} tone="brand" />
               </AppView>
               <AppText className="mt-4 text-center text-[16px] font-extrabold text-foreground">
-                {status === 'completed'
-                  ? 'You have not completed any trips in this period'
-                  : `${status === 'cancelled' ? 'Cancelled' : 'Missed'} trips are not available yet`}
+                {EMPTY_TITLE[status]}
               </AppText>
               <AppText className="mt-1 text-center text-[13px] leading-5 text-muted">
-                {status === 'completed'
-                  ? 'Pick another date above, or go online from Home to get requests.'
-                  : 'Only completed trips are listed for now.'}
+                {EMPTY_HINT[status]}
               </AppText>
             </AppView>
           )

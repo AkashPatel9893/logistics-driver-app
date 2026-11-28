@@ -23,6 +23,7 @@ import { distanceKm } from '@/lib/geo';
 import { openGoogleMapsDirections } from '@/lib/navigation-apps';
 import { useLocationStore } from '@/stores/location-store';
 
+import { ReportProblemSheet } from '../components/report-problem-sheet';
 import { RouteMap } from '../components/route-map';
 import { currentStop } from '../job-stage';
 
@@ -84,6 +85,7 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
   const arriveAtDrop = useArriveAtDrop();
   const cancelJob = useCancelJob();
   const [cancelSheetOpen, setCancelSheetOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const isPickup = leg.stop === 'pickup';
   const contact = isPickup ? job.sender : (job.drop.contact ?? job.sender);
@@ -286,12 +288,31 @@ function ActiveDelivery({ job }: { job: DriverJob }) {
           size="lg"
           textClassName="font-extrabold text-base"
         />
-        {canCancel ? (
-          <AppPressable onPress={() => setCancelSheetOpen(true)} className="mt-3 items-center py-1">
-            <AppText className="text-[13px] font-semibold text-muted">Cancel trip</AppText>
+        <AppView row className="mt-3 justify-center gap-8">
+          {canCancel ? (
+            <AppPressable onPress={() => setCancelSheetOpen(true)} className="py-1">
+              <AppText className="text-[13px] font-semibold text-muted">Cancel trip</AppText>
+            </AppPressable>
+          ) : null}
+          <AppPressable onPress={() => setReportOpen(true)} className="py-1">
+            <AppText className="text-[13px] font-semibold text-muted">Report a problem</AppText>
           </AppPressable>
-        ) : null}
+        </AppView>
       </AppView>
+
+      {reportOpen ? (
+        <ReportProblemSheet
+          orderId={job.id}
+          onClose={() => setReportOpen(false)}
+          onSent={(incident) => {
+            setReportOpen(false);
+            Alert.alert(
+              'Report sent',
+              `Your report number is ${incident.number}. Our safety team will look into it.`,
+            );
+          }}
+        />
+      ) : null}
 
       <OptionSheet
         isPresented={cancelSheetOpen}

@@ -14,14 +14,14 @@ import {
   Icon,
 } from '@/components/ui';
 import {
+  logOut,
   refreshOnboardingStatus,
-  signOut,
   syncOnboardingStatus,
 } from '@/features/auth/use-auth-store';
 import { useFleetCompany } from '@/hooks/use-fleet';
 import { SetupScreenLayout } from '@/features/driver/components/setup-screen-layout';
 import { useSubmitOnboarding, useVehicleTypes } from '@/hooks/use-driver';
-import { getErrorMessage } from '@/lib/api/api-error';
+import { ApiError, getErrorMessage } from '@/lib/api/api-error';
 
 import { StepRow } from '../components';
 import {
@@ -184,7 +184,14 @@ export function RegistrationHubScreen() {
           text: 'Accept and submit',
           onPress: () =>
             submit.mutate(undefined, {
-              onError: (error) => Alert.alert('Could not submit', getErrorMessage(error)),
+              onError: (error) =>
+                // The app sends a fixed agreement version; the backend refuses an old one.
+                error instanceof ApiError && error.code === 'AGREEMENT_VERSION_MISMATCH'
+                  ? Alert.alert(
+                      'Update the app',
+                      'The partner agreement has changed. Update the Ryno Partner app, then submit again.',
+                    )
+                  : Alert.alert('Could not submit', getErrorMessage(error)),
             }),
         },
       ],
@@ -204,7 +211,7 @@ export function RegistrationHubScreen() {
         text: 'Log out',
         style: 'destructive',
         onPress: () => {
-          signOut();
+          logOut();
           router.replace('/');
         },
       },

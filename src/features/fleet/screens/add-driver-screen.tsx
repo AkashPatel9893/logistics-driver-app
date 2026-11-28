@@ -15,10 +15,18 @@ import {
   LiquidGlassBackButton,
   TextField,
 } from '@/components/ui';
-import { useAssignFleetDriver, useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
+import {
+  useAssignFleetDriver,
+  useFleetCompany,
+  useFleetDrivers,
+  useFleetVehicles,
+} from '@/hooks/use-fleet';
 import type { AssignDriverRequest } from '@/lib/api/fleet';
-import { getErrorMessage } from '@/lib/api/api-error';
+import { getErrorMessage, toApiError } from '@/lib/api/api-error';
 import { goBack } from '@/lib/go-back';
+
+import { FleetDriverPicker } from '../components/fleet-driver-picker';
+import { joinedDrivers, lastTenDigits } from '../fleet-members';
 
 export function AddDriverScreen() {
   const router = useRouter();
@@ -29,6 +37,7 @@ export function AddDriverScreen() {
   const { data: company } = useFleetCompany();
   const { data: vehicles } = useFleetVehicles();
   const assignDriverMutation = useAssignFleetDriver();
+  const { data: members = [] } = useFleetDrivers();
 
   const [isSelfDrive, setIsSelfDrive] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -63,14 +72,32 @@ export function AddDriverScreen() {
       return;
     }
 
-    const body: AssignDriverRequest = isSelfDrive
-      ? { is_owner_self: true }
-      : {
-          is_owner_self: false,
-          name: fullName.trim(),
-          phone: `+91 ${phone.trim().slice(-10)}`,
-        };
+    // Someone who already joined is assigned by id: the backend refuses their name and number.
+    const member = isSelfDrive
+      ? undefined
+      : joinedDrivers(members).find((m) => lastTenDigits(m.phone) === lastTenDigits(phone));
+    await assignDriver(
+      targetVehicleId,
+      isSelfDrive
+        ? { is_owner_self: true }
+        : member
+          ? { driver_id: member.id }
+          : {
+              is_owner_self: false,
+              name: fullName.trim(),
+              phone: `+91 ${phone.trim().slice(-10)}`,
+            },
+      member?.name ?? fullName.trim(),
+      member?.phone ?? phone,
+    );
+  };
 
+  const assignDriver = async (
+    targetVehicleId: string,
+    body: AssignDriverRequest,
+    driverName: string,
+    driverPhone: string,
+  ) => {
     const send = async () => {
       try {
         const vehicle = await assignDriverMutation.mutateAsync({
@@ -80,24 +107,36 @@ export function AddDriverScreen() {
         const invited = Boolean(vehicle.driver?.invite_id);
         Alert.alert(
           invited ? 'Driver invited' : 'Driver assigned',
-          isSelfDrive
+          body.is_owner_self
             ? 'You now drive this vehicle.'
             : invited
-              ? `${fullName.trim()} is invited. They join when they sign in to Ryno Partner with this number.`
-              : `${fullName.trim()} now drives this vehicle.`,
+              ? `${driverName} is invited. They join when they sign in to Ryno Partner with this number.`
+              : `${driverName} now drives this vehicle.`,
           [{ text: 'Continue', onPress: () => goBack(router) }],
         );
       } catch (err) {
-        Alert.alert('Could not add the driver', getErrorMessage(err));
+        // A number with its own Ryno account joins by asking from their app; the owner approves.
+        const alreadyRegistered = toApiError(err).code === 'DRIVER_ALREADY_REGISTERED';
+        Alert.alert(
+          'Could not add the driver',
+          getErrorMessage(err),
+          alreadyRegistered
+            ? [
+                { text: 'Close', style: 'cancel' },
+                { text: 'See requests', onPress: () => router.push('/fleet-drivers') },
+              ]
+            : undefined,
+        );
       }
     };
 
     // A driver already on another vehicle moves here: say so before it happens.
-    const last10 = (value: string) => value.replace(/\D/g, '').slice(-10);
-    const elsewhere = isSelfDrive
+    const elsewhere = body.is_owner_self
       ? vehicles?.find((v) => v.id !== targetVehicleId && v.driver?.isOwnerSelf)
       : vehicles?.find(
-          (v) => v.id !== targetVehicleId && last10(v.driver?.phone ?? '') === last10(phone),
+          (v) =>
+            v.id !== targetVehicleId &&
+            lastTenDigits(v.driver?.phone ?? '') === lastTenDigits(driverPhone),
         );
     if (!elsewhere) {
       await send();
@@ -177,6 +216,24 @@ export function AddDriverScreen() {
               </AppView>
             </AppView>
           </AppPressable>
+
+          {!isSelfDrive ? (
+            <FleetDriverPicker
+              drivers={joinedDrivers(members).filter((m) => m.vehicle?.id !== vehicleId)}
+              disabled={assignDriverMutation.isPending}
+              onPick={(member) => {
+                const targetVehicleId = vehicleId || vehicles?.[0]?.id;
+                if (targetVehicleId) {
+                  void assignDriver(
+                    targetVehicleId,
+                    { driver_id: member.id },
+                    member.name,
+                    member.phone,
+                  );
+                }
+              }}
+            />
+          ) : null}
 
           {!isSelfDrive ? (
             /* Driver Form Fields */

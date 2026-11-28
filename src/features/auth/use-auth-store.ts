@@ -87,6 +87,16 @@ export const useAuthStore = createSelectors(_useAuthStore);
 
 export const signOut = () => _useAuthStore.getState().signOut();
 
+/**
+ * The partner taps Log out: end the session on the server too, then sign out here. (signOut alone
+ * is for a session the server already refused.)
+ */
+export function logOut() {
+  const accessToken = _useAuthStore.getState().token?.accessToken;
+  if (accessToken) void authApi.endSession(accessToken);
+  signOut();
+}
+
 /** Driver whose application is not approved yet: the app opens on Documents for them. */
 export function isAwaitingApproval(user: User | null): boolean {
   return Boolean(

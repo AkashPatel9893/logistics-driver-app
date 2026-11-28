@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { AppPressable, AppSpinner, AppText, AppView, Icon } from '@/components/ui';
 import { useFleetVehicles } from '@/hooks/use-fleet';
 
+import { vehicleDetailsEditable } from '../types';
 import { useFleetStore } from '../use-fleet-store';
 import { FleetVehicleCard } from './fleet-vehicle-card';
 
@@ -19,9 +20,12 @@ export function FleetVehiclesSection({
   const { data: vehicles = [], isLoading } = useFleetVehicles();
   const setSelectedVehicleId = useFleetStore.use.setSelectedVehicleId();
 
-  const handleOpenVehicle = (id: string) => {
+  const handleOpenVehicle = (id: string, edit = false) => {
     setSelectedVehicleId(id);
-    router.push({ pathname: '/vehicle-details' as any, params: { vehicleId: id } });
+    router.push({
+      pathname: '/vehicle-details' as any,
+      params: { vehicleId: id, ...(edit ? { edit: '1' } : {}) },
+    });
   };
 
   const handleAddVehicle = () => {
@@ -72,7 +76,11 @@ export function FleetVehiclesSection({
               key={vehicle.id}
               vehicle={vehicle}
               onPress={() => handleOpenVehicle(vehicle.id)}
-              onEdit={() => handleOpenVehicle(vehicle.id)}
+              onEdit={
+                vehicleDetailsEditable(vehicle)
+                  ? () => handleOpenVehicle(vehicle.id, true)
+                  : undefined
+              }
             />
           ))}
         </AppView>

@@ -1,6 +1,7 @@
 import { ApiError } from './api-error';
 import { request, uploadMultipart } from './client';
 import { filePart } from './file-part';
+import type { VehicleOwnerInput } from './models';
 import { rejectionMessage } from './rejection-reason';
 
 /** Must equal the backend's current partner agreement version. */
@@ -85,6 +86,34 @@ export async function submitDocument(baseUrl: string, input: DocumentInput): Pro
   }
 }
 
+/** One row of GET /partner/vehicles. */
+export interface PartnerVehicle {
+  id: string;
+  registration_number: string;
+  vehicle_type_code: string;
+  make: string | null;
+  model: string | null;
+  fuel_type: string | null;
+  /** "OWNER_DRIVER", "AUTHORIZED_DRIVER" or "FLEET_DRIVER". */
+  relationship_type: string;
+  /** "PENDING" until an admin approves the assignment, then "ACTIVE". */
+  assignment_status: string;
+  fleet?: { company_name: string } | null;
+  /** Only when someone else owns the vehicle: their NOC and OTP consent. */
+  owner_authorization?: OwnerAuthorization | null;
+}
+
+/** The owner's permission for a driver who does not own the vehicle: a NOC and the owner's OTP. */
+export interface OwnerAuthorization {
+  id: string;
+  /** "PENDING" until both parts are done, then "ACTIVE"; "REJECTED", "REVOKED" or "EXPIRED" end it. */
+  status: string;
+  noc_uploaded: boolean;
+  owner_otp_verified: boolean;
+  owner_phone_masked: string;
+  valid_until: string | null;
+}
+
 export const onboardingApi = {
   getStatus: async (signal?: AbortSignal): Promise<OnboardingStatus> => {
     const res = await request<any>({ url: '/partner/onboarding/status', signal });
@@ -117,7 +146,11 @@ export const onboardingApi = {
   submitVehicleDocument: (vehicleId: string, input: DocumentInput) =>
     submitDocument(`/partner/vehicles/${vehicleId}/documents`, input),
 
-  listVehicles: () => request<any[]>({ url: '/partner/vehicles' }),
+  /** The vehicles the driver has now. The server also returns ended assignments (history). */
+  listVehicles: async (signal?: AbortSignal) => {
+    const list = await request<PartnerVehicle[]>({ url: '/partner/vehicles', signal });
+    return (list ?? []).filter((v) => ['PENDING', 'ACTIVE'].includes(v.assignment_status));
+  },
 
   /** Makes this the driver's primary vehicle: the one onboarding checks and driver mode uses. */
   setActiveVehicle: (vehicleId: string) =>
@@ -137,7 +170,30 @@ export const onboardingApi = {
     model: string;
     fuel_type: string;
     is_owner: boolean;
+    owner?: VehicleOwnerInput;
   }) => request<any>({ method: 'POST', url: '/partner/vehicles', data }),
+
+  /** The owner's signed NOC letter (a photo). */
+  uploadOwnerNoc: (vehicleId: string, fileUri: string) =>
+    uploadMultipart<OwnerAuthorization>({
+      url: `/partner/vehicles/${vehicleId}/owner-authorization/noc`,
+      fileUri,
+      mimeType: filePart(fileUri, 'noc').type,
+    }),
+
+  /** Texts a code to the owner's phone. */
+  requestOwnerOtp: (vehicleId: string) =>
+    request<{ owner_phone_masked: string; expires_in_seconds: number }>({
+      method: 'POST',
+      url: `/partner/vehicles/${vehicleId}/owner-authorization/otp/request`,
+    }),
+
+  verifyOwnerOtp: (vehicleId: string, code: string) =>
+    request<OwnerAuthorization>({
+      method: 'POST',
+      url: `/partner/vehicles/${vehicleId}/owner-authorization/otp/verify`,
+      data: { code },
+    }),
 
   addBankAccount: (data: { account_number: string; ifsc: string; holder_name: string }) =>
     request<any>({ method: 'POST', url: '/partner/bank-accounts', data }),

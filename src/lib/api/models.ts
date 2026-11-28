@@ -106,6 +106,10 @@ export interface VehicleTypeOption {
   imageKey: string;
   /** Picture served by the backend; null shows the app's one fallback image. */
   imageUrl: string | null;
+  /** The backend asks such vehicles for a state or national permit. */
+  requiresPermit: boolean;
+  /** The backend asks such vehicles for a fitness certificate (also any vehicle over 15 years). */
+  requiresFitness: boolean;
 }
 
 export interface VehicleDetails {
@@ -120,6 +124,9 @@ export interface VehicleDetails {
   modelName: string;
   fuelType: FuelType | null;
   plateNumber: string;
+  /** Assigned by a fleet owner, who looks after the vehicle and its papers. */
+  isFleet: boolean;
+  fleetName: string | null;
   rcPhotoUrl: string;
   frontPhotoUrl: string;
   status: VerificationStatus;
@@ -127,6 +134,15 @@ export interface VehicleDetails {
 }
 
 export type FuelType = 'PETROL' | 'DIESEL' | 'CNG' | 'ELECTRIC';
+
+/** Who owns a vehicle the driver does not own. */
+export interface VehicleOwnerInput {
+  owner_type: 'INDIVIDUAL' | 'BUSINESS';
+  first_name?: string;
+  last_name?: string;
+  business_name?: string;
+  phone: string;
+}
 
 export interface VehicleInput {
   vehicleTypeId: string;
@@ -141,6 +157,8 @@ export interface VehicleInput {
   /** Pollution certificate — not needed for electric vehicles. */
   pucPhotoUri: string | null;
   pucExpiry: string | null;
+  /** Someone else owns the vehicle; they confirm with a NOC and an OTP afterwards. */
+  owner?: VehicleOwnerInput;
 }
 
 export interface KycDetails {
@@ -177,19 +195,11 @@ export interface OnboardingState {
   rejectionReason: string | null;
   /** Why the driver can't go online yet, in the backend's words. */
   blockers: string[];
+  /** The vehicle's owner (not the driver) has not given permission yet: NOC and OTP. */
+  ownerPermissionPending: boolean;
 }
 
 export type SetupStep = 'vehicle' | 'kyc' | 'bank';
-
-export interface WelcomeBonus {
-  amount: number;
-  targetTrips: number;
-  completedTrips: number;
-  expiresAt: string;
-  status: 'active' | 'earned' | 'expired';
-  /** The intro sheet was shown once already. */
-  seen: boolean;
-}
 
 export interface DocumentAlert {
   documentType: string;
@@ -212,7 +222,8 @@ export interface DriverProfile {
   gender: Gender | null;
   /** Backend field names the partner can no longer change (after submission). */
   lockedFields: string[];
-  joinedAt: string;
+  /** When they joined Ryno; null while the profile response has no date. */
+  joinedAt: string | null;
   /** Null until the first customer rating. */
   rating: number | null;
   ratingCount: number;
@@ -225,8 +236,6 @@ export interface DriverProfile {
   pendingSteps: SetupStep[];
   canGoOnline: boolean;
   onboarding: OnboardingState;
-  welcomeBonus: WelcomeBonus;
-  walletBalance: number;
   lifetimeTrips: number;
   /** Documents expiring soon or expired (reminders 15 and 4 days before; expired = offline). */
   documentAlerts: DocumentAlert[];
@@ -387,8 +396,13 @@ export interface DriverTransaction {
 
 export interface DriverWallet {
   balance: number;
+  /** Fleet wallet only: at or below this, none of the fleet's drivers get offers. */
+  minimumBalance?: number;
   transactions: DriverTransaction[];
 }
+
+/** Whose wallet: the rider's own, or the fleet owner's fleet wallet. */
+export type WalletSource = 'driver' | 'fleet';
 
 export type EarningsPeriod = 'today' | 'week' | 'month';
 
@@ -432,6 +446,30 @@ export interface TripSummary {
   pickupLabel: string | null;
   dropLabel: string | null;
   distanceKm: number | null;
+}
+
+/** Wallet transfer rules from GET /partner/payouts/limits; null = no such limit. */
+export interface PayoutLimits {
+  transfersLeft: number | null;
+  transfersPerWeek: number | null;
+  /** When the weekly count starts again (ISO date-time). */
+  renewsAt: string | null;
+  minimumAmount: number | null;
+}
+
+/** A cancelled trip, failed delivery or missed request (GET /partner/trips). */
+export interface TripOutcome {
+  /** Trip id, or the offer id for a missed request (which never became a trip). */
+  id: string;
+  orderNumber: string;
+  kind: 'cancelled' | 'missed';
+  /** Cancelled only: who ended it. */
+  result:
+    'CANCELLED_BY_DRIVER' | 'CANCELLED_BY_CUSTOMER' | 'CANCELLED_BY_OPS' | 'FAILED_DELIVERY' | null;
+  reason: string | null;
+  endedAt: string;
+  pickupLabel: string;
+  dropLabel: string;
 }
 
 // ─── Content ────────────────────────────────────────────────────────────────

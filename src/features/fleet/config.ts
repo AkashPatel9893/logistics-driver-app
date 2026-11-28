@@ -1,7 +1,6 @@
 /**
- * Fleet owners upload their vehicles' RC, insurance and pollution certificate in the app, and a driver can only
- * be assigned once they are verified. Needs the backend changes in change-report/backend-request-fleet-owner-and-
- * profile.md (section "Fleet vehicle documents"). Turn on once they are live; until then the app behaves as before:
- * documents are read-only and a driver can be assigned straight away.
+ * Fleet owners upload their vehicles' RC, insurance and pollution certificate in the app
+ * (`/fleet/vehicles/{id}/documents`, live since 24 November 2026), and a driver can only be assigned
+ * once they are verified: without them the driver could never go online anyway.
  */
-export const FLEET_VEHICLE_DOCUMENTS_ENABLED = false;
+export const FLEET_VEHICLE_DOCUMENTS_ENABLED = true;

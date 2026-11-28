@@ -22,15 +22,20 @@ import {
   useFleetVehicles,
   useRemoveFleetDriver,
   useRemoveFleetVehicle,
+  useFleetVehicleDocuments,
   useSubmitFleetVehicleDocument,
   useUnassignFleetDriver,
 } from '@/hooks/use-fleet';
+import { useVehicleTypes } from '@/hooks/use-driver';
+import { OtherVehiclePapers } from '@/features/driver/components/other-vehicle-papers';
+import type { VehicleDocumentSubmission } from '@/features/fleet/components/vehicle-document-sheet';
 import { getErrorMessage } from '@/lib/api/api-error';
 import { goBack } from '@/lib/go-back';
 
 import { FLEET_VEHICLE_DOCUMENTS_ENABLED } from '../config';
 import { DriverOptionsSheet, type DriverOption } from '../components/driver-options-sheet';
-import { vehicleDocumentsReady } from '../types';
+import { EditFleetVehicleSheet } from '../components/edit-fleet-vehicle-sheet';
+import { vehicleDetailsEditable, vehicleDocumentsReady } from '../types';
 
 const DOCUMENT_ROWS = [
   { type: 'RC', key: 'rc', label: 'Vehicle RC', icon: 'doc.text.fill' },
@@ -41,7 +46,8 @@ const DOCUMENT_ROWS = [
 export function VehicleDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ vehicleId?: string }>();
+  // edit=1: opened from the vehicle card's Edit, so the edit sheet opens at once.
+  const params = useLocalSearchParams<{ vehicleId?: string; edit?: string }>();
 
   const { data: vehicles, isLoading } = useFleetVehicles();
   const { data: company } = useFleetCompany();
@@ -54,8 +60,12 @@ export function VehicleDetailsScreen() {
 
   const vehicleId = params.vehicleId || vehicles?.[0]?.id;
   const vehicle = vehicles?.find((v) => v.id === vehicleId) ?? vehicles?.[0];
+  const { data: papers = [] } = useFleetVehicleDocuments(vehicle?.id);
+  const { data: vehicleTypes = [] } = useVehicleTypes();
+  const vehicleType = vehicleTypes.find((t) => t.code === vehicle?.vehicleTypeCode);
 
   const [showDriverSheet, setShowDriverSheet] = useState(false);
+  const [editOpen, setEditOpen] = useState(params.edit === '1');
 
   if (isLoading) {
     return (
@@ -96,6 +106,25 @@ export function VehicleDetailsScreen() {
       Alert.alert('Sent for verification', 'We will let you know once an admin has verified it.');
     } catch (err) {
       Alert.alert('Could not send the document', getErrorMessage(err));
+    }
+  };
+
+  // Fitness and permits: sent the same way; the papers card closes its sheet on success.
+  const handleSubmitOtherPaper = async (submission: VehicleDocumentSubmission) => {
+    try {
+      await submitDocument.mutateAsync({
+        vehicleId: vehicle.id,
+        input: {
+          type: submission.type,
+          fileUri: submission.photoUri,
+          expiryDate: submission.expiryDate,
+        },
+      });
+      Alert.alert('Sent for verification', 'We will let you know once an admin has verified it.');
+      return true;
+    } catch (err) {
+      Alert.alert('Could not send the document', getErrorMessage(err));
+      return false;
     }
   };
 
@@ -298,9 +327,21 @@ export function VehicleDetailsScreen() {
                 <AppText className="text-[12px] font-semibold text-muted">
                   {vehicle.vehicleTypeName || 'Mini truck'}
                 </AppText>
+                {vehicleDetailsEditable(vehicle) ? (
+                  <AppPressable
+                    onPress={() => setEditOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Edit vehicle"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <AppText className="text-[13px] font-bold text-[#FF5722]">Edit</AppText>
+                  </AppPressable>
+                ) : null}
               </AppView>
 
-              <AppText className="text-[18px] font-black text-foreground">{vehicle.model}</AppText>
+              <AppText className="text-[18px] font-black text-foreground">
+                {[vehicle.make, vehicle.model].filter(Boolean).join(' ')}
+              </AppText>
 
               <AppText className="mt-0.5 text-[14px] font-semibold text-muted">
                 {vehicle.plateNumber}
@@ -375,6 +416,15 @@ export function VehicleDetailsScreen() {
             })}
           </AppView>
         </AppView>
+
+        <OtherVehiclePapers
+          needFitness={vehicleType?.requiresFitness === true}
+          needPermit={vehicleType?.requiresPermit === true}
+          papers={papers}
+          submitting={submitDocument.isPending}
+          note="An admin checks it, usually within a day. Your driver can go online once every paper is verified."
+          onSubmit={handleSubmitOtherPaper}
+        />
 
         {/* Driver Section */}
         <AppView className="gap-2.5">
@@ -505,6 +555,17 @@ export function VehicleDetailsScreen() {
           />
         ) : null}
 
+        {editOpen && vehicleDetailsEditable(vehicle) ? (
+          <EditFleetVehicleSheet
+            visible
+            vehicle={vehicle}
+            onClose={() => setEditOpen(false)}
+            onSaved={() => {
+              setEditOpen(false);
+              Alert.alert('Vehicle updated');
+            }}
+          />
+        ) : null}
         <DriverOptionsSheet
           visible={showDriverSheet}
           title={`${driver ? 'Driver of' : 'Add a driver to'} ${vehicle.plateNumber}`}

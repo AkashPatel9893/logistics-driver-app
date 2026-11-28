@@ -16,7 +16,9 @@ import {
 } from '@/components/ui';
 import {
   useDriverProfile,
+  useMyVehicles,
   useSaveVehicle,
+  useSubmitVehicleDocument,
   useVehicleDocuments,
   useVehicleTypes,
   type VehicleDocumentInfo,
@@ -28,9 +30,13 @@ import { useDriveVehicle } from '@/features/fleet/use-drive-vehicle';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { useRegistrationStore } from '@/features/registration/use-registration-store';
 import { markSubmitted, useDraftText } from '@/features/registration/drafts';
+import { OtherVehiclesCard } from '../components/other-vehicles-card';
+import { OtherVehiclePapers } from '../components/other-vehicle-papers';
+import { useOnboardingStatus } from '@/features/registration/use-registration';
 import { PhotoUploadBox } from '../components/photo-upload-box';
 import { useLocalPhoto } from '../hooks/use-local-photo';
 import type { DriverProfile, FuelType, VehicleTypeOption } from '@/lib/api/models';
+import { ApiError, getErrorMessage } from '@/lib/api/api-error';
 import { formatDateInput, toIsoDate } from '@/lib/api/onboarding';
 
 import { SetupScreenLayout } from '../components/setup-screen-layout';
@@ -48,6 +54,29 @@ const CAPACITIES = [
 ];
 
 /** Capacities a vehicle type can carry: the presets at or below its max payload, plus the max itself. */
+function Chip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <AppPressable
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+      className={`rounded-xl border px-4 py-2.5 ${selected ? 'border-brand bg-brand' : 'border-border bg-card'}`}
+    >
+      <AppText className={selected ? 'font-bold text-brand-foreground' : 'text-foreground'}>
+        {label}
+      </AppText>
+    </AppPressable>
+  );
+}
+
 function capacityOptionsFor(maxPayloadKg: number | null): { value: number; label: string }[] {
   if (maxPayloadKg == null) return CAPACITIES;
   const options = CAPACITIES.filter((cap) => cap.value < maxPayloadKg);
@@ -88,7 +117,13 @@ export function SetupVehicleScreen() {
     );
   }
   return (
-    <SetupVehicleForm profile={profile} vehicleTypes={vehicleTypes} vehicleDocs={docs.data ?? []} />
+    <SetupVehicleForm
+      // A switch changes the vehicle in use: the form must not keep the other one's details.
+      key={savedId ?? 'new'}
+      profile={profile}
+      vehicleTypes={vehicleTypes}
+      vehicleDocs={docs.data ?? []}
+    />
   );
 }
 
@@ -127,7 +162,10 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
 
   // Chosen on Select Vehicle ("I drive for a fleet owner"); fleet owners always add their own.
   const fleetDriver = useRegistrationStore.use.fleetDriver();
-  const ownershipType: 'OWN' | 'FLEET' = !isFleetOwner && fleetDriver ? 'FLEET' : 'OWN';
+  // A rider who already has an account joins a fleet from here too.
+  const [joiningFleet, setJoiningFleet] = useState(false);
+  const ownershipType: 'OWN' | 'FLEET' =
+    !isFleetOwner && (fleetDriver || joiningFleet) ? 'FLEET' : 'OWN';
   const [ownerPhone, setOwnerPhone] = useState('');
   const [isLinking, setIsLinking] = useState(false);
 
@@ -138,6 +176,9 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
   );
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [plateNumber, setPlateNumber] = useDraftText(draft('plate'), current?.plateNumber ?? '');
+  // The backend cannot change or remove a driver's vehicle: a new number registers a second
+  // vehicle. That is right only to correct a refused one, so otherwise the number is fixed.
+  const plateLocked = saved != null && saved.status !== 'rejected';
   const [capacityKg, setCapacityKg] = useState<number | null>(
     vehicleTypes.find((t) => t.id === typeId)?.capacityKg ?? null,
   );
@@ -145,6 +186,13 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
   const [fuelDraft, setFuelDraft] = useDraftText(draft('fuel'), saved?.fuelType ?? '');
   const fuelType = (fuelDraft || null) as FuelType | null;
   const setFuelType = (value: FuelType | null) => setFuelDraft(value ?? '');
+  // Who owns it: a rider registering a vehicle someone else owns needs the owner's permission.
+  const [ownedBy, setOwnedBy] = useDraftText(draft('ownedBy'), 'self');
+  const [ownerKind, setOwnerKind] = useDraftText(draft('ownerKind'), 'INDIVIDUAL');
+  const [ownerName, setOwnerName] = useDraftText(draft('ownerName'), '');
+  const [vehicleOwnerPhone, setVehicleOwnerPhone] = useDraftText(draft('ownerPhone'), '');
+  const asksOwner = !isFleetOwner && ownershipType === 'OWN' && !plateLocked;
+  const ownedByOther = asksOwner && ownedBy === 'other';
   const [make, setMake] = useDraftText(draft('make'), saved?.makeName ?? '');
   const [model, setModel] = useDraftText(draft('model'), saved?.modelName ?? '');
 
@@ -160,7 +208,38 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
     requiredDocs.every((type) =>
       vehicleDocs.some((d) => d.type === type && d.status !== 'PENDING'),
     );
-  const showForm = !complete || editing;
+  // A fleet vehicle is read-only here: its owner looks after it and its papers.
+  const isFleetVehicle = saved?.isFleet === true;
+  const showForm = !isFleetVehicle && (!complete || editing);
+
+  // Fitness and permits: the backend's checklist names them when this vehicle needs them (by type,
+  // or fitness for a vehicle over 15 years); the type's flags cover the time before it does.
+  const { data: onboardingStatus } = useOnboardingStatus();
+  const neededPapers = Object.keys(onboardingStatus?.steps.VEHICLE_DOCUMENTS?.detail ?? {});
+  const savedType = vehicleTypes.find((t) => t.id === saved?.vehicleTypeId);
+  const submitPaper = useSubmitVehicleDocument(saved?.id);
+  const handleSubmitPaper = async (submission: {
+    type: string;
+    photoUri: string;
+    expiryDate?: string;
+  }) => {
+    try {
+      await submitPaper.mutateAsync({
+        type: submission.type,
+        fileUri: submission.photoUri,
+        expiryDate: submission.expiryDate,
+      });
+      Alert.alert('Sent for verification', 'We will let you know once it is verified.');
+      return true;
+    } catch (err) {
+      Alert.alert('Could not send the document', getErrorMessage(err));
+      return false;
+    }
+  };
+
+  const { data: myVehicles = [] } = useMyVehicles({ enabled: !isFleetOwner });
+  const otherVehicles = saved ? myVehicles.filter((v) => v.id !== saved.id) : [];
+  const hasFleetVehicle = myVehicles.some((v) => v.relationship_type === 'FLEET_DRIVER');
 
   // Fleet owner: after saving, ask who will drive the new vehicle.
   const { data: fleetVehicles = [] } = useFleetVehicles({ enabled: isFleetOwner });
@@ -189,7 +268,9 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
         [
           {
             text: 'Got it',
-            onPress: () => goToNextStep(router, queryClient, 'vehicle'),
+            // Joining from My vehicle is not a sign-up step: return to where the rider came from.
+            onPress: () =>
+              joiningFleet ? goBack(router) : goToNextStep(router, queryClient, 'vehicle'),
           },
         ],
       );
@@ -232,7 +313,9 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
   };
 
   const handleSave = async () => {
-    const cleanPlate = plateNumber.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    const cleanPlate = (plateLocked && saved ? saved.plateNumber : plateNumber)
+      .replace(/[^A-Z0-9]/gi, '')
+      .toUpperCase();
     if (cleanPlate.length < 6) {
       return setError('Enter the registration number as printed on your RC.');
     }
@@ -256,13 +339,39 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
         return setError('Enter the PUC expiry date as DD/MM/YYYY.');
       }
     }
+    const ownerDigits = vehicleOwnerPhone.replace(/\D/g, '').slice(-10);
+    if (ownedByOther) {
+      if (ownerName.trim().length < 2) {
+        return setError(
+          ownerKind === 'BUSINESS' ? "Enter the owner's business name." : "Enter the owner's name.",
+        );
+      }
+      if (ownerDigits.length !== 10) return setError("Enter the owner's 10-digit mobile number.");
+    }
+    const trimmedOwner = ownerName.trim();
+    const spaceAt = trimmedOwner.indexOf(' ');
+    const owner = ownedByOther
+      ? ownerKind === 'BUSINESS'
+        ? {
+            owner_type: 'BUSINESS' as const,
+            business_name: trimmedOwner,
+            phone: `+91${ownerDigits}`,
+          }
+        : {
+            owner_type: 'INDIVIDUAL' as const,
+            first_name: spaceAt > 0 ? trimmedOwner.slice(0, spaceAt) : trimmedOwner,
+            ...(spaceAt > 0 ? { last_name: trimmedOwner.slice(spaceAt + 1).trim() } : {}),
+            phone: `+91${ownerDigits}`,
+          }
+      : undefined;
     setError(undefined);
     const vehicleTypeCode = selectedType.code;
     let created: { id: string } | null = null;
 
     try {
+      let savedProfile: DriverProfile | null = null;
       if (!isFleetOwner) {
-        await saveVehicle.mutateAsync({
+        savedProfile = await saveVehicle.mutateAsync({
           vehicleTypeId: selectedType.id,
           plateNumber: cleanPlate,
           make: make.trim(),
@@ -273,6 +382,7 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
           insuranceExpiry: toIsoDate(insuranceExpiry)!,
           pucPhotoUri: fuelType === 'ELECTRIC' ? null : puc.uri,
           pucExpiry: fuelType === 'ELECTRIC' ? null : toIsoDate(pucExpiry),
+          ...(owner ? { owner } : {}),
         });
       } else {
         created = await addFleetVehicle.mutateAsync({
@@ -289,6 +399,14 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
       }
 
       markSubmitted('vehicle.');
+      if (owner && savedProfile?.vehicle) {
+        // Someone else owns it: their permission (NOC and OTP) comes next.
+        router.replace({
+          pathname: '/owner-permission' as any,
+          params: { vehicleId: savedProfile.vehicle.id },
+        });
+        return;
+      }
       if (!isFleetOwner) {
         // Registering driver: straight on to the next step (Documents shows it under review).
         await goToNextStep(router, queryClient, 'vehicle');
@@ -304,6 +422,14 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
         goBack(router);
       }
     } catch (err: any) {
+      if (err instanceof ApiError && err.code === 'OWNER_PHONE_IS_DRIVER') {
+        return setError("That is your own number. If you own the vehicle, choose 'I own it'.");
+      }
+      if (err instanceof ApiError && err.code === 'VEHICLE_OWNER_MISMATCH') {
+        return setError(
+          'This vehicle is already registered with a different owner. Check the owner details.',
+        );
+      }
       const msg = err?.response?.data?.detail || err?.message || 'Could not add vehicle.';
       setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
     }
@@ -329,7 +455,7 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
           {saved ? (
             <AppView className="gap-3 rounded-3xl border border-border bg-card p-4">
               <AppText className="text-[15px] font-extrabold text-foreground">
-                Saved vehicle
+                {saved.isFleet ? (saved.fleetName ?? 'Fleet vehicle') : 'Saved vehicle'}
               </AppText>
               <AppView row className="items-center gap-3">
                 <VehicleImage
@@ -351,24 +477,31 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
                   </AppText>
                 </AppView>
               </AppView>
-              {vehicleDocs.map((d) => {
-                const status = docStatus(d.status);
-                return (
-                  <AppView
-                    key={d.type}
-                    row
-                    className="items-center justify-between border-t border-border/60 pt-2.5"
-                  >
-                    <AppText className="text-[13px] text-foreground">
-                      {DOC_LABEL[d.type] ?? d.type}
-                      {d.expiryDate ? ` · valid till ${toFormDate(d.expiryDate)}` : ''}
-                    </AppText>
-                    <AppText className={`text-[12px] font-bold ${status.className}`}>
-                      {status.label}
-                    </AppText>
-                  </AppView>
-                );
-              })}
+              {vehicleDocs
+                .filter((d) => d.type in DOC_LABEL)
+                .map((d) => {
+                  const status = docStatus(d.status);
+                  return (
+                    <AppView
+                      key={d.type}
+                      row
+                      className="items-center justify-between border-t border-border/60 pt-2.5"
+                    >
+                      <AppText className="text-[13px] text-foreground">
+                        {DOC_LABEL[d.type] ?? d.type}
+                        {d.expiryDate ? ` · valid till ${toFormDate(d.expiryDate)}` : ''}
+                      </AppText>
+                      <AppText className={`text-[12px] font-bold ${status.className}`}>
+                        {status.label}
+                      </AppText>
+                    </AppView>
+                  );
+                })}
+              {isFleetVehicle ? (
+                <AppText className="text-[12px] leading-5 text-muted">
+                  Your fleet owner looks after this vehicle and its papers.
+                </AppText>
+              ) : null}
               {showForm ? (
                 <AppText className="text-[12px] leading-5 text-muted">
                   The photos you sent are kept safely and not shown again. Add new ones only to
@@ -377,8 +510,33 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
               ) : null}
             </AppView>
           ) : null}
-          {!showForm ? (
-            <Button variant="outline" label="Update vehicle" onPress={() => setEditing(true)} />
+          {saved && !isFleetVehicle ? (
+            <OtherVehiclePapers
+              needFitness={neededPapers.includes('FITNESS') || savedType?.requiresFitness === true}
+              needPermit={
+                neededPapers.some((key) => key.includes('PERMIT')) ||
+                savedType?.requiresPermit === true
+              }
+              papers={vehicleDocs}
+              submitting={submitPaper.isPending}
+              note="Ryno checks it, usually within a day. You can go online once it is verified."
+              onSubmit={handleSubmitPaper}
+            />
+          ) : null}
+          {!isFleetOwner ? <OtherVehiclesCard vehicles={otherVehicles} /> : null}
+          {!showForm && !joiningFleet ? (
+            <AppView className="gap-3">
+              {!isFleetVehicle ? (
+                <Button variant="outline" label="Update vehicle" onPress={() => setEditing(true)} />
+              ) : null}
+              {!isFleetOwner && !hasFleetVehicle ? (
+                <Button
+                  variant="ghost"
+                  label="I drive for a fleet owner"
+                  onPress={() => setJoiningFleet(true)}
+                />
+              ) : null}
+            </AppView>
           ) : ownershipType === 'FLEET' ? (
             <AppView className="gap-4 rounded-3xl border border-border bg-card p-5 shadow-sm">
               <AppView row className="items-center gap-3">
@@ -531,15 +689,81 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
                   variant="outlined"
                   label="Registration number"
                   required
-                  value={plateNumber}
+                  value={plateLocked && saved ? saved.plateNumber : plateNumber}
                   onChangeText={(t) => setPlateNumber(t.toUpperCase())}
+                  editable={!plateLocked}
                   placeholder="e.g. KA 03 MX 2814"
                   autoCapitalize="characters"
-                  hint="Enter the number exactly as shown on your RC."
+                  hint={
+                    plateLocked
+                      ? 'The number cannot be changed. To use another vehicle, contact support.'
+                      : 'Enter the number exactly as shown on your RC.'
+                  }
                   leading={<Icon name="tag.fill" size={18} tone="icon-subtle" />}
                   inputClassName="text-[15px]"
                 />
               </AppView>
+
+              {asksOwner ? (
+                <AppView className="gap-3">
+                  <AppText className="text-[13px] font-semibold text-foreground-secondary">
+                    Who owns this vehicle?
+                  </AppText>
+                  <AppView row className="gap-2">
+                    {[
+                      { value: 'self', label: 'I own it' },
+                      { value: 'other', label: 'Someone else' },
+                    ].map((option) => (
+                      <Chip
+                        key={option.value}
+                        label={option.label}
+                        selected={ownedBy === option.value}
+                        onPress={() => setOwnedBy(option.value)}
+                      />
+                    ))}
+                  </AppView>
+                  {ownedByOther ? (
+                    <>
+                      <AppText className="text-[12px] text-muted">
+                        After saving, you will need a signed letter (NOC) from the owner and a code
+                        sent to their phone.
+                      </AppText>
+                      <AppView row className="gap-2">
+                        {[
+                          { value: 'INDIVIDUAL', label: 'A person' },
+                          { value: 'BUSINESS', label: 'A business' },
+                        ].map((option) => (
+                          <Chip
+                            key={option.value}
+                            label={option.label}
+                            selected={ownerKind === option.value}
+                            onPress={() => setOwnerKind(option.value)}
+                          />
+                        ))}
+                      </AppView>
+                      <TextField
+                        variant="outlined"
+                        label={ownerKind === 'BUSINESS' ? 'Business name' : "Owner's full name"}
+                        required
+                        value={ownerName}
+                        onChangeText={setOwnerName}
+                        maxLength={ownerKind === 'BUSINESS' ? 200 : 100}
+                      />
+                      <TextField
+                        variant="outlined"
+                        label="Owner's mobile number"
+                        required
+                        value={vehicleOwnerPhone}
+                        onChangeText={setVehicleOwnerPhone}
+                        keyboardType="phone-pad"
+                        maxLength={10}
+                        placeholder="10-digit number"
+                        hint="The code is sent to this number."
+                      />
+                    </>
+                  ) : null}
+                </AppView>
+              ) : null}
 
               {/* Vehicle capacity: fleet owners only (a driver's comes from the vehicle type) */}
               {isFleetOwner ? (

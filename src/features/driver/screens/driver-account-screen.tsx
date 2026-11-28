@@ -16,7 +16,7 @@ import {
   Icon,
   type IconName,
 } from '@/components/ui';
-import { signOut, useAuthStore } from '@/features/auth/use-auth-store';
+import { logOut, useAuthStore } from '@/features/auth/use-auth-store';
 import { DriveVehiclePicker, RoleSwitcher } from '@/features/fleet/components';
 import {
   modeSwitchState,
@@ -27,7 +27,7 @@ import { useDriveVehicle } from '@/features/fleet/use-drive-vehicle';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import type { DashboardRole, FleetVehicle } from '@/features/fleet/types';
 import { useDriverProfile, useSetOnline } from '@/hooks/use-driver';
-import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
+import { useFleetCompany, useFleetLinkRequests, useFleetVehicles } from '@/hooks/use-fleet';
 import { useActiveJob } from '@/hooks/use-jobs';
 import { formatRupees } from '@/lib/format';
 import { kvStorage, STORAGE_KEYS } from '@/lib/storage';
@@ -49,12 +49,14 @@ export function DriverAccountScreen() {
   const { data: profile } = useDriverProfile();
   const user = useAuthStore.use.user();
   const setOnline = useSetOnline();
-  const { data: wallet } = useWallet();
   const { data: company } = useFleetCompany();
   const { data: vehicles = [] } = useFleetVehicles();
   const { data: activeJob } = useActiveJob();
   const dashboardRole = useFleetStore.use.dashboardRole();
   const isOwner = dashboardRole === 'owner';
+  // An owner's trips are paid into the fleet wallet.
+  const { data: wallet } = useWallet(isOwner ? 'fleet' : 'driver');
+  const { data: joinRequests = [] } = useFleetLinkRequests({ enabled: isOwner });
   const setDashboardRole = switchDashboardRole;
   const modeSwitch = modeSwitchState(profile);
   const { assigningVehicleId, driveVehicle } = useDriveVehicle();
@@ -120,6 +122,12 @@ export function DriverAccountScreen() {
       sublabel: `${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'} in your fleet`,
       route: '/driver-profile',
     },
+    {
+      icon: 'person.badge.plus',
+      label: 'Drivers',
+      sublabel: joinRequests.length > 0 ? NEEDS_ATTENTION : 'Your drivers and join requests',
+      route: '/fleet-drivers',
+    },
   ];
 
   // Numbers and statuses are shown on their own screens; here only what needs the partner.
@@ -178,7 +186,7 @@ export function DriverAccountScreen() {
         onPress: async () => {
           // Stop receiving offers before the session ends.
           if (profile?.isOnline) await setOnline.mutateAsync(false).catch(() => undefined);
-          signOut();
+          logOut();
           kvStorage.delete(STORAGE_KEYS.CACHED_PHONE);
           router.replace('/');
         },

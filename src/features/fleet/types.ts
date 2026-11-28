@@ -44,6 +44,11 @@ export interface FleetVehicle {
   };
 }
 
+/** The backend locks make, model and fuel type once the vehicle's RC is verified. */
+export function vehicleDetailsEditable(vehicle: FleetVehicle): boolean {
+  return vehicle.documents?.rc?.verified !== true;
+}
+
 export interface CompanyDetails {
   id?: string | null;
   companyName: string;

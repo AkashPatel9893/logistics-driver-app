@@ -8,7 +8,11 @@ export interface RateCard {
   distanceSlabs: { fromKm: number; toKm: number | null; perKm: number }[];
   perMinute: number;
   waiting: { freeMinutes: number; perMinute: number; maxCharge: number | null } | null;
-  cancellation: { min: number; max: number } | null;
+  /**
+   * When the customer cancels, the driver gets this much per km driven toward pickup; null =
+   * nothing. (Customers are never charged for cancelling, so there is no fee to show.)
+   */
+  cancelCompensationPerKm: number | null;
   night: { start: string; end: string; percent: number } | null;
   commissionPercent: number | null;
   gstPercent: number | null;
@@ -38,9 +42,7 @@ function mapCard(raw: any): RateCard {
           maxCharge: optNum(raw.waiting.max_charge),
         }
       : null,
-    cancellation: raw.cancellation
-      ? { min: num(raw.cancellation.min), max: num(raw.cancellation.max) }
-      : null,
+    cancelCompensationPerKm: optNum(raw.cancellation?.driver_compensation_per_km) || null,
     night: raw.night
       ? { start: raw.night.start, end: raw.night.end, percent: num(raw.night.percent) }
       : null,
@@ -51,7 +53,7 @@ function mapCard(raw: any): RateCard {
 }
 
 export const rateCardApi = {
-  /** GET /partner/rate-card (proposed, not yet built). */
+  /** GET /partner/rate-card; 404/405/501 are read as "not available". */
   get: async (signal?: AbortSignal): Promise<RateCardResult> => {
     try {
       const res = await request<any>({ url: '/partner/rate-card', signal });

@@ -1,5 +1,8 @@
 import { isAxiosError, isCancel } from 'axios';
 
+/** 401 codes for a wrong, expired or overused one-time code. */
+const OTP_CODES = new Set(['OTP_INVALID', 'OTP_EXPIRED', 'OTP_ATTEMPTS_EXCEEDED']);
+
 export type ApiErrorKind = 'http' | 'network' | 'timeout' | 'canceled' | 'unknown';
 
 /** Normalized error for every failed API call. */
@@ -10,13 +13,19 @@ export class ApiError extends Error {
     readonly status: number | null = null,
     /** Machine-readable code from the backend, e.g. "INVALID_COUPON". */
     readonly code: string | null = null,
+    /** The backend's `details` object, e.g. `{reasons: [...]}` for DRIVER_NOT_ELIGIBLE. */
+    readonly details: Record<string, unknown> | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
   }
 
+  /**
+   * The session is not valid. A wrong or expired code (e.g. the vehicle owner's OTP) is also a 401
+   * but is not about the session, so it must not refresh the token or log the user out.
+   */
   get isUnauthorized() {
-    return this.status === 401;
+    return this.status === 401 && !OTP_CODES.has(this.code ?? '');
   }
 }
 
@@ -39,6 +48,7 @@ export function httpError(status: number, payload: any): ApiError {
     'http',
     status,
     payload?.error ?? payload?.code ?? null,
+    payload?.details && typeof payload.details === 'object' ? payload.details : null,
   );
 }
 

@@ -1,7 +1,7 @@
 import type { ChatMessage, DriverJob, JobOffer } from '@/lib/api/models';
 
 /**
- * Messages pushed on the driver's channel `driver:<userId>` (see docs/API.md).
+ * Messages pushed on the driver's channel `driver:<userId>`.
  * Each one either carries the new state or tells the app what to refetch.
  */
 export type DriverEvent =

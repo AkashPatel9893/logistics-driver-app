@@ -4,7 +4,6 @@ export * from './driver-online-toggle';
 export * from './driver-past-trip-card';
 export * from './earnings-trend-chart';
 export * from './photo-upload-box';
-export * from './welcome-bonus-modal';
 export * from './route-map';
 export * from './payment-collect-card';
 export * from './setup-screen-layout';

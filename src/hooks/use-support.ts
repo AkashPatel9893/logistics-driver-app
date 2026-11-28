@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { safetyApi } from '@/lib/api/safety';
+import { safetyApi, type IncidentType } from '@/lib/api/safety';
 import { supportApi, type TicketCategory } from '@/lib/api/support';
 import { queryKeys } from '@/lib/queries/keys';
 
@@ -45,4 +45,11 @@ export function useSendTicketMessage(ticketId: string) {
 
 export function useSos() {
   return useMutation({ mutationFn: () => safetyApi.sos() });
+}
+
+export function useReportIncident() {
+  return useMutation({
+    mutationFn: (input: { orderId: string; type: IncidentType; description: string }) =>
+      safetyApi.reportIncident(input),
+  });
 }

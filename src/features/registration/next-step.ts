@@ -79,6 +79,11 @@ export async function goToNextStep(
       }),
     ]);
     registrationInProgress = snapshotFromStatus(status).onboarding.status !== 'approved';
+    // An approved rider is editing one thing from Account or My vehicle: never open another step.
+    if (!registrationInProgress && !isOwner) {
+      goBack(router);
+      return;
+    }
     const { vehicleTypeId, fleetDriver } = useRegistrationStore.getState();
     const allSteps = buildRegistrationSteps(
       snapshotFromStatus(status),

@@ -4,7 +4,18 @@ import { storage } from '@/lib/storage';
 import { ApiError } from './api-error';
 import { request } from './client';
 import { jobsApi } from './jobs';
-import type { DriverWallet, EarningsPeriod, EarningsSummary, TripSummary } from './models';
+import type {
+  DriverWallet,
+  EarningsPeriod,
+  EarningsSummary,
+  PayoutLimits,
+  TripOutcome,
+  WalletSource,
+  TripSummary,
+} from './models';
+
+/** Pages read per tab and period; the rest is not shown (about 300 trips). */
+const MAX_OUTCOME_PAGES = 3;
 
 function tripAddress(stop: { label: string; houseNumber: string } | undefined): string | null {
   if (!stop) return null;
@@ -59,13 +70,17 @@ export const earningsApi = {
     };
   },
 
-  getWallet: async (signal?: AbortSignal): Promise<DriverWallet> => {
+  getWallet: async (source: WalletSource, signal?: AbortSignal): Promise<DriverWallet> => {
+    const base = source === 'fleet' ? '/fleet/wallet' : '/wallet';
     const [res, txs] = await Promise.all([
-      request<any>({ url: '/wallet', signal }),
-      request<any[]>({ url: '/wallet/transactions', signal }),
+      request<any>({ url: base, signal }),
+      request<any[]>({ url: `${base}/transactions`, signal }),
     ]);
     return {
       balance: Number(res.balance),
+      ...(source === 'fleet' && res.minimum_balance != null
+        ? { minimumBalance: Number(res.minimum_balance) }
+        : {}),
       transactions: txs.map((t: any) => ({
         id: t.id,
         kind: t.kind,
@@ -96,7 +111,7 @@ export const earningsApi = {
     };
   },
 
-  getPayouts: (signal?: AbortSignal) =>
+  getPayouts: (source: WalletSource, signal?: AbortSignal) =>
     request<
       {
         id: string;
@@ -106,12 +121,30 @@ export const earningsApi = {
         paid_at: string | null;
         period_end: string;
       }[]
-    >({ url: '/partner/payouts', signal }),
+    >({ url: source === 'fleet' ? '/fleet/payouts' : '/partner/payouts', signal }),
 
-  requestPayout: async (amount: number): Promise<void> => {
+  /** Admin-set transfer rules; each field is null when there is no such limit. */
+  getPayoutLimits: async (signal?: AbortSignal): Promise<PayoutLimits> => {
+    const res = await request<{
+      transfers_left: number | null;
+      transfers_per_week: number | null;
+      renews_at: string | null;
+      minimum_amount: string | null;
+    }>({ url: '/partner/payouts/limits', signal });
+    return {
+      transfersLeft: res.transfers_left,
+      transfersPerWeek: res.transfers_per_week,
+      renewsAt: res.renews_at,
+      minimumAmount: res.minimum_amount != null ? Number(res.minimum_amount) : null,
+    };
+  },
+
+  /** Both go to the partner's own verified bank account; the fleet one draws on the fleet wallet. */
+  requestPayout: async (amount: number, source: WalletSource = 'driver'): Promise<void> => {
     const user = getUser();
     if (!user) throw new ApiError('Please sign in again before withdrawing.', 'unknown');
-    const storageKey = `pending_payout:${user.id}`;
+    const storageKey =
+      source === 'fleet' ? `pending_fleet_payout:${user.id}` : `pending_payout:${user.id}`;
     const saved = storage.getString(storageKey);
     const pending = saved ? (JSON.parse(saved) as { amount: number; key: string }) : null;
     if (pending && pending.amount !== amount) {
@@ -127,19 +160,20 @@ export const earningsApi = {
     try {
       await request<any>({
         method: 'POST',
-        url: '/partner/payouts',
+        url: source === 'fleet' ? '/fleet/payouts' : '/partner/payouts',
         data: { amount },
         headers: { 'Idempotency-Key': key },
       });
       storage.remove(storageKey);
     } catch (error) {
-      // Preserve the key for uncertain outcomes so a retry cannot pay twice.
+      // Preserve the key for uncertain outcomes so a retry cannot pay twice. "No transfers left"
+      // is a clear refusal (nothing was paid), so its key is dropped too.
       if (
         error instanceof ApiError &&
         error.status !== null &&
         error.status >= 400 &&
         error.status < 500 &&
-        ![408, 409, 429].includes(error.status)
+        (![408, 409, 429].includes(error.status) || error.code === 'PAYOUT_LIMIT_REACHED')
       ) {
         storage.remove(storageKey);
       }
@@ -181,5 +215,39 @@ export const earningsApi = {
         distanceKm: job?.tripDistanceKm ?? null,
       };
     });
+  },
+
+  /**
+   * Cancelled trips (with failed deliveries) or missed requests, newest first. `from` and `to` are
+   * days (YYYY-MM-DD, inclusive) in the driver's market timezone.
+   */
+  getTripOutcomes: async (
+    kind: TripOutcome['kind'],
+    from: string,
+    to: string,
+    signal?: AbortSignal,
+  ): Promise<TripOutcome[]> => {
+    const items: any[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_OUTCOME_PAGES; page++) {
+      const res: any = await request<any>({
+        url: '/partner/trips',
+        params: { status: kind.toUpperCase(), from, to, limit: 100, ...(cursor ? { cursor } : {}) },
+        signal,
+      });
+      items.push(...(res.items ?? []));
+      cursor = res.next_cursor ?? null;
+      if (!cursor) break;
+    }
+    return items.map((item) => ({
+      id: String(item.trip_id ?? item.offer_id ?? `${item.order_id}-${item.ended_at}`),
+      orderNumber: String(item.order_number),
+      kind,
+      result: item.result ?? null,
+      reason: item.cancel_reason ?? null,
+      endedAt: item.ended_at,
+      pickupLabel: item.pickup_label,
+      dropLabel: item.drop_label,
+    }));
   },
 };

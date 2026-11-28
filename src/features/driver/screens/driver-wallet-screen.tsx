@@ -12,11 +12,12 @@ import {
   OptionSheet,
 } from '@/components/ui';
 import { useDriverProfile } from '@/hooks/use-driver';
-import { usePayouts, useRequestPayout, useWallet } from '@/hooks/use-earnings';
+import { usePayoutLimits, usePayouts, useRequestPayout, useWallet } from '@/hooks/use-earnings';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
+import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { getErrorMessage } from '@/lib/api/api-error';
 import type { DriverTransaction } from '@/lib/api/models';
-import { formatDayTime, formatRupees } from '@/lib/format';
+import { formatDayTime, formatRupees, formatShortDate } from '@/lib/format';
 
 import { SetupScreenLayout } from '../components/setup-screen-layout';
 
@@ -136,12 +137,17 @@ function TransactionRow({ txn }: { txn: DriverTransaction }) {
 /** The wallet body: balance, payout account, payouts and transactions. */
 export function WalletContent() {
   const router = useRouter();
-  const walletQuery = useWallet();
+  // An owner sees the fleet wallet: trips in the fleet's vehicles, the owner's own included, are
+  // paid there. Withdrawals from either go to the partner's own verified bank account.
+  const source = useFleetStore.use.dashboardRole() === 'owner' ? 'fleet' : 'driver';
+  const isFleet = source === 'fleet';
+  const walletQuery = useWallet(source);
   const { refreshing, refresh } = usePullToRefresh();
   const wallet = walletQuery.data;
   const { data: profile } = useDriverProfile();
-  const payout = useRequestPayout();
-  const payouts = usePayouts();
+  const payout = useRequestPayout(source);
+  const payouts = usePayouts(source);
+  const { data: limits, refetch: refetchLimits } = usePayoutLimits();
   const bankVerified = profile?.bank?.status === 'verified';
   const [view, setView] = useState<WalletView>('all');
   const [filter, setFilter] = useState<TxnFilter>('all');
@@ -160,6 +166,22 @@ export function WalletContent() {
       Alert.alert('Balance too low', 'You need a positive balance to withdraw.');
       return;
     }
+    if (limits?.minimumAmount != null && wallet.balance < limits.minimumAmount) {
+      Alert.alert(
+        'Balance too low',
+        `The smallest transfer is ${formatRupees(limits.minimumAmount)}. Your balance is ${formatRupees(wallet.balance)}.`,
+      );
+      return;
+    }
+    if (limits?.transfersLeft === 0) {
+      Alert.alert(
+        'No transfers left',
+        limits.renewsAt
+          ? `You have used this week's transfers. You can transfer again from ${formatShortDate(limits.renewsAt)}.`
+          : "You have used this week's transfers.",
+      );
+      return;
+    }
     Alert.alert(
       'Withdraw to bank',
       `Transfer ${formatRupees(wallet.balance)} to your verified bank account?`,
@@ -171,12 +193,28 @@ export function WalletContent() {
             payout.mutate(wallet.balance, {
               onSuccess: () =>
                 Alert.alert('Withdrawal initiated', 'Your withdrawal request was submitted.'),
-              onError: (e) => Alert.alert('Withdrawal failed', getErrorMessage(e)),
+              onError: (e) => {
+                // The rules may have changed since they were loaded.
+                void refetchLimits();
+                Alert.alert('Withdrawal failed', getErrorMessage(e));
+              },
             }),
         },
       ],
     );
   };
+
+  // Only the rules that are set, e.g. "Minimum ₹100 · 2 of 3 transfers left this week".
+  const limitsText = limits
+    ? [
+        limits.minimumAmount != null ? `Minimum ${formatRupees(limits.minimumAmount)}` : null,
+        limits.transfersLeft != null && limits.transfersPerWeek != null
+          ? `${limits.transfersLeft} of ${limits.transfersPerWeek} transfers left this week`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
 
   const pendingPayouts = (payouts.data ?? []).filter((p) =>
     ['CREATED', 'PROCESSING', 'NEEDS_ATTENTION'].includes(p.status),
@@ -198,7 +236,7 @@ export function WalletContent() {
     >
       <AppView className="items-center gap-2 rounded-2xl border border-border bg-card px-5 py-5">
         <AppText className="text-[14px] font-medium text-foreground-secondary">
-          Your wallet balance
+          {isFleet ? 'Fleet wallet balance' : 'Your wallet balance'}
         </AppText>
         <AppText
           className={`text-[36px] font-black ${wallet && wallet.balance < 0 ? 'text-red-600' : 'text-foreground'}`}
@@ -216,6 +254,9 @@ export function WalletContent() {
             {payout.isPending ? 'Processing…' : 'Money transfer'}
           </AppText>
         </AppPressable>
+        {limitsText ? (
+          <AppText className="text-center text-[12px] text-muted">{limitsText}</AppText>
+        ) : null}
         <AppPressable
           onPress={() => router.push('/setup-bank')}
           accessibilityRole="button"
@@ -232,7 +273,14 @@ export function WalletContent() {
         </AppPressable>
         {wallet && wallet.balance < 0 ? (
           <AppText className="text-center text-[12px] text-amber-700">
-            Cash commission due. It is settled from your next online-paid trips.
+            {isFleet
+              ? 'Commission is due on cash your drivers collected. It is settled from the next online-paid trips.'
+              : 'Cash commission due. It is settled from your next online-paid trips.'}
+          </AppText>
+        ) : null}
+        {wallet?.minimumBalance != null && wallet.balance <= wallet.minimumBalance ? (
+          <AppText className="text-center text-[12px] font-semibold text-red-600">
+            {`Your drivers get no new trips while the balance is ${formatRupees(wallet.minimumBalance)} or lower.`}
           </AppText>
         ) : null}
       </AppView>
@@ -319,8 +367,12 @@ export function WalletContent() {
 }
 
 export function DriverWalletScreen() {
+  const isOwner = useFleetStore.use.dashboardRole() === 'owner';
   return (
-    <SetupScreenLayout title="Wallet" subtitle="Earnings, incentives and payouts">
+    <SetupScreenLayout
+      title="Wallet"
+      subtitle={isOwner ? "Your fleet's earnings and payouts" : 'Earnings, incentives and payouts'}
+    >
       <WalletContent />
     </SetupScreenLayout>
   );

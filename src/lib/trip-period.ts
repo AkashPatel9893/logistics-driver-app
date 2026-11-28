@@ -60,6 +60,14 @@ export function isInSlot(iso: string, slot: PeriodSlot): boolean {
   return time >= slot.start.getTime() && time < slot.end.getTime();
 }
 
+const isoDay = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+/** The slot as inclusive days (YYYY-MM-DD), for APIs that filter by `from` and `to`. */
+export function slotDays(slot: PeriodSlot): { from: string; to: string } {
+  return { from: isoDay(slot.start), to: isoDay(addDays(slot.end, -1)) };
+}
+
 /** Five consecutive slots for the date strip, oldest first, that always include `selected`. */
 export function stripOffsets(selected: number): number[] {
   const newest = Math.max(selected - 2, 0);

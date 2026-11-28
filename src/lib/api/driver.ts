@@ -2,7 +2,8 @@ import { Location, LocationProfile } from 'expo-location/next';
 
 import { useLocationStore } from '@/stores/location-store';
 
-import { ApiError } from './api-error';
+import { ApiError, toApiError } from './api-error';
+import { eligibilityMessage } from './eligibility-reason';
 import { request } from './client';
 import { onboardingApi, type OnboardingStatus } from './onboarding';
 import type {
@@ -28,13 +29,19 @@ export interface LocationUpdate extends GeoPoint {
   recordedAt: string;
 }
 
-/** The driver's registered vehicle from the backend, or null when there is none. */
-async function activeVehicle(signal?: AbortSignal): Promise<VehicleDetails | null> {
+/**
+ * The vehicle in use, or null when the driver has none. `activeId` is the profile's active vehicle;
+ * the server names one only once it is approved, so until then the newest one stands in.
+ */
+async function activeVehicle(
+  activeId: string | undefined,
+  signal?: AbortSignal,
+): Promise<VehicleDetails | null> {
   const [vehicles, types] = await Promise.all([
-    request<any[]>({ url: '/partner/vehicles', signal }),
+    onboardingApi.listVehicles(signal),
     request<any[]>({ url: '/vehicle-types', signal }),
   ]);
-  const v = vehicles?.[0];
+  const v = vehicles.find((item) => item.id === activeId) ?? vehicles[0];
   if (!v) return null;
   const type = (types ?? []).find((t) => t.code === v.vehicle_type_code);
   const fuel = String(v.fuel_type ?? '').toUpperCase();
@@ -47,6 +54,8 @@ async function activeVehicle(signal?: AbortSignal): Promise<VehicleDetails | nul
     modelName: v.model ?? '',
     fuelType: ['PETROL', 'DIESEL', 'CNG', 'ELECTRIC'].includes(fuel) ? (fuel as FuelType) : null,
     plateNumber: v.registration_number,
+    isFleet: v.relationship_type === 'FLEET_DRIVER',
+    fleetName: v.fleet?.company_name ?? null,
     rcPhotoUrl: '',
     frontPhotoUrl: '',
     status: 'under_review',
@@ -99,6 +108,7 @@ export function toOnboardingState(status: OnboardingStatus, blockers: string[]):
     canSubmit: status.canSubmit || (editable && readyApartFromAgreement),
     rejectionReason: status.rejectionReason,
     blockers,
+    ownerPermissionPending: status.steps.OWNER_AUTHORIZATION?.complete === false,
   };
 }
 
@@ -107,6 +117,7 @@ function pendingSteps(status: OnboardingStatus): SetupStep[] {
   const done = (step: string) => status.steps[step]?.complete === true;
   const steps: SetupStep[] = [];
   if (!done('VEHICLE') || !done('VEHICLE_DOCUMENTS')) steps.push('vehicle');
+  else if (status.steps.OWNER_AUTHORIZATION && !done('OWNER_AUTHORIZATION')) steps.push('vehicle');
   if (!done('DRIVER_DOCUMENTS')) steps.push('kyc');
   if (!done('BANK_ACCOUNT')) steps.push('bank');
   return steps;
@@ -168,7 +179,7 @@ export const driverApi = {
     {
       try {
         const p = await request<any>({ url: '/partner/profile', signal });
-        const vehicle = await activeVehicle(signal);
+        const vehicle = await activeVehicle(p.active_vehicle?.id, signal);
         const isOnline = await isAvailable(signal);
         // The backend's checklist and eligibility decide what is left and whether the driver may work.
         const [status, eligibility, documents, accounts] = await Promise.all([
@@ -188,7 +199,7 @@ export const driverApi = {
           dob: p.date_of_birth ? String(p.date_of_birth) : null,
           gender: ['MALE', 'FEMALE', 'OTHER'].includes(p.gender) ? p.gender : null,
           lockedFields: Array.isArray(p.locked_fields) ? p.locked_fields : [],
-          joinedAt: p.created_at ?? new Date().toISOString(),
+          joinedAt: p.created_at ?? null,
           rating: p.rating != null && Number.isFinite(Number(p.rating)) ? Number(p.rating) : null,
           ratingCount: p.rating_count ?? 0,
           isOnline,
@@ -204,15 +215,6 @@ export const driverApi = {
           pendingSteps: pendingSteps(status),
           canGoOnline: eligibility.allowed,
           onboarding: toOnboardingState(status, eligibility.reasons),
-          welcomeBonus: {
-            status: 'expired',
-            seen: true,
-            amount: 0,
-            targetTrips: 0,
-            completedTrips: 0,
-            expiresAt: new Date().toISOString(),
-          },
-          walletBalance: 0,
           lifetimeTrips: p.lifetime_trips ?? 0,
           documentAlerts: toDocumentAlerts(p.document_alerts),
         };
@@ -257,6 +259,15 @@ export const driverApi = {
             method: 'POST',
             url: '/partner/availability/online',
             data: { latitude, longitude },
+          }).catch((error) => {
+            // The backend lists why; say it in words instead of "Driver is not eligible".
+            const apiError = toApiError(error);
+            const reasons = apiError.details?.reasons;
+            if (apiError.code === 'DRIVER_NOT_ELIGIBLE' && Array.isArray(reasons)) {
+              const message = eligibilityMessage(reasons.map(String));
+              if (message) throw new ApiError(message, 'http', apiError.status, apiError.code);
+            }
+            throw error;
           });
         } else {
           await request<any>({
@@ -296,6 +307,8 @@ export const driverApi = {
       capacityKg: v.capacity_kg ?? v.max_payload_kg ?? null,
       imageKey: 'truck',
       imageUrl: v.image_url ?? null,
+      requiresPermit: v.requires_commercial_permit === true,
+      requiresFitness: v.requires_fitness_certificate === true,
     }));
   },
 
@@ -319,7 +332,8 @@ export const driverApi = {
         make: input.make.trim(),
         model: input.model.trim(),
         fuel_type: input.fuelType,
-        is_owner: true,
+        is_owner: !input.owner,
+        ...(input.owner ? { owner: input.owner } : {}),
       }));
     // Only the primary vehicle counts for onboarding, and the backend makes only the first one
     // primary. If the driver corrected the number (e.g. the first RC came back expired), the new
@@ -374,10 +388,6 @@ export const driverApi = {
   /** Sends the completed application for review. */
   submitOnboarding: async (): Promise<DriverProfile> => {
     await onboardingApi.submit();
-    return driverApi.getProfile();
-  },
-
-  markWelcomeBonusSeen: async (): Promise<DriverProfile> => {
     return driverApi.getProfile();
   },
 };

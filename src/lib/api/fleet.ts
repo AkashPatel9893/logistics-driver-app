@@ -47,6 +47,13 @@ export interface FleetVehicleCreateRequest {
   assign_driver?: AssignDriverRequest;
 }
 
+/** PATCH /fleet/vehicles/{id}: only the fields sent change. */
+export interface FleetVehicleUpdateRequest {
+  make?: string;
+  model?: string;
+  fuel_type?: FuelType;
+}
+
 export interface FleetVehicleDriver {
   id: string;
   name: string;
@@ -134,6 +141,20 @@ export interface LinkRequestResponse {
   driver: LinkRequestDriver;
 }
 
+/** One row of GET /fleet/drivers: members, pending invites, and the owner while they drive. */
+export interface FleetMemberResponse {
+  /** The driver's id, or the invite's while `invite_id` is set. Both work with removeDriver. */
+  id: string;
+  name: string;
+  phone: string;
+  assignment_status: 'ACTIVE' | 'PENDING' | 'UNASSIGNED';
+  vehicle: { id: string; registration_number: string } | null;
+  last_active_at: string | null;
+  is_owner_self: boolean;
+  status?: 'INVITED' | 'ONBOARDING' | 'PENDING_APPROVAL' | 'ACTIVE' | 'UNASSIGNED';
+  invite_id?: string | null;
+}
+
 export interface FleetWalletResponse {
   owner_type: string;
   balance: number | string;
@@ -170,6 +191,13 @@ export const fleetApi = {
   submitVehicleDocument: (vehicleId: string, input: DocumentInput) =>
     submitDocument(`/fleet/vehicles/${vehicleId}/documents`, input),
 
+  /** Every current paper of a fleet vehicle (RC, insurance, PUC, fitness, permits). */
+  listVehicleDocuments: (vehicleId: string, signal?: AbortSignal) =>
+    request<{ document_type: string; verification_status: string; expiry_date: string | null }[]>({
+      url: `/fleet/vehicles/${vehicleId}/documents`,
+      signal,
+    }),
+
   getCompany: (signal?: AbortSignal) =>
     request<CompanyResponse>({
       url: '/fleet/company',
@@ -183,7 +211,7 @@ export const fleetApi = {
       data: body,
     }),
 
-  /** PATCH /fleet/company (proposed): change only the fields sent. */
+  /** PATCH /fleet/company: change only the fields sent. */
   updateCompany: (body: CompanyUpdateRequest) =>
     request<CompanyResponse>({
       url: '/fleet/company',
@@ -210,6 +238,12 @@ export const fleetApi = {
       data: body,
     }),
 
+  listDrivers: (signal?: AbortSignal) =>
+    request<FleetMemberResponse[]>({
+      url: '/fleet/drivers',
+      signal,
+    }),
+
   assignDriver: (vehicleId: string, body: AssignDriverRequest) =>
     request<FleetVehicleResponse>({
       url: `/fleet/vehicles/${vehicleId}/drivers`,
@@ -229,6 +263,14 @@ export const fleetApi = {
    */
   removeDriver: (driverId: string) =>
     request<void>({ url: `/fleet/drivers/${driverId}`, method: 'DELETE' }),
+
+  /** Make, model and fuel type only; refused with VEHICLE_DETAILS_LOCKED once the RC is verified. */
+  updateVehicle: (vehicleId: string, body: FleetVehicleUpdateRequest) =>
+    request<FleetVehicleResponse>({
+      url: `/fleet/vehicles/${vehicleId}`,
+      method: 'PATCH',
+      data: body,
+    }),
 
   removeVehicle: (vehicleId: string) =>
     request<void>({

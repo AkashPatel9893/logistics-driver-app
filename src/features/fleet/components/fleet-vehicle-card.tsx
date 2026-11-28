@@ -42,15 +42,21 @@ export function FleetVehicleCard({
             <AppText className="text-[12px] font-semibold text-muted">
               {vehicle.vehicleTypeName || 'Mini truck'}
             </AppText>
-            <AppPressable
-              onPress={onEdit ?? onPress}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <AppText className="text-[13px] font-bold text-[#FF5722]">Edit</AppText>
-            </AppPressable>
+            {onEdit ? (
+              <AppPressable
+                onPress={onEdit}
+                accessibilityRole="button"
+                accessibilityLabel="Edit vehicle"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <AppText className="text-[13px] font-bold text-[#FF5722]">Edit</AppText>
+              </AppPressable>
+            ) : null}
           </AppView>
 
-          <AppText className="text-[16px] font-black text-foreground">{vehicle.model}</AppText>
+          <AppText className="text-[16px] font-black text-foreground">
+            {[vehicle.make, vehicle.model].filter(Boolean).join(' ')}
+          </AppText>
 
           <AppText className="mt-0.5 text-[13px] font-bold text-foreground-secondary">
             Driver: {driverName}

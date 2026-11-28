@@ -54,7 +54,7 @@ export function useOnboardingStatus() {
  */
 export async function fetchFleetAssignedVehicle(): Promise<FleetAssignedVehicle | null> {
   const list = await onboardingApi.listVehicles().catch(() => []);
-  const vehicle = (list ?? []).find((v: any) => /FLEET/i.test(String(v?.relationship_type ?? '')));
+  const vehicle = list.find((v) => /FLEET/i.test(v.relationship_type));
   return vehicle
     ? { typeCode: vehicle.vehicle_type_code, plate: vehicle.registration_number }
     : null;

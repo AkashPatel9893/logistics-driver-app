@@ -40,7 +40,7 @@ function isMissingEndpoint(error: unknown): boolean {
 }
 
 export const growthApi = {
-  /** GET /partner/rewards (proposed, not yet built): partner perks such as insurance. */
+  /** GET /partner/rewards: partner perks such as insurance, for the driver's market and vehicle. */
   getRewards: async (signal?: AbortSignal): Promise<Maybe<RewardOffer[]>> => {
     try {
       const res = await request<any>({ url: '/partner/rewards', signal });
@@ -60,7 +60,7 @@ export const growthApi = {
     }
   },
 
-  /** GET /partner/referral (proposed, not yet built). */
+  /** GET /partner/referral: answers 501 REFERRAL_NOT_AVAILABLE while referrals are switched off. */
   getReferral: async (signal?: AbortSignal): Promise<Maybe<ReferralInfo>> => {
     try {
       const res = await request<any>({ url: '/partner/referral', signal });

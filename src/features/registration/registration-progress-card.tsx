@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 
 import { AppPressable, AppText, AppView, Icon } from '@/components/ui';
 import { useVehicleTypes } from '@/hooks/use-driver';
+import { eligibilityMessage } from '@/lib/api/eligibility-reason';
 import type { DriverProfile } from '@/lib/api/models';
 
 import { StepStatusIcon } from './components';
@@ -29,8 +30,17 @@ export function RegistrationProgressCard({ profile }: { profile: DriverProfile }
   const next = steps.find((s) => !isStepDone(s.state));
   const { onboarding } = profile;
 
-  const headline =
-    onboarding.status === 'rejected'
+  // Approved but blocked: say what blocks it, not "under verification".
+  const blocked =
+    onboarding.status === 'approved'
+      ? (eligibilityMessage(onboarding.blockers, {
+          fleetVehicle: profile.vehicle?.isFleet === true,
+        }) ?? 'You cannot go online right now. Contact support.')
+      : null;
+
+  const headline = blocked
+    ? "You can't go online yet"
+    : onboarding.status === 'rejected'
       ? 'Some documents need changes'
       : onboarding.status === 'submitted'
         ? 'Documents under verification'
@@ -39,8 +49,9 @@ export function RegistrationProgressCard({ profile }: { profile: DriverProfile }
           : onboarding.canSubmit
             ? 'Ready to submit'
             : 'Documents under verification';
-  const body =
-    onboarding.status === 'rejected'
+  const body = blocked
+    ? blocked
+    : onboarding.status === 'rejected'
       ? (onboarding.rejectionReason ?? 'Fix the marked documents and submit again.')
       : onboarding.status === 'submitted'
         ? 'This may take up to 24 hours. You can go online once approved.'
@@ -63,7 +74,7 @@ export function RegistrationProgressCard({ profile }: { profile: DriverProfile }
         </AppView>
         <AppView className="flex-1">
           <AppText className="text-[16px] font-extrabold text-foreground">{headline}</AppText>
-          <AppText className="mt-0.5 text-[13px] text-muted" numberOfLines={2}>
+          <AppText className="mt-0.5 text-[13px] text-muted" numberOfLines={blocked ? 4 : 2}>
             {body}
           </AppText>
         </AppView>

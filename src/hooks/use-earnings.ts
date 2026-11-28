@@ -4,7 +4,7 @@ import { earningsApi } from '@/lib/api/earnings';
 import { rateCardApi } from '@/lib/api/rate-card';
 import { growthApi } from '@/lib/api/growth';
 import { incentivesApi, type IncentiveType } from '@/lib/api/incentives';
-import type { EarningsPeriod } from '@/lib/api/models';
+import type { EarningsPeriod, TripOutcome, WalletSource } from '@/lib/api/models';
 import { queryKeys } from '@/lib/queries/keys';
 
 export function useEarnings(period: EarningsPeriod) {
@@ -14,27 +14,40 @@ export function useEarnings(period: EarningsPeriod) {
   });
 }
 
-export function useWallet() {
+const walletKey = (source: WalletSource) =>
+  source === 'fleet' ? queryKeys.fleet.wallet : queryKeys.wallet;
+const payoutsKey = (source: WalletSource) =>
+  source === 'fleet' ? queryKeys.fleet.payouts : (['driver', 'payouts'] as const);
+
+export function useWallet(source: WalletSource = 'driver') {
   return useQuery({
-    queryKey: queryKeys.wallet,
-    queryFn: ({ signal }) => earningsApi.getWallet(signal),
+    queryKey: walletKey(source),
+    queryFn: ({ signal }) => earningsApi.getWallet(source, signal),
   });
 }
 
-export function usePayouts() {
+export function usePayouts(source: WalletSource = 'driver') {
   return useQuery({
-    queryKey: ['driver', 'payouts'],
-    queryFn: ({ signal }) => earningsApi.getPayouts(signal),
+    queryKey: payoutsKey(source),
+    queryFn: ({ signal }) => earningsApi.getPayouts(source, signal),
   });
 }
 
-export function useRequestPayout() {
+export function usePayoutLimits() {
+  return useQuery({
+    queryKey: queryKeys.payoutLimits,
+    queryFn: ({ signal }) => earningsApi.getPayoutLimits(signal),
+  });
+}
+
+export function useRequestPayout(source: WalletSource = 'driver') {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (amount: number) => earningsApi.requestPayout(amount),
+    mutationFn: (amount: number) => earningsApi.requestPayout(amount, source),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.wallet });
-      queryClient.invalidateQueries({ queryKey: ['driver', 'payouts'] });
+      queryClient.invalidateQueries({ queryKey: walletKey(source) });
+      queryClient.invalidateQueries({ queryKey: payoutsKey(source) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.stats });
       queryClient.invalidateQueries({ queryKey: queryKeys.profile });
     },
   });
@@ -48,6 +61,20 @@ export function useTrips(options: { enabled?: boolean } = {}) {
   });
 }
 
+/** Cancelled trips or missed requests between two days (YYYY-MM-DD, inclusive). */
+export function useTripOutcomes(
+  kind: TripOutcome['kind'],
+  from: string,
+  to: string,
+  options: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: queryKeys.tripOutcomes(kind, from, to),
+    queryFn: ({ signal }) => earningsApi.getTripOutcomes(kind, from, to, signal),
+    enabled: options.enabled ?? true,
+  });
+}
+
 export function useIncentives(type: IncentiveType) {
   return useQuery({
     queryKey: queryKeys.incentives(type),
@@ -55,16 +82,18 @@ export function useIncentives(type: IncentiveType) {
   });
 }
 
-export function useRewards() {
+export function useRewards(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.rewards,
+    enabled: options.enabled ?? true,
     queryFn: ({ signal }) => growthApi.getRewards(signal),
   });
 }
 
-export function useReferral() {
+export function useReferral(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.referral,
+    enabled: options.enabled ?? true,
     queryFn: ({ signal }) => growthApi.getReferral(signal),
   });
 }

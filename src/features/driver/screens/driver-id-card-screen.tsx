@@ -17,10 +17,12 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-function memberSince(iso: string): string {
+/** Month and year, or null when there is no usable date (the row is then left out). */
+function memberSince(iso: string | null): string | null {
+  if (!iso) return null;
   const date = new Date(iso);
   return Number.isNaN(date.getTime())
-    ? '—'
+    ? null
     : date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
 }
 
@@ -29,6 +31,7 @@ export function DriverIdCardScreen() {
   const { data: profile, isLoading, isError } = useDriverProfile();
   const user = useAuthStore.use.user();
   const approved = profile?.onboarding.status === 'approved';
+  const partnerSince = memberSince(profile?.joinedAt ?? null);
 
   const share = () => {
     if (!profile) return;
@@ -90,7 +93,7 @@ export function DriverIdCardScreen() {
                     }
                   />
                   <Field label="Trips" value={String(profile.lifetimeTrips)} />
-                  <Field label="Partner since" value={memberSince(profile.joinedAt)} />
+                  {partnerSince ? <Field label="Partner since" value={partnerSince} /> : null}
                 </AppView>
               </AppView>
             </AppView>

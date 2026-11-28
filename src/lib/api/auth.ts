@@ -3,6 +3,7 @@ import * as Location from 'expo-location';
 import { deviceInfo } from '@/lib/device';
 
 import { request } from './client';
+import { API_BASE_URL } from './config';
 import { ApiError } from './api-error';
 import { setToken } from '../auth/utils';
 import type { AuthSession, LanguageOption, OtpChallenge, UpdateProfileInput, User } from './models';
@@ -49,6 +50,28 @@ export function toPartnerRole(role: 'driver' | 'owner'): PartnerRole {
 }
 
 export const authApi = {
+  /**
+   * Ends this session on the server (`POST /auth/logout`), so the tokens stop working. Sent with
+   * the token given (the app has already forgotten it) and never retried or refreshed: signing out
+   * must not wait on the network, and a failure only leaves a token the phone no longer has.
+   */
+  endSession: async (accessToken: string): Promise<void> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all_sessions: false }),
+        signal: controller.signal,
+      });
+    } catch {
+      // Offline or timed out: the phone is signed out either way.
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
   sendOtp: async (identifier: string): Promise<OtpChallenge> => {
     const phone = toPhone(identifier);
     const res = await request<any>({
@@ -116,7 +139,7 @@ export const authApi = {
     isOnboarded: boolean;
     onboardingStatus: string | null;
     name: string | null;
-    /** The mode the backend has on record (proposed field; null until it exists). */
+    /** The mode the backend has on record (`active_role`), or null when none is set. */
     activeRole: PartnerRole | null;
   }> => {
     const res = await request<any>({ url: '/auth/me', signal });
@@ -131,14 +154,14 @@ export const authApi = {
   },
 
   /**
-   * Tells the backend which mode the partner is in. PUT /auth/active-role is proposed, so a
-   * missing endpoint is not an error: the phone still remembers the choice.
+   * Tells the backend which mode the partner is in (PUT /auth/active-role). A failure is not an
+   * error for the caller: the phone still remembers the choice.
    */
   setActiveRole: async (role: PartnerRole): Promise<void> => {
     try {
       await request<any>({ method: 'PUT', url: '/auth/active-role', data: { role } });
     } catch {
-      // Not built yet, offline, or rejected: the local choice stands.
+      // Offline or rejected: the local choice stands.
     }
   },
 

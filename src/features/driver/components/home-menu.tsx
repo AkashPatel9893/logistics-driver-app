@@ -17,6 +17,7 @@ import {
 import { showsDriverId } from '@/features/fleet/mode-switch';
 import { useFleetStore } from '@/features/fleet/use-fleet-store';
 import { useDriverProfile } from '@/hooks/use-driver';
+import { useReferral, useRewards } from '@/hooks/use-earnings';
 import { DURATION, ENTER_EASE_OUT, SHEET_EASE } from '@/lib/motion';
 
 type MenuIcon = Parameters<typeof Icon>[0]['name'];
@@ -54,7 +55,7 @@ const ITEMS: MenuItem[] = [
     icon: 'box.truck',
     label: 'My trips',
     driverOnly: true,
-    sublabel: 'Completed trips by day, week or month',
+    sublabel: 'Your trips by day, week or month',
     route: '/(tabs)/orders',
   },
   {
@@ -99,6 +100,12 @@ export function HomeMenu({ visible, onClose }: HomeMenuProps) {
   const insets = useSafeAreaInsets();
   const { data: profile } = useDriverProfile();
   const isOwner = useFleetStore.use.dashboardRole() === 'owner';
+  // Rewards and Refer friends show only with something behind them: perks to list, and referrals
+  // switched on (the backend answers 501 while they are off).
+  const { data: rewards } = useRewards({ enabled: !isOwner });
+  const { data: referral } = useReferral({ enabled: !isOwner });
+  const hasRewards = rewards?.available === true && rewards.data.length > 0;
+  const hasReferral = referral?.available === true;
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(width * PANEL_SHARE, PANEL_MAX_WIDTH);
   // 0 closed, 1 open. One value drives the panel and the dimming, so they always move together.
@@ -190,6 +197,8 @@ export function HomeMenu({ visible, onClose }: HomeMenuProps) {
           <AppScrollView showsVerticalScrollIndicator={false}>
             {ITEMS.filter((item) => {
               if (item.route === '/driver-id-card') return showsDriverId(profile, isOwner);
+              if (item.route === '/rewards' && !hasRewards) return false;
+              if (item.route === '/refer' && !hasReferral) return false;
               return !(isOwner && item.driverOnly);
             }).map((item) => (
               <AppPressable

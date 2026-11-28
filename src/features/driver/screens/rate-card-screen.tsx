@@ -71,13 +71,13 @@ function CardBody({ card }: { card: RateCard }) {
         ) : null}
       </Section>
 
-      {card.cancellation || card.night ? (
+      {card.cancelCompensationPerKm || card.night ? (
         <Section title="Extra fare (not on every trip)" tone="bg-emerald-500/10">
-          {card.cancellation ? (
+          {card.cancelCompensationPerKm ? (
             <Row
-              label="Cancellation fare"
-              note="When the customer cancels"
-              value={`${formatRupees(card.cancellation.min)} to ${formatRupees(card.cancellation.max)}`}
+              label="Customer cancels"
+              note="For each km you drove toward pickup"
+              value={`${formatRupees(card.cancelCompensationPerKm)} per km`}
             />
           ) : null}
           {card.night ? (

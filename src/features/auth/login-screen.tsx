@@ -25,7 +25,9 @@ export function LoginScreen() {
       <AppKeyboardAvoidingView>
         <AppScrollView
           ref={scrollRef}
-          style={{ paddingTop: insets.top }}
+          // On the content, not the scroll view: padding on the scroll view itself is left out of
+          // scrollToEnd, which then stopped short and left Continue behind the keyboard.
+          contentContainerStyle={{ paddingTop: insets.top }}
           contentContainerClassName="pb-6"
         >
           <HeroBanner />

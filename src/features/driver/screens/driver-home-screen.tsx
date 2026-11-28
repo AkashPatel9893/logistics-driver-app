@@ -13,7 +13,7 @@ import {
   FocusAwareStatusBar,
   Icon,
 } from '@/components/ui';
-import { useDriverProfile, useMarkWelcomeBonusSeen, useSetOnline } from '@/hooks/use-driver';
+import { useDriverProfile, useSetOnline } from '@/hooks/use-driver';
 import { useEarnings, useWallet } from '@/hooks/use-earnings';
 import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
@@ -25,10 +25,12 @@ import {
   DriveVehiclePicker,
   FleetStatsRow,
   FleetVehiclesSection,
+  JoinRequestsBanner,
 } from '@/features/fleet/components';
 import { useDriveVehicle } from '@/features/fleet/use-drive-vehicle';
 import type { FleetVehicle } from '@/features/fleet/types';
 import { getErrorMessage } from '@/lib/api/api-error';
+import { eligibilityMessage } from '@/lib/api/eligibility-reason';
 import type { DocumentAlert, JobOffer, SetupStep } from '@/lib/api/models';
 import { canDrawOverlays, isBubbleSupported, openOverlaySettings } from '@/lib/driver-bubble';
 import { greetingFor } from '@/lib/format';
@@ -39,7 +41,6 @@ import { DriverOnlineToggle } from '../components/driver-online-toggle';
 import { HomeMenu } from '../components/home-menu';
 import { EarningsStrip } from '../components/earnings-strip';
 import { TripTracker } from '../components/trip-tracker';
-import { WelcomeBonusModal } from '../components/welcome-bonus-modal';
 
 let overlayPromptShown = false;
 
@@ -129,7 +130,6 @@ export function DriverHomeScreen() {
   const todayQuery = useEarnings('today');
   const walletQuery = useWallet();
   const setOnline = useSetOnline();
-  const markBonusSeen = useMarkWelcomeBonusSeen();
 
   // Fleet Owner state
   const dashboardRole = useFleetStore.use.dashboardRole();
@@ -182,13 +182,19 @@ export function DriverHomeScreen() {
 
   const blockedReason = profile.canGoOnline
     ? null
-    : profile.pendingSteps.length > 0
-      ? `Complete your ${profile.pendingSteps.map((s) => STEP_LABEL[s]).join(', ')} to go online`
-      : profile.onboarding.status === 'in_progress'
-        ? 'Submit your application for review to go online.'
-        : profile.onboarding.status === 'rejected'
-          ? (profile.onboarding.rejectionReason ?? 'Your application needs changes.')
-          : 'Your application is being reviewed. You can go online once it is approved.';
+    : profile.onboarding.status === 'approved'
+      ? // Approved, but something blocks it (a document expired, the vehicle, the bank): the
+        // backend's own reasons, since the checklist steps don't cover these.
+        (eligibilityMessage(profile.onboarding.blockers, {
+          fleetVehicle: profile.vehicle?.isFleet === true,
+        }) ?? 'You cannot go online right now. Contact support.')
+      : profile.pendingSteps.length > 0
+        ? `Complete your ${profile.pendingSteps.map((s) => STEP_LABEL[s]).join(', ')} to go online`
+        : profile.onboarding.status === 'in_progress'
+          ? 'Submit your application for review to go online.'
+          : profile.onboarding.status === 'rejected'
+            ? (profile.onboarding.rejectionReason ?? 'Your application needs changes.')
+            : 'Your application is being reviewed. You can go online once it is approved.';
 
   const handleToggle = (next: boolean) => {
     if (next && !profile.canGoOnline) {
@@ -209,8 +215,6 @@ export function DriverHomeScreen() {
   const firstName =
     profile.name.split(' ')[0] ||
     (company?.ownerName ? company.ownerName.split(' ')[0] : 'Partner');
-  const showBonus =
-    !profile.welcomeBonus.seen && profile.welcomeBonus.status === 'active' && isFocused;
 
   // The vehicle the owner is assigned to as its driver.
   const activeDriverVehicle = vehicles.find((v) => v.driver?.isOwnerSelf);
@@ -363,6 +367,8 @@ export function DriverHomeScreen() {
         ) : (
           /* ================= FLEET OWNER MODE ================= */
           <>
+            <JoinRequestsBanner />
+
             <FleetStatsRow
               vehiclesCount={vehicles.length}
               onPressVehicles={() => router.push('/driver-profile')}
@@ -405,11 +411,6 @@ export function DriverHomeScreen() {
           router.push('/setup-vehicle');
         }}
         onClose={() => setShowVehiclePicker(false)}
-      />
-      <WelcomeBonusModal
-        bonus={profile.welcomeBonus}
-        visible={showBonus && !markBonusSeen.isPending}
-        onDismiss={() => markBonusSeen.mutate()}
       />
     </AppView>
   );
