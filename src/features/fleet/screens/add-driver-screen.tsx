@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   AppKeyboardAvoidingView,
-  AppPressable,
   AppScrollView,
   AppText,
   AppView,
@@ -27,6 +26,7 @@ import { goBack } from '@/lib/go-back';
 
 import { FleetDriverPicker } from '../components/fleet-driver-picker';
 import { joinedDrivers, lastTenDigits } from '../fleet-members';
+import { shareFleetInvite } from '../share-invite';
 
 export function AddDriverScreen() {
   const router = useRouter();
@@ -39,26 +39,17 @@ export function AddDriverScreen() {
   const assignDriverMutation = useAssignFleetDriver();
   const { data: members = [] } = useFleetDrivers();
 
-  const [isSelfDrive, setIsSelfDrive] = useState(false);
+  // "Drive myself" was already offered on the screen before this one, so it is not asked again.
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
 
-  const handleToggleSelfDrive = () => {
-    if (!isSelfDrive) {
-      setIsSelfDrive(true);
-      setFullName(company?.ownerName || '');
-      setPhone(
-        company?.phone ? company.phone.replace(/^\+91/, '').replace(/\D/g, '').slice(-10) : '',
-      );
-    } else {
-      setIsSelfDrive(false);
-      setFullName('');
-      setPhone('');
-    }
-  };
-
   // Only who the driver is: they add licence, date of birth and Aadhaar in their own onboarding.
-  const isValid = isSelfDrive ? true : fullName.trim().length >= 2 && phone.trim().length >= 10;
+  const isValid = fullName.trim().length >= 2 && phone.trim().length >= 10;
+  // Someone who already joined is assigned by id: the backend refuses their name and number.
+  const existingMember =
+    phone.length === 10
+      ? joinedDrivers(members).find((m) => lastTenDigits(m.phone) === lastTenDigits(phone))
+      : undefined;
 
   const handleContinue = async () => {
     const targetVehicleId = vehicleId || vehicles?.[0]?.id;
@@ -72,21 +63,16 @@ export function AddDriverScreen() {
       return;
     }
 
-    // Someone who already joined is assigned by id: the backend refuses their name and number.
-    const member = isSelfDrive
-      ? undefined
-      : joinedDrivers(members).find((m) => lastTenDigits(m.phone) === lastTenDigits(phone));
+    const member = existingMember;
     await assignDriver(
       targetVehicleId,
-      isSelfDrive
-        ? { is_owner_self: true }
-        : member
-          ? { driver_id: member.id }
-          : {
-              is_owner_self: false,
-              name: fullName.trim(),
-              phone: `+91 ${phone.trim().slice(-10)}`,
-            },
+      member
+        ? { driver_id: member.id }
+        : {
+            is_owner_self: false,
+            name: fullName.trim(),
+            phone: `+91 ${phone.trim().slice(-10)}`,
+          },
       member?.name ?? fullName.trim(),
       member?.phone ?? phone,
     );
@@ -110,9 +96,25 @@ export function AddDriverScreen() {
           body.is_owner_self
             ? 'You now drive this vehicle.'
             : invited
-              ? `${driverName} is invited. They join when they sign in to Ryno Partner with this number.`
+              ? `${driverName} joins when they sign in to Ryno Partner with this number. Ryno does not message them yet, so share the invite.`
               : `${driverName} now drives this vehicle.`,
-          [{ text: 'Continue', onPress: () => goBack(router) }],
+          invited
+            ? [
+                { text: 'Later', style: 'cancel', onPress: () => goBack(router) },
+                {
+                  text: 'Share invite',
+                  onPress: () => {
+                    shareFleetInvite({
+                      driverName,
+                      phone: driverPhone,
+                      companyName: company?.companyName,
+                      plate: vehicle.registration_number,
+                    });
+                    goBack(router);
+                  },
+                },
+              ]
+            : [{ text: 'Continue', onPress: () => goBack(router) }],
         );
       } catch (err) {
         // A number with its own Ryno account joins by asking from their app; the owner approves.
@@ -173,111 +175,73 @@ export function AddDriverScreen() {
               Add driver
             </AppText>
             <AppText className="mt-1.5 text-[15px] leading-5 text-muted">
-              Assign yourself, or add a driver by name and mobile number.
+              Pick someone already in your fleet, or invite a new driver by name and mobile number.
             </AppText>
           </AppView>
 
-          {/* Self-Drive quick selection banner */}
-          <AppPressable
-            onPress={handleToggleSelfDrive}
-            pressScale={0.98}
-            className={`mb-6 rounded-2xl border p-4 ${
-              isSelfDrive ? 'border-[#FF5722] bg-[#FF5722]/10' : 'border-border bg-card shadow-sm'
-            }`}
-          >
-            <AppView row className="items-center justify-between">
-              <AppView row className="items-center gap-3">
-                <AppView
-                  className={`h-10 w-10 items-center justify-center rounded-xl ${
-                    isSelfDrive ? 'bg-[#FF5722]' : 'bg-surface-muted'
-                  }`}
-                >
-                  <Icon
-                    name="steeringwheel"
-                    size={20}
-                    tone={isSelfDrive ? 'background' : 'foreground'}
-                  />
-                </AppView>
-                <AppView>
-                  <AppText className="text-[15px] font-bold text-foreground">Drive myself</AppText>
-                  <AppText className="text-[12px] text-muted">
-                    {company?.ownerName
-                      ? `Assign owner (${company.ownerName}) as driver`
-                      : 'Assign owner as driver'}
-                  </AppText>
-                </AppView>
-              </AppView>
-              <AppView
-                className={`h-6 w-6 items-center justify-center rounded-full border ${
-                  isSelfDrive ? 'border-[#FF5722] bg-[#FF5722]' : 'border-muted bg-transparent'
-                }`}
-              >
-                {isSelfDrive ? <Icon name="check" size={14} tone="background" /> : null}
-              </AppView>
-            </AppView>
-          </AppPressable>
+          <FleetDriverPicker
+            drivers={joinedDrivers(members).filter((m) => m.vehicle?.id !== vehicleId)}
+            disabled={assignDriverMutation.isPending}
+            onPick={(member) => {
+              const targetVehicleId = vehicleId || vehicles?.[0]?.id;
+              if (targetVehicleId) {
+                void assignDriver(
+                  targetVehicleId,
+                  { driver_id: member.id },
+                  member.name,
+                  member.phone,
+                );
+              }
+            }}
+          />
 
-          {!isSelfDrive ? (
-            <FleetDriverPicker
-              drivers={joinedDrivers(members).filter((m) => m.vehicle?.id !== vehicleId)}
-              disabled={assignDriverMutation.isPending}
-              onPick={(member) => {
-                const targetVehicleId = vehicleId || vehicles?.[0]?.id;
-                if (targetVehicleId) {
-                  void assignDriver(
-                    targetVehicleId,
-                    { driver_id: member.id },
-                    member.name,
-                    member.phone,
-                  );
-                }
-              }}
+          {/* Driver Form Fields */}
+          <AppView className="gap-5">
+            {/* Full name */}
+            <TextField
+              variant="outlined"
+              label="Full name"
+              required
+              value={fullName}
+              onChangeText={setFullName}
+              placeholder="Enter driver's full name"
+              autoCapitalize="words"
+              leading={<Icon name="person" size={20} tone="icon-subtle" />}
+              inputClassName="ml-2 text-[15px]"
             />
-          ) : null}
 
-          {!isSelfDrive ? (
-            /* Driver Form Fields */
-            <AppView className="gap-5">
-              {/* Full name */}
-              <TextField
-                variant="outlined"
-                label="Full name"
-                required
-                value={fullName}
-                onChangeText={setFullName}
-                placeholder="Enter driver's full name"
-                autoCapitalize="words"
-                leading={<Icon name="person" size={20} tone="icon-subtle" />}
-                inputClassName="ml-2 text-[15px]"
-              />
+            {/* Phone number */}
+            <TextField
+              variant="outlined"
+              label="Mobile number"
+              required
+              value={phone}
+              onChangeText={(text) => setPhone(text.replace(/\D/g, '').slice(0, 10))}
+              placeholder="Enter 10-digit mobile number"
+              keyboardType="phone-pad"
+              leading={
+                <AppText className="text-[15px] font-bold text-foreground-secondary">+91</AppText>
+              }
+              inputClassName="ml-2 text-[15px]"
+            />
 
-              {/* Phone number */}
-              <TextField
-                variant="outlined"
-                label="Mobile number"
-                required
-                value={phone}
-                onChangeText={(text) => setPhone(text.replace(/\D/g, '').slice(0, 10))}
-                placeholder="Enter 10-digit mobile number"
-                keyboardType="phone-pad"
-                leading={
-                  <AppText className="text-[15px] font-bold text-foreground-secondary">+91</AppText>
-                }
-                inputClassName="ml-2 text-[15px]"
-              />
-
-              <AppText className="text-[13px] leading-5 text-muted">
-                The driver signs in to the Ryno Partner app with this number and adds their own
-                licence, date of birth and Aadhaar. They can start once the Ryno team approves them.
-              </AppText>
-            </AppView>
-          ) : null}
+            <AppText className="text-[13px] leading-5 text-muted">
+              The driver signs in to the Ryno Partner app with this number and adds their own
+              licence, date of birth and Aadhaar. They can start once the Ryno team approves them.
+            </AppText>
+          </AppView>
 
           {/* Submit button */}
           <AppView className="mt-8">
             <Button
               variant="brand"
-              label={assignDriverMutation.isPending ? 'Assigning...' : 'Assign Driver'}
+              label={
+                assignDriverMutation.isPending
+                  ? 'Saving...'
+                  : existingMember
+                    ? `Assign ${existingMember.name}`
+                    : 'Send invite'
+              }
               onPress={handleContinue}
               disabled={!isValid || assignDriverMutation.isPending}
               loading={assignDriverMutation.isPending}

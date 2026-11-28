@@ -230,7 +230,8 @@ export function buildRegistrationSteps(
       subject: 'Your vehicle type is',
       detail: typeChosen ? 'Selected' : fleetDriver ? 'Your owner assigns the vehicle' : null,
       state: typeChosen || fleetDriver ? 'selected' : 'todo',
-      route: '/register-vehicle-type',
+      // A fleet driver picks no type: My vehicle shows what the owner assigned.
+      route: fleetDriver && !typeChosen ? '/setup-vehicle' : '/register-vehicle-type',
     },
     docStep(
       'licence',
@@ -321,6 +322,8 @@ export function buildRegistrationSteps(
             title: `Vehicle - ${assignedType?.name ?? fleetVehicle.plate}`,
             detail: `Assigned by your fleet owner · ${fleetVehicle.plate}`,
             state: 'selected' as const,
+            // My vehicle shows the fleet vehicle; the type picker would be a dead end.
+            route: '/setup-vehicle' as const,
           }
         : step,
     );

@@ -13,7 +13,7 @@ import {
   FocusAwareStatusBar,
   Icon,
 } from '@/components/ui';
-import { useDriverProfile, useSetOnline } from '@/hooks/use-driver';
+import { useDriverProfile, useMyVehicles, useSetOnline } from '@/hooks/use-driver';
 import { useEarnings, useWallet } from '@/hooks/use-earnings';
 import { useFleetCompany, useFleetVehicles } from '@/hooks/use-fleet';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
@@ -24,6 +24,7 @@ import { syncOnboardingStatus } from '@/features/auth/use-auth-store';
 import {
   DriveVehiclePicker,
   FleetStatsRow,
+  FleetAttentionSection,
   FleetVehiclesSection,
   JoinRequestsBanner,
 } from '@/features/fleet/components';
@@ -134,7 +135,12 @@ export function DriverHomeScreen() {
   const dashboardRole = useFleetStore.use.dashboardRole();
   const fleetVehiclesQuery = useFleetVehicles();
   const { data: vehicles = [] } = fleetVehiclesQuery;
-  const { assigningVehicleId, driveVehicle } = useDriveVehicle();
+  const { assigningVehicleId, driveVehicle, driveOwnVehicle } = useDriveVehicle();
+  // The owner's own (non-fleet) vehicles, so the vehicle switch can also go back to one of them.
+  const { data: myVehicles = [] } = useMyVehicles({ enabled: dashboardRole === 'driver' });
+  const ownVehicles = myVehicles.filter(
+    (v) => v.relationship_type !== 'FLEET_DRIVER' && v.assignment_status === 'ACTIVE',
+  );
   const [showVehiclePicker, setShowVehiclePicker] = useState(false);
   const fleetCompanyQuery = useFleetCompany();
   const { data: company } = fleetCompanyQuery;
@@ -206,11 +212,15 @@ export function DriverHomeScreen() {
   // The vehicle the owner is assigned to as its driver.
   const activeDriverVehicle = vehicles.find((v) => v.driver?.isOwnerSelf);
 
-  const vehicleSubtitle = profile.vehicle
-    ? `${profile.vehicle.vehicleTypeName} · ${profile.vehicle.plateNumber}`
-    : activeDriverVehicle
-      ? `${activeDriverVehicle.vehicleTypeName} · ${activeDriverVehicle.plateNumber}`
-      : 'No vehicle assigned';
+  const isDriverMode = dashboardRole === 'driver';
+  // Fleet Owner mode is about the company, not the vehicle the owner rides as a driver.
+  const vehicleSubtitle = !isDriverMode
+    ? company?.companyName || 'Fleet Owner'
+    : profile.vehicle
+      ? `${profile.vehicle.vehicleTypeName} · ${profile.vehicle.plateNumber}`
+      : activeDriverVehicle
+        ? `${activeDriverVehicle.vehicleTypeName} · ${activeDriverVehicle.plateNumber}`
+        : 'No vehicle assigned';
 
   const handleSwitchActiveVehicle = () => {
     if (profile.isOnline || activeJob) {
@@ -227,7 +237,9 @@ export function DriverHomeScreen() {
     if (await driveVehicle(vehicle)) setShowVehiclePicker(false);
   };
 
-  const isDriverMode = dashboardRole === 'driver';
+  const handleDriveOwnVehicle = async (vehicleId: string) => {
+    if (await driveOwnVehicle(vehicleId)) setShowVehiclePicker(false);
+  };
 
   return (
     <AppView className="flex-1 bg-background">
@@ -362,9 +374,13 @@ export function DriverHomeScreen() {
             />
 
             {/* Fleet setup covers the owner's own account, so no driver checklist here: an empty
-                fleet gets its own "add your first vehicle" prompt. */}
-            {/* With vehicles, the count above links to the full list on Profile. */}
-            {vehicles.length === 0 ? <FleetVehiclesSection /> : null}
+                fleet gets its own "add your first vehicle" prompt. With vehicles, the count above
+                links to the full list, and Home lists only the ones that need something. */}
+            {vehicles.length === 0 ? (
+              <FleetVehiclesSection />
+            ) : (
+              <FleetAttentionSection vehicles={vehicles} />
+            )}
           </>
         )}
 
@@ -391,8 +407,11 @@ export function DriverHomeScreen() {
         vehicles={vehicles}
         assigningVehicleId={assigningVehicleId}
         title="Switch vehicle"
-        subtitle="Choose a vehicle with no driver. You'll move off the one you drive now."
+        subtitle="New delivery requests will be for the vehicle you choose."
         onSelect={handleDriveVehicle}
+        activeVehicleId={profile.vehicle?.id ?? null}
+        ownVehicles={ownVehicles}
+        onSelectOwn={handleDriveOwnVehicle}
         onAddVehicle={() => {
           setShowVehiclePicker(false);
           router.push('/setup-vehicle');

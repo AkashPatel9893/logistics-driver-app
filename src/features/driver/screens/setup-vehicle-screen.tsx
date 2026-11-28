@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Keyboard } from 'react-native';
+import { type ComponentRef, useEffect, useRef, useState } from 'react';
+import { Alert, Keyboard, type TextInput } from 'react-native';
 
 import {
   AppKeyboardAvoidingView,
@@ -37,7 +37,7 @@ import { PhotoUploadBox } from '../components/photo-upload-box';
 import { useLocalPhoto } from '../hooks/use-local-photo';
 import type { DriverProfile, FuelType, VehicleTypeOption } from '@/lib/api/models';
 import { ApiError, getErrorMessage } from '@/lib/api/api-error';
-import { formatDateInput, toIsoDate } from '@/lib/api/onboarding';
+import { documentSentMessage, formatDateInput, toIsoDate } from '@/lib/api/onboarding';
 
 import { SetupScreenLayout } from '../components/setup-screen-layout';
 import { VehicleImage } from '../components/vehicle-image';
@@ -197,6 +197,10 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
   const [model, setModel] = useDraftText(draft('model'), saved?.modelName ?? '');
 
   const [error, setError] = useState<string>();
+  // Fields left empty on the last save; each one clears itself once filled.
+  const [missing, setMissing] = useState<string[]>([]);
+  const makeRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const modelRef = useRef<ComponentRef<typeof TextInput>>(null);
 
   // A saved vehicle with all its documents shows as a summary: the fields would only repeat it.
   // They open on request, or at once when something is missing or was refused.
@@ -224,12 +228,13 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
     expiryDate?: string;
   }) => {
     try {
-      await submitPaper.mutateAsync({
+      const status = await submitPaper.mutateAsync({
         type: submission.type,
         fileUri: submission.photoUri,
         expiryDate: submission.expiryDate,
       });
-      Alert.alert('Sent for verification', 'We will let you know once it is verified.');
+      const message = documentSentMessage(status);
+      Alert.alert(message.title, message.body);
       return true;
     } catch (err) {
       Alert.alert('Could not send the document', getErrorMessage(err));
@@ -240,6 +245,11 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
   const { data: myVehicles = [] } = useMyVehicles({ enabled: !isFleetOwner });
   const otherVehicles = saved ? myVehicles.filter((v) => v.id !== saved.id) : [];
   const hasFleetVehicle = myVehicles.some((v) => v.relationship_type === 'FLEET_DRIVER');
+  // A join request this phone sent; forgotten once the owner has given a vehicle.
+  const linkRequest = useRegistrationStore.use.fleetLinkRequest();
+  useEffect(() => {
+    if (hasFleetVehicle && linkRequest) useRegistrationStore.getState().setFleetLinkRequest(null);
+  }, [hasFleetVehicle, linkRequest]);
 
   // Fleet owner: after saving, ask who will drive the new vehicle.
   const { data: fleetVehicles = [] } = useFleetVehicles({ enabled: isFleetOwner });
@@ -249,6 +259,26 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
   const selectedType = vehicleTypes.find((t) => t.id === typeId);
   const maxPayloadKg = selectedType?.capacityKg ?? null;
   const capacityOptions = capacityOptionsFor(maxPayloadKg);
+
+  // Shown on My vehicle and above the request form, so a sent request is never invisible.
+  const linkRequestCard = linkRequest ? (
+    <AppView className="gap-1 rounded-2xl border border-border bg-card p-4">
+      <AppText className="text-[14px] font-bold text-foreground">
+        Join request sent to {linkRequest.to}
+      </AppText>
+      <AppText className="text-[13px] leading-5 text-muted">
+        {`Sent ${formatSentDate(linkRequest.sentAt)}. The fleet owner approves it in their Ryno app, then assigns you a vehicle. If nothing happens, call them.`}
+      </AppText>
+      <AppPressable
+        onPress={() => useRegistrationStore.getState().setFleetLinkRequest(null)}
+        accessibilityRole="button"
+        hitSlop={8}
+        className="mt-1 self-start"
+      >
+        <AppText className="text-[13px] font-bold text-muted underline">Hide</AppText>
+      </AppPressable>
+    </AppView>
+  ) : null;
 
   const handleLinkOwner = async () => {
     const clean = ownerPhone.replace(/[^0-9]/g, '');
@@ -262,6 +292,10 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
         owner_phone: `+91 ${clean.slice(-10)}`,
       });
       setIsLinking(false);
+      useRegistrationStore.getState().setFleetLinkRequest({
+        to: res.owner_phone_masked || `+91 ${clean.slice(-10)}`,
+        sentAt: new Date().toISOString(),
+      });
       Alert.alert(
         'Request Sent to Fleet Owner',
         `We have sent an authorization request to ${res.owner_phone_masked || `+91 ${clean.slice(-10)}`}. Once your fleet owner approves and assigns you a vehicle, you will be notified to start driving!`,
@@ -316,12 +350,25 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
     const cleanPlate = (plateLocked && saved ? saved.plateNumber : plateNumber)
       .replace(/[^A-Z0-9]/gi, '')
       .toUpperCase();
-    if (cleanPlate.length < 6) {
-      return setError('Enter the registration number as printed on your RC.');
+    const empty = [
+      cleanPlate.length < 6 && 'plate',
+      !selectedType && 'type',
+      !make.trim() && 'make',
+      !model.trim() && 'model',
+      !fuelType && 'fuel',
+    ].filter((key): key is string => Boolean(key));
+    setMissing(empty);
+    if (empty.length > 0) {
+      const only: Record<string, string> = {
+        plate: 'Enter the registration number as printed on your RC.',
+        type: 'Choose the vehicle type.',
+        make: 'Enter the make.',
+        model: 'Enter the model.',
+        fuel: 'Choose the fuel type.',
+      };
+      return setError(empty.length === 1 ? only[empty[0]] : 'Fill in the fields marked in red.');
     }
-    if (!selectedType || !make.trim() || !model.trim() || !fuelType) {
-      return setError('Choose a vehicle type and fuel type, and enter the make and model.');
-    }
+    if (!selectedType || !fuelType) return;
     if (!isFleetOwner) {
       const needsPuc = fuelType !== 'ELECTRIC';
       const missingPhotos = [
@@ -529,6 +576,7 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
               {!isFleetVehicle ? (
                 <Button variant="outline" label="Update vehicle" onPress={() => setEditing(true)} />
               ) : null}
+              {!isFleetOwner && !hasFleetVehicle ? linkRequestCard : null}
               {!isFleetOwner && !hasFleetVehicle ? (
                 <Button
                   variant="ghost"
@@ -552,6 +600,8 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
                   </AppText>
                 </AppView>
               </AppView>
+
+              {linkRequestCard}
 
               <AppText className="text-[13px] leading-5 text-muted">
                 If you are driving for a fleet operator or transport business, enter their
@@ -694,6 +744,16 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
                   editable={!plateLocked}
                   placeholder="e.g. KA 03 MX 2814"
                   autoCapitalize="characters"
+                  returnKeyType="next"
+                  submitBehavior="submit"
+                  onSubmitEditing={() => makeRef.current?.focus()}
+                  error={
+                    missing.includes('plate') &&
+                    plateNumber.replace(/[^A-Z0-9]/gi, '').length < 6 &&
+                    !plateLocked
+                      ? 'Enter the number as printed on the RC'
+                      : undefined
+                  }
                   hint={
                     plateLocked
                       ? 'The number cannot be changed. To use another vehicle, contact support.'
@@ -827,23 +887,32 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
 
               <TextField
                 variant="outlined"
+                ref={makeRef}
                 label="Make"
                 required
                 value={make}
                 onChangeText={setMake}
                 placeholder="Enter vehicle make"
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => modelRef.current?.focus()}
+                error={missing.includes('make') && !make.trim() ? 'Enter the make' : undefined}
               />
               <TextField
                 variant="outlined"
+                ref={modelRef}
                 label="Model"
                 required
                 value={model}
                 onChangeText={setModel}
                 placeholder="Enter vehicle model"
+                returnKeyType="done"
+                error={missing.includes('model') && !model.trim() ? 'Enter the model' : undefined}
               />
               <AppView className="gap-2">
                 <AppText className="text-[13px] font-semibold text-foreground-secondary">
                   Fuel type
+                  <AppText className="text-brand"> *</AppText>
                 </AppText>
                 <AppView row className="flex-wrap gap-2">
                   {(['PETROL', 'DIESEL', 'CNG', 'ELECTRIC'] as FuelType[]).map((fuel) => (
@@ -864,6 +933,11 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
                     </AppPressable>
                   ))}
                 </AppView>
+                {missing.includes('fuel') && !fuelType ? (
+                  <AppText className="ml-1 text-xs font-medium text-error">
+                    Choose the fuel type
+                  </AppText>
+                ) : null}
               </AppView>
               <AppView className="gap-3">
                 <AppText className="text-[15px] font-bold text-foreground">
@@ -872,7 +946,11 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
                 {isFleetOwner ? (
                   <AppText className="text-[13px] text-muted">
                     {FLEET_VEHICLE_DOCUMENTS_ENABLED
-                      ? 'Save the vehicle first, then upload its RC, insurance and pollution certificate from its page.'
+                      ? `Save the vehicle first, then upload its ${
+                          fuelType === 'ELECTRIC'
+                            ? 'RC and insurance'
+                            : 'RC, insurance and pollution certificate'
+                        } from its page.`
                       : 'Fleet vehicle document and photo uploads are not yet available.'}
                   </AppText>
                 ) : (
@@ -967,4 +1045,14 @@ function SetupVehicleForm({ profile, vehicleTypes, vehicleDocs }: SetupVehicleFo
       />
     </SetupScreenLayout>
   );
+}
+
+/** "today", "yesterday" or "28 Nov". */
+function formatSentDate(iso: string): string {
+  const sent = new Date(iso);
+  if (Number.isNaN(sent.getTime())) return 'earlier';
+  const days = Math.floor((Date.now() - sent.getTime()) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  return sent.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }

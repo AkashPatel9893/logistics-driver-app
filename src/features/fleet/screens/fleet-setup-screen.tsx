@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { switchDashboardRole } from '@/features/fleet/switch-role';
 import { useCallback, useState } from 'react';
-import { RefreshControl } from 'react-native';
+import { Alert, RefreshControl } from 'react-native';
 
 import {
   AppPressable,
@@ -13,6 +13,7 @@ import {
   FocusAwareStatusBar,
   Icon,
 } from '@/components/ui';
+import { logOut } from '@/features/auth/use-auth-store';
 import { SetupScreenLayout } from '@/features/driver/components/setup-screen-layout';
 import { StepRow } from '@/features/registration/components';
 import { useAutoStartStep } from '@/features/registration/use-auto-start-step';
@@ -55,6 +56,20 @@ export function FleetSetupScreen() {
     switchDashboardRole('driver');
     router.replace('/home');
   };
+
+  // Wrong number, or not now: the owner can always sign out from setup.
+  const handleLogOut = () =>
+    Alert.alert('Log out?', 'Your details and uploads stay saved. Log in again to continue.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: () => {
+          logOut();
+          router.replace('/');
+        },
+      },
+    ]);
 
   const done = setup.steps.filter(
     (s) => s.state === 'verified' || (s.id === 'bank' && s.state === 'review'),
@@ -149,6 +164,16 @@ export function FleetSetupScreen() {
               />
             ) : null}
           </>
+        ) : null}
+
+        {!setup.loading ? (
+          <AppPressable
+            onPress={handleLogOut}
+            accessibilityRole="button"
+            className="mt-2 self-center px-4 py-2"
+          >
+            <AppText className="text-[13px] font-semibold text-muted underline">Log out</AppText>
+          </AppPressable>
         ) : null}
       </AppScrollView>
     </SetupScreenLayout>

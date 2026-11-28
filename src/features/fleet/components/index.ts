@@ -6,3 +6,4 @@ export * from './fleet-stats-row';
 export * from './fleet-vehicle-card';
 export * from './fleet-vehicles-section';
 export * from './join-requests-banner';
+export * from './fleet-attention-section';

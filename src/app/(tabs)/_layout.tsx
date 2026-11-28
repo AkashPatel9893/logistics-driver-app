@@ -53,7 +53,8 @@ function DriverSession({ userId }: { userId: string }) {
   const { data: activeJob = null, isFetched: activeJobLoaded } = useActiveJob({ poll: true });
   const { data: offers } = useOffers(isOnline && !activeJob, { poll: true });
   useDriverRealtime(userId);
-  useLocationReporter(isOnline);
+  // GPS keeps running through a trip even if the driver shows offline: pickup and drop need a fix.
+  useLocationReporter(isOnline || activeJob != null);
 
   const router = useRouter();
   const pathname = usePathname();

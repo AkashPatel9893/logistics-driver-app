@@ -204,7 +204,7 @@ function CompanyDetailsForm({ initialCompany }: CompanyDetailsFormProps) {
           {/* Phone number */}
           <TextField
             variant="outlined"
-            label="Phone number*"
+            label="Phone number"
             required
             value={phone}
             onChangeText={(text) => setPhone(text.replace(/\D/g, '').slice(0, 10))}

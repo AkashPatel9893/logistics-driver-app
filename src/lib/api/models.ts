@@ -55,6 +55,8 @@ export interface AuthSession {
   user: User;
   /** Partner role the backend has on record, e.g. FLEET_OWNER; null when none. */
   selectedRole?: string | null;
+  /** A fleet owner added this number before sign-up (`registered_via: FLEET_INVITE`). */
+  fleetInvite?: { companyName: string } | null;
 }
 
 // ─── Shared order primitives (same as the customer app) ─────────────────────

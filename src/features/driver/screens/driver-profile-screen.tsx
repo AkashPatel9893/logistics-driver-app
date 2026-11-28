@@ -41,7 +41,7 @@ export function DriverProfileScreen() {
         {/* Header */}
         <AppView row className="items-center justify-between min-h-[44px]">
           <LiquidGlassBackButton onPress={() => goBack(router)} />
-          <AppText className="text-[20px] font-black text-foreground">Profile</AppText>
+          <AppText className="text-[20px] font-black text-foreground">My Fleet</AppText>
           <AppView className="w-10" />
         </AppView>
 

@@ -19,6 +19,7 @@ import { VehicleDocumentSheet, type VehicleDocumentType } from '@/features/fleet
 import {
   useAssignFleetDriver,
   useFleetCompany,
+  useFleetDrivers,
   useFleetVehicles,
   useRemoveFleetDriver,
   useRemoveFleetVehicle,
@@ -30,9 +31,13 @@ import { useVehicleTypes } from '@/hooks/use-driver';
 import { OtherVehiclePapers } from '@/features/driver/components/other-vehicle-papers';
 import type { VehicleDocumentSubmission } from '@/features/fleet/components/vehicle-document-sheet';
 import { getErrorMessage } from '@/lib/api/api-error';
+import { documentSentMessage } from '@/lib/api/onboarding';
 import { goBack } from '@/lib/go-back';
 
 import { FLEET_VEHICLE_DOCUMENTS_ENABLED } from '../config';
+import { joinedDrivers } from '../fleet-members';
+import { shareFleetInvite } from '../share-invite';
+import { verifyFirstMessage } from '../vehicle-attention';
 import { DriverOptionsSheet, type DriverOption } from '../components/driver-options-sheet';
 import { EditFleetVehicleSheet } from '../components/edit-fleet-vehicle-sheet';
 import { vehicleDetailsEditable, vehicleDocumentsReady } from '../types';
@@ -51,6 +56,7 @@ export function VehicleDetailsScreen() {
 
   const { data: vehicles, isLoading } = useFleetVehicles();
   const { data: company } = useFleetCompany();
+  const { data: members = [] } = useFleetDrivers();
   const assignDriverMutation = useAssignFleetDriver();
   const unassignDriverMutation = useUnassignFleetDriver();
   const removeVehicleMutation = useRemoveFleetVehicle();
@@ -59,7 +65,8 @@ export function VehicleDetailsScreen() {
   const [documentToUpload, setDocumentToUpload] = useState<VehicleDocumentType | null>(null);
 
   const vehicleId = params.vehicleId || vehicles?.[0]?.id;
-  const vehicle = vehicles?.find((v) => v.id === vehicleId) ?? vehicles?.[0];
+  // A named vehicle is never swapped for another one: "Vehicle not found" is honest, a wrong one is not.
+  const vehicle = params.vehicleId ? vehicles?.find((v) => v.id === vehicleId) : vehicles?.[0];
   const { data: papers = [] } = useFleetVehicleDocuments(vehicle?.id);
   const { data: vehicleTypes = [] } = useVehicleTypes();
   const vehicleType = vehicleTypes.find((t) => t.code === vehicle?.vehicleTypeCode);
@@ -86,6 +93,7 @@ export function VehicleDetailsScreen() {
 
   const driver = vehicle.driver;
   const documentsReady = vehicleDocumentsReady(vehicle);
+  const verifyFirst = verifyFirstMessage(vehicle);
 
   const handleSubmitDocument = async (submission: {
     type: VehicleDocumentType;
@@ -93,7 +101,7 @@ export function VehicleDetailsScreen() {
     expiryDate?: string;
   }) => {
     try {
-      await submitDocument.mutateAsync({
+      const status = await submitDocument.mutateAsync({
         vehicleId: vehicle.id,
         input: {
           type: submission.type,
@@ -103,7 +111,8 @@ export function VehicleDetailsScreen() {
         },
       });
       setDocumentToUpload(null);
-      Alert.alert('Sent for verification', 'We will let you know once an admin has verified it.');
+      const message = documentSentMessage(status);
+      Alert.alert(message.title, message.body);
     } catch (err) {
       Alert.alert('Could not send the document', getErrorMessage(err));
     }
@@ -112,7 +121,7 @@ export function VehicleDetailsScreen() {
   // Fitness and permits: sent the same way; the papers card closes its sheet on success.
   const handleSubmitOtherPaper = async (submission: VehicleDocumentSubmission) => {
     try {
-      await submitDocument.mutateAsync({
+      const status = await submitDocument.mutateAsync({
         vehicleId: vehicle.id,
         input: {
           type: submission.type,
@@ -120,7 +129,8 @@ export function VehicleDetailsScreen() {
           expiryDate: submission.expiryDate,
         },
       });
-      Alert.alert('Sent for verification', 'We will let you know once an admin has verified it.');
+      const message = documentSentMessage(status);
+      Alert.alert(message.title, message.body);
       return true;
     } catch (err) {
       Alert.alert('Could not send the document', getErrorMessage(err));
@@ -197,6 +207,24 @@ export function VehicleDetailsScreen() {
     );
 
   const handleDeleteVehicle = () => {
+    // The backend refuses to remove the last vehicle while someone drives it: say so before asking.
+    if (driver && (vehicles?.length ?? 0) <= 1) {
+      const who = driver.isOwnerSelf ? 'you' : driver.name;
+      Alert.alert(
+        'Unassign the driver first',
+        `This is your fleet's last vehicle and ${who} ${driver.isOwnerSelf ? 'drive' : 'drives'} it. Unassign ${driver.isOwnerSelf ? 'yourself' : 'them'} first, then remove the vehicle.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: driver.isOwnerSelf ? 'Unassign me' : 'Unassign driver',
+            onPress: () => {
+              void run(() => unassignDriverMutation.mutateAsync(vehicle.id), 'Could not unassign');
+            },
+          },
+        ],
+      );
+      return;
+    }
     Alert.alert(
       'Remove Vehicle',
       `Remove ${vehicle.model} (${vehicle.plateNumber}) from your fleet?${
@@ -235,15 +263,37 @@ export function VehicleDetailsScreen() {
       onPress: handleSelfAssign,
     });
   }
+  // Fleet drivers with no vehicle can be picked on the next screen: say so here.
+  const freeDrivers = joinedDrivers(members).filter((m) => !m.vehicle);
   driverOptions.push({
     key: 'new',
     icon: 'person.badge.plus',
     title: driver ? 'Assign a different driver' : 'Add a driver',
-    detail: 'By name and mobile number',
+    detail:
+      freeDrivers.length === 0
+        ? 'By name and mobile number'
+        : freeDrivers.length === 1
+          ? `Pick ${freeDrivers[0].name}, or add someone new`
+          : `Pick one of your ${freeDrivers.length} drivers, or add someone new`,
     onPress: handleAddNewDriver,
   });
   if (driver?.isInvited && driver.inviteId) {
     const inviteId = driver.inviteId;
+    driverOptions.push({
+      key: 'share-invite',
+      icon: 'square.and.arrow.up',
+      title: 'Share invite',
+      detail: 'Send them a message on WhatsApp or SMS',
+      onPress: () => {
+        setShowDriverSheet(false);
+        shareFleetInvite({
+          driverName: driver.name,
+          phone: driver.phone,
+          companyName: company?.companyName,
+          plate: vehicle.plateNumber,
+        });
+      },
+    });
     driverOptions.push({
       key: 'cancel-invite',
       icon: 'xmark',
@@ -448,12 +498,9 @@ export function VehicleDetailsScreen() {
                 </AppView>
                 <AppView className="flex-1">
                   <AppText className="text-[17px] font-black text-foreground">
-                    Verify this vehicle first
+                    {verifyFirst.title}
                   </AppText>
-                  <AppText className="mt-0.5 text-[13px] text-muted">
-                    Upload and get its RC, insurance and pollution certificate verified. Then you
-                    can add a driver or drive it yourself.
-                  </AppText>
+                  <AppText className="mt-0.5 text-[13px] text-muted">{verifyFirst.body}</AppText>
                 </AppView>
               </AppView>
             </AppView>

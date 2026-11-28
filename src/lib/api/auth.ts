@@ -116,6 +116,10 @@ export const authApi = {
       accessToken: res.access_token,
       refreshToken: res.refresh_token,
       selectedRole: res.selected_role ?? null,
+      fleetInvite:
+        authUser.registered_via === 'FLEET_INVITE' && authUser.invited_by?.company_name
+          ? { companyName: String(authUser.invited_by.company_name) }
+          : null,
       user: {
         id: profile?.id ?? authUser.id ?? '',
         email: '',

@@ -1,7 +1,15 @@
 import { useState } from 'react';
-import { Modal } from 'react-native';
+import { Alert, Modal } from 'react-native';
 
-import { AppPressable, AppScrollView, AppText, AppView, Button, TextField } from '@/components/ui';
+import {
+  AppKeyboardAvoidingView,
+  AppPressable,
+  AppScrollView,
+  AppText,
+  AppView,
+  Button,
+  TextField,
+} from '@/components/ui';
 import { PhotoUploadBox } from '@/features/driver/components/photo-upload-box';
 import { useLocalPhoto } from '@/features/driver/hooks/use-local-photo';
 import { formatDateInput, toIsoDate } from '@/lib/api/onboarding';
@@ -55,9 +63,20 @@ export function VehicleDocumentSheet({
     onSubmit({ type: chosen, photoUri: photo.uri, expiryDate: expiryDate ?? undefined });
   };
 
+  // Android Back: a photo or date already entered is not thrown away without asking.
+  const handleBack = () => {
+    if (submitting) return;
+    if (!photo.uri && !expiry) return onClose();
+    Alert.alert('Discard this document?', 'The photo and date you added will be lost.', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: onClose },
+    ]);
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <AppView className="flex-1 justify-end bg-black/40">
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleBack}>
+      {/* Lifts the sheet above the keyboard so the expiry date and Send stay visible. */}
+      <AppKeyboardAvoidingView className="justify-end bg-black/40">
         <AppView className="max-h-[85%] rounded-t-3xl bg-background px-5 pb-8 pt-5">
           <AppText className="text-[18px] font-extrabold text-foreground">{title}</AppText>
           <AppText className="mb-4 mt-1 text-[13px] text-muted">{note}</AppText>
@@ -96,7 +115,10 @@ export function VehicleDocumentSheet({
               <PhotoUploadBox
                 title="Add photo"
                 photoUri={photo.uri}
-                onSelectPhoto={photo.pick}
+                onSelectPhoto={() => {
+                  setError(undefined);
+                  void photo.pick();
+                }}
                 uploading={submitting}
               />
               {needsExpiry ? (
@@ -105,7 +127,10 @@ export function VehicleDocumentSheet({
                   label="Expiry date"
                   placeholder="DD/MM/YYYY"
                   value={expiry}
-                  onChangeText={(value) => setExpiry(formatDateInput(value))}
+                  onChangeText={(value) => {
+                    setError(undefined);
+                    setExpiry(formatDateInput(value));
+                  }}
                   keyboardType="number-pad"
                   maxLength={10}
                 />
@@ -133,7 +158,7 @@ export function VehicleDocumentSheet({
             onPress={onClose}
           />
         </AppView>
-      </AppView>
+      </AppKeyboardAvoidingView>
     </Modal>
   );
 }

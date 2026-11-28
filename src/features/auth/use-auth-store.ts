@@ -14,6 +14,7 @@ import {
   type TokenType,
 } from '@/lib/auth/utils';
 import { createSelectors } from '@/lib/create-selectors';
+import { kvStorage, STORAGE_KEYS } from '@/lib/storage';
 
 import { useRegistrationStore } from '@/features/registration/use-registration-store';
 
@@ -94,6 +95,8 @@ export const signOut = () => _useAuthStore.getState().signOut();
 export function logOut() {
   const accessToken = _useAuthStore.getState().token?.accessToken;
   if (accessToken) void authApi.endSession(accessToken);
+  // The next person on this phone must not request a code for this number by mistake.
+  kvStorage.delete(STORAGE_KEYS.CACHED_PHONE);
   signOut();
 }
 

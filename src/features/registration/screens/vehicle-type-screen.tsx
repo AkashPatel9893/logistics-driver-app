@@ -24,6 +24,7 @@ export function VehicleTypeScreen({ signUp = false }: VehicleTypeScreenProps) {
   const { data: vehicleTypes = [], isLoading } = useVehicleTypes();
   const savedId = useRegistrationStore.use.vehicleTypeId();
   const setVehicleTypeId = useRegistrationStore.use.setVehicleTypeId();
+  const setFleetDriver = useRegistrationStore.use.setFleetDriver();
   const registered = profile?.vehicle ?? null;
   const [selectedId, setSelectedId] = useState<string | null>(registered?.vehicleTypeId || savedId);
 
@@ -32,6 +33,13 @@ export function VehicleTypeScreen({ signUp = false }: VehicleTypeScreenProps) {
     setVehicleTypeId(selectedId);
     if (signUp) router.push('/(auth)/onboarding');
     else goToNextStep(router, queryClient, 'vehicle-type');
+  };
+
+  // Drives a fleet owner's vehicle: no type to pick; they send the owner a join request later
+  // from the vehicle step (My vehicle opens on "Connect with Fleet Owner").
+  const handleFleetDriver = () => {
+    setFleetDriver(true);
+    router.push('/(auth)/onboarding');
   };
 
   return (
@@ -89,6 +97,26 @@ export function VehicleTypeScreen({ signUp = false }: VehicleTypeScreenProps) {
             </AppPressable>
           );
         })}
+
+        {signUp && !registered && !isLoading ? (
+          <AppPressable
+            onPress={handleFleetDriver}
+            pressScale={0.98}
+            accessibilityRole="button"
+            className="mt-2 flex-row items-center gap-3 rounded-2xl border border-dashed border-border bg-card p-4"
+          >
+            <Icon name="building.2" size={22} tone="brand" />
+            <AppView className="flex-1">
+              <AppText className="text-[15px] font-bold text-foreground">
+                I drive for a fleet owner
+              </AppText>
+              <AppText className="mt-0.5 text-[12px] text-muted">
+                The owner gives you their vehicle. You will ask them to add you after your details.
+              </AppText>
+            </AppView>
+            <Icon name="chevron.right" size={16} tone="icon-subtle" />
+          </AppPressable>
+        ) : null}
       </AppScrollView>
       {registered ? null : (
         <StickyFooter label="Confirm vehicle" onPress={handleConfirm} disabled={!selectedId} />

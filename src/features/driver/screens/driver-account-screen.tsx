@@ -30,7 +30,6 @@ import { useDriverProfile, useSetOnline } from '@/hooks/use-driver';
 import { useFleetCompany, useFleetLinkRequests, useFleetVehicles } from '@/hooks/use-fleet';
 import { useActiveJob } from '@/hooks/use-jobs';
 import { formatRupees } from '@/lib/format';
-import { kvStorage, STORAGE_KEYS } from '@/lib/storage';
 
 interface MenuItem {
   icon: IconName;
@@ -82,7 +81,9 @@ export function DriverAccountScreen() {
       return;
     }
     // An owner who is not driving any vehicle yet picks the one to drive before entering Driver mode.
-    const isDrivingAVehicle = vehicles.some((vehicle) => vehicle.driver?.isOwnerSelf);
+    // Their own (non-fleet) vehicle counts: it is not in the fleet list.
+    const isDrivingAVehicle =
+      profile?.vehicle != null || vehicles.some((vehicle) => vehicle.driver?.isOwnerSelf);
     if (next === 'driver' && !isDrivingAVehicle) {
       setShowVehiclePicker(true);
       return;
@@ -187,7 +188,6 @@ export function DriverAccountScreen() {
           // Stop receiving offers before the session ends.
           if (profile?.isOnline) await setOnline.mutateAsync(false).catch(() => undefined);
           logOut();
-          kvStorage.delete(STORAGE_KEYS.CACHED_PHONE);
           router.replace('/');
         },
       },

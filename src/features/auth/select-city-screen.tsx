@@ -19,6 +19,8 @@ import {
 } from '@/components/ui';
 import { getErrorMessage } from '@/lib/api/api-error';
 import { cityApi, type CityMatch, type CitySuggestion } from '@/lib/api/city';
+import { switchDashboardRole } from '@/features/fleet/switch-role';
+import { useRegistrationStore } from '@/features/registration/use-registration-store';
 
 import { useCityStore } from './use-city-store';
 
@@ -30,6 +32,8 @@ export function SelectCityScreen() {
   const setCity = useCityStore.use.setCity();
   const [picked, setPicked] = useState<CityMatch | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  // Invited by a fleet owner: they drive the owner's vehicle, so no role or vehicle type to pick.
+  const invitedBy = useRegistrationStore.use.fleetInviteCompany();
 
   const detected = useQuery({
     queryKey: ['city', 'detect'],
@@ -50,6 +54,11 @@ export function SelectCityScreen() {
   const handleConfirm = () => {
     if (!city?.marketCode) return;
     setCity({ name: city.name, marketCode: city.marketCode });
+    if (invitedBy) {
+      switchDashboardRole('driver');
+      router.push('/(auth)/onboarding');
+      return;
+    }
     router.push('/(auth)/choose-role');
   };
 
@@ -61,6 +70,19 @@ export function SelectCityScreen() {
       </AppView>
 
       <AppView className="flex-1 px-5 pt-4">
+        {invitedBy ? (
+          <AppView className="mb-5 flex-row items-center gap-3 rounded-2xl border border-[#FF5722]/30 bg-[#FF5722]/10 p-4">
+            <Icon name="building.2" size={24} tone="brand" />
+            <AppView className="flex-1">
+              <AppText className="text-[15px] font-bold text-foreground">
+                {invitedBy} invited you
+              </AppText>
+              <AppText className="mt-0.5 text-[13px] leading-5 text-muted">
+                You will drive their vehicle. Confirm your city, then add your details.
+              </AppText>
+            </AppView>
+          </AppView>
+        ) : null}
         <AppView className="h-16 w-16 items-center justify-center rounded-full bg-brand-soft">
           <Icon name="mappin.circle.fill" size={34} tone="brand" />
         </AppView>

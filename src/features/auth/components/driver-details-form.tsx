@@ -1,12 +1,15 @@
 import { AppText, AppView, Button, Icon, TextField } from '@/components/ui';
 
 import { useOnboardingForm } from '../hooks/use-onboarding-form';
+import { useRegistrationStore } from '@/features/registration/use-registration-store';
+
 import { useCityStore } from '../use-city-store';
 
 /** Sign-up form for a rider: name and date of birth (the login number is read-only). */
 export function DriverDetailsForm() {
   const form = useOnboardingForm();
   const cityName = useCityStore((state) => state.city?.name);
+  const invitedBy = useRegistrationStore.use.fleetInviteCompany();
 
   return (
     <>
@@ -15,7 +18,9 @@ export function DriverDetailsForm() {
           Driver details
         </AppText>
         <AppText className="mt-1.5 text-[15px] leading-5 text-muted">
-          Tell us a little about yourself to set up your driver profile.
+          {invitedBy
+            ? `You are joining ${invitedBy} as a driver. Add your details to get started.`
+            : 'Tell us a little about yourself to set up your driver profile.'}
         </AppText>
       </AppView>
 

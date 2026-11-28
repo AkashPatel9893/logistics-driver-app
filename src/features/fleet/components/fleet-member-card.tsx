@@ -9,9 +9,17 @@ export interface FleetMemberCardProps {
   onAssign: () => void;
   /** Cancels the invite, or takes a joined driver out of the fleet. */
   onRemove: () => void;
+  /** Invited, not joined: let the owner message the driver themselves. */
+  onShareInvite?: () => void;
 }
 
-export function FleetMemberCard({ member, busy, onAssign, onRemove }: FleetMemberCardProps) {
+export function FleetMemberCard({
+  member,
+  busy,
+  onAssign,
+  onRemove,
+  onShareInvite,
+}: FleetMemberCardProps) {
   const isInvited = Boolean(member.invite_id);
 
   return (
@@ -30,6 +38,16 @@ export function FleetMemberCard({ member, busy, onAssign, onRemove }: FleetMembe
             {isInvited ? 'Cancel invite' : 'Remove from fleet'}
           </AppText>
         </AppPressable>
+        {isInvited && onShareInvite ? (
+          <AppPressable
+            onPress={onShareInvite}
+            disabled={busy}
+            hitSlop={10}
+            accessibilityRole="button"
+          >
+            <AppText className="text-[13px] font-bold text-brand">Share invite</AppText>
+          </AppPressable>
+        ) : null}
         {!isInvited && !member.vehicle ? (
           <AppPressable onPress={onAssign} disabled={busy} hitSlop={10} accessibilityRole="button">
             <AppText className="text-[13px] font-bold text-brand">Assign vehicle</AppText>

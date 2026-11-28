@@ -10,15 +10,19 @@ import {
   type FleetVehicleUpdateRequest,
   type LinkRequestCreate,
 } from '@/lib/api/fleet';
-import type { DocumentInput } from '@/lib/api/onboarding';
+import { onboardingApi, type DocumentInput } from '@/lib/api/onboarding';
 import { queryKeys } from '@/lib/queries/keys';
 import { toCompanyDetails, toFleetVehicle } from '@/features/fleet/types';
 
-/** Anything that moves a vehicle or a driver changes all three. */
+/**
+ * Anything that moves a vehicle or a driver changes the fleet lists, and can change the owner's own
+ * driver profile too (the vehicle they drive, and whether they can go online).
+ */
 function invalidateFleetRoster(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: queryKeys.fleet.vehicles });
   queryClient.invalidateQueries({ queryKey: queryKeys.fleet.drivers });
   queryClient.invalidateQueries({ queryKey: queryKeys.fleet.stats });
+  queryClient.invalidateQueries({ queryKey: queryKeys.profile });
 }
 
 export function useFleetCompany() {
@@ -81,7 +85,11 @@ export function useAddFleetVehicle() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: FleetVehicleCreateRequest) => fleetApi.addVehicle(body),
-    onSuccess: () => invalidateFleetRoster(queryClient),
+    // Waits for the vehicle list, so Vehicle details (opened next) already has the new one.
+    onSuccess: async () => {
+      invalidateFleetRoster(queryClient);
+      await queryClient.refetchQueries({ queryKey: queryKeys.fleet.vehicles });
+    },
   });
 }
 
@@ -112,9 +120,21 @@ export function useFleetVehicleDocuments(vehicleId: string | undefined) {
 export function useAssignFleetDriver() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ vehicleId, body }: { vehicleId: string; body: AssignDriverRequest }) =>
-      fleetApi.assignDriver(vehicleId, body),
-    onSuccess: () => invalidateFleetRoster(queryClient),
+    mutationFn: async ({ vehicleId, body }: { vehicleId: string; body: AssignDriverRequest }) => {
+      const vehicle = await fleetApi.assignDriver(vehicleId, body);
+      // An owner who also has their own vehicle keeps both, and the backend leaves the old one
+      // active (the one used to go online). Driving this one means making it the active one.
+      if (body.is_owner_self) await onboardingApi.setActiveVehicle(vehicleId);
+      return vehicle;
+    },
+    // Settled, not success: the assignment may have gone through even if the switch then failed.
+    onSettled: (_vehicle, _error, { body }) => {
+      invalidateFleetRoster(queryClient);
+      if (body.is_owner_self) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.myVehicles });
+        queryClient.invalidateQueries({ queryKey: queryKeys.onboardingStatus });
+      }
+    },
   });
 }
 

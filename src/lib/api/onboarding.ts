@@ -63,7 +63,12 @@ function uploadFile(url: string, fileUri: string, side: 'front' | 'back' = 'fron
 }
 
 /** Creates the document record, uploads its photo, then asks the backend to verify it. */
-export async function submitDocument(baseUrl: string, input: DocumentInput): Promise<void> {
+/**
+ * Creates the document, uploads its photo(s) and asks for verification. Resolves with the
+ * backend's verification status (e.g. VERIFIED, PENDING, MANUAL_REVIEW) so the screen can say
+ * what really happened; a refusal throws.
+ */
+export async function submitDocument(baseUrl: string, input: DocumentInput): Promise<string> {
   const doc = await request<any>({
     method: 'POST',
     url: baseUrl,
@@ -84,6 +89,16 @@ export async function submitDocument(baseUrl: string, input: DocumentInput): Pro
       'unknown',
     );
   }
+  return String(result.verification_status ?? 'PENDING');
+}
+
+/** The alert after a paper is sent, worded from the status the backend returned. */
+export function documentSentMessage(status: string): { title: string; body: string } {
+  if (status === 'VERIFIED') return { title: 'Verified', body: 'This document is verified.' };
+  return {
+    title: 'Sent for verification',
+    body: 'Ryno checks it, usually within a day. We will let you know once it is verified.',
+  };
 }
 
 /** One row of GET /partner/vehicles. */

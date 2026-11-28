@@ -15,6 +15,7 @@ import {
 import {
   useApproveLinkRequest,
   useAssignFleetDriver,
+  useFleetCompany,
   useFleetDrivers,
   useFleetLinkRequests,
   useFleetVehicles,
@@ -28,6 +29,7 @@ import { goBack } from '@/lib/go-back';
 
 import { DriverOptionsSheet, type DriverOption } from '../components/driver-options-sheet';
 import { FleetMemberCard } from '../components/fleet-member-card';
+import { shareFleetInvite } from '../share-invite';
 import { JoinRequestCard } from '../components/join-request-card';
 
 type AssignTarget = Pick<FleetMemberResponse, 'id' | 'name'>;
@@ -39,6 +41,7 @@ export function FleetDriversScreen() {
   const requests = useFleetLinkRequests();
   const drivers = useFleetDrivers();
   const { data: vehicles = [] } = useFleetVehicles();
+  const { data: company } = useFleetCompany();
   const approve = useApproveLinkRequest();
   const reject = useRejectLinkRequest();
   const assign = useAssignFleetDriver();
@@ -193,6 +196,14 @@ export function FleetDriversScreen() {
             busy={busy}
             onAssign={() => startAssigning(member)}
             onRemove={() => handleRemove(member)}
+            onShareInvite={() =>
+              shareFleetInvite({
+                driverName: member.name,
+                phone: member.phone,
+                companyName: company?.companyName,
+                plate: member.vehicle?.registration_number,
+              })
+            }
           />
         ))}
 

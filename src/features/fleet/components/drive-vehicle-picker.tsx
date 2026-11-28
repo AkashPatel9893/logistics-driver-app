@@ -2,6 +2,8 @@ import { Modal } from 'react-native';
 
 import { AppPressable, AppScrollView, AppText, AppView, Button, Icon } from '@/components/ui';
 
+import type { PartnerVehicle } from '@/lib/api/onboarding';
+
 import { vehicleDocumentsReady, type FleetVehicle } from '../types';
 
 export interface DriveVehiclePickerProps {
@@ -10,6 +12,11 @@ export interface DriveVehiclePickerProps {
   /** Id of the vehicle being assigned right now; its row shows a pending state. */
   assigningVehicleId?: string | null;
   onSelect: (vehicle: FleetVehicle) => void;
+  /** The vehicle used to go online now (the driver profile's vehicle). */
+  activeVehicleId?: string | null;
+  /** The owner's own (non-fleet) vehicles they are approved to drive. */
+  ownVehicles?: PartnerVehicle[];
+  onSelectOwn?: (vehicleId: string) => void;
   onAddVehicle: () => void;
   onClose: () => void;
   title?: string;
@@ -26,16 +33,41 @@ export function DriveVehiclePicker({
   vehicles,
   assigningVehicleId = null,
   onSelect,
+  activeVehicleId = null,
+  ownVehicles = [],
+  onSelectOwn,
   onAddVehicle,
   onClose,
   title = 'Which vehicle will you drive?',
   subtitle = 'Choose one of your verified vehicles that has no driver yet.',
 }: DriveVehiclePickerProps) {
-  const drivingVehicle = vehicles.find((vehicle) => vehicle.driver?.isOwnerSelf);
-  const freeVehicles = vehicles.filter(isFree);
+  // The owner can hold one fleet vehicle and their own vehicles at once; the active one is in use.
+  const isActive = (id: string) =>
+    activeVehicleId != null
+      ? id === activeVehicleId
+      : vehicles.some((v) => v.id === id && v.driver?.isOwnerSelf);
+  const drivingFleet = vehicles.find(
+    (vehicle) => vehicle.driver?.isOwnerSelf && isActive(vehicle.id),
+  );
+  const drivingOwn = ownVehicles.find((vehicle) => isActive(vehicle.id));
+  const current = drivingFleet
+    ? {
+        name: `${drivingFleet.make} ${drivingFleet.model}`,
+        detail: `${drivingFleet.plateNumber} • ${drivingFleet.vehicleTypeName}`,
+      }
+    : drivingOwn
+      ? {
+          name: [drivingOwn.make, drivingOwn.model].filter(Boolean).join(' ') || 'Your vehicle',
+          detail: `${drivingOwn.registration_number} • Your vehicle`,
+        }
+      : null;
+  const freeVehicles = vehicles.filter(
+    (vehicle) => isFree(vehicle) || (vehicle.driver?.isOwnerSelf && !isActive(vehicle.id)),
+  );
+  const otherOwn = ownVehicles.filter((vehicle) => !isActive(vehicle.id));
   const unverifiedVehicles = vehicles.filter(needsVerification);
   const takenVehicles = vehicles.filter(
-    (vehicle) => vehicle.driver != null && vehicle.id !== drivingVehicle?.id,
+    (vehicle) => vehicle.driver != null && !vehicle.driver.isOwnerSelf,
   );
   const isBusy = assigningVehicleId != null;
 
@@ -55,17 +87,16 @@ export function DriveVehiclePicker({
           <AppText className="text-[18px] font-extrabold text-foreground">{title}</AppText>
           <AppText className="mb-4 mt-1 text-[13px] text-muted">{subtitle}</AppText>
 
-          <AppScrollView showsVerticalScrollIndicator={false}>
+          {/* Sized to its content: the sheet has no fixed height, so flex-1 would collapse it. */}
+          <AppScrollView className="flex-initial" showsVerticalScrollIndicator={false}>
             <AppView className="gap-2.5">
-              {drivingVehicle ? (
+              {current ? (
                 <AppView className="flex-row items-center justify-between rounded-2xl border border-[#FF5722]/40 bg-[#FF5722]/10 p-3.5">
                   <AppView className="flex-1 pr-3">
                     <AppText className="text-[15px] font-bold text-foreground">
-                      {drivingVehicle.make} {drivingVehicle.model}
+                      {current.name}
                     </AppText>
-                    <AppText className="mt-0.5 text-[12px] text-muted">
-                      {drivingVehicle.plateNumber} • {drivingVehicle.vehicleTypeName}
-                    </AppText>
+                    <AppText className="mt-0.5 text-[12px] text-muted">{current.detail}</AppText>
                   </AppView>
                   <AppText className="text-[13px] font-bold text-[#FF5722]">
                     You&apos;re driving this
@@ -90,6 +121,28 @@ export function DriveVehiclePicker({
                   </AppView>
                   <AppText className="text-[13px] font-bold text-[#FF5722]">
                     {assigningVehicleId === vehicle.id ? 'Assigning…' : 'Drive this'}
+                  </AppText>
+                </AppPressable>
+              ))}
+
+              {otherOwn.map((vehicle) => (
+                <AppPressable
+                  key={vehicle.id}
+                  onPress={() => onSelectOwn?.(vehicle.id)}
+                  disabled={isBusy || !onSelectOwn}
+                  pressScale={0.98}
+                  className="flex-row items-center justify-between rounded-2xl border border-border bg-card p-3.5 active:bg-neutral-100 dark:active:bg-neutral-800"
+                >
+                  <AppView className="flex-1 pr-3">
+                    <AppText className="text-[15px] font-bold text-foreground">
+                      {[vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Your vehicle'}
+                    </AppText>
+                    <AppText className="mt-0.5 text-[12px] text-muted">
+                      {vehicle.registration_number} • Your vehicle
+                    </AppText>
+                  </AppView>
+                  <AppText className="text-[13px] font-bold text-[#FF5722]">
+                    {assigningVehicleId === vehicle.id ? 'Switching…' : 'Drive this'}
                   </AppText>
                 </AppPressable>
               ))}
@@ -152,7 +205,7 @@ export function DriveVehiclePicker({
                       </AppText>
                     </AppView>
                     <AppText className="text-[12px] font-semibold text-muted" numberOfLines={1}>
-                      {vehicle.driver?.isOwnerSelf ? 'You' : vehicle.driver?.name}
+                      {vehicle.driver?.name}
                     </AppText>
                   </AppView>
                 ))}

@@ -66,11 +66,19 @@ Login (phone) → OTP → Select city → Choose role
                                                   → PAN & Aadhaar → Bank → Documents → Submit for review
   Fleet: Company details (creates profile + company) ─► Profile photo → PAN & Aadhaar → Bank
                                                   → Fleet setup → (ops verify) → Dashboard
+  Invited by a fleet owner: Select city (shows "<fleet> invited you") → Driver details → Driving licence …
 ```
+
+- **Invited driver:** the login response has `registered_via: FLEET_INVITE` and `invited_by`.
+  `verifyOtp` returns it as `session.fleetInvite`; the OTP hook calls `setFleetInvite()`
+  (registration store: `fleetInviteCompany`, and `fleetDriver` so no vehicle type is picked).
+  Select City then skips Choose role and Select vehicle. `POST /partner/onboarding/start` accepts
+  the invite on the backend, so Documents shows the owner's vehicle as done.
 
 - A returning partner skips city and role. A rider awaiting approval opens on **Documents**
   (`/registration`); a fleet owner with unfinished setup opens on **Fleet setup** (`/fleet-setup`).
 - Permissions is a row on Documents, not part of the automatic sequence.
+- Fleet setup has a **Log out** link at the bottom (also shown when the list fails to load).
 - Fleet setup has **no vehicle step**; vehicles are added later from the dashboard. Because the
   backend still requires one to submit (`FLEET_VEHICLES`, backend item O1), a fleet owner without a
   vehicle cannot submit a driver application.
@@ -154,10 +162,14 @@ Don't repeat a partner's details across screens, and keep rider and fleet-owner 
 - The Account name card is information only; My Fleet & Vehicles opens the fleet profile.
 - The side menu leaves out Rewards, My trips and Refer friends.
 - The Ryno ID card shows to an owner only once approved to drive (`showsDriverId`).
-- The owner's Home shows the fleet vehicle section only; there is no driver checklist.
+- The owner's Home has no driver checklist. With no vehicles it shows the add-vehicle section;
+  otherwise **Needs your attention** (`FleetAttentionSection`, rules in `vehicle-attention.ts`):
+  only vehicles that need something (papers to upload or waiting, no driver, driver not joined,
+  waiting for Ryno approval), owner's to-dos first. The full list stays behind the Vehicles tile.
 - Log out (Account and Documents) also ends the session on the server (`POST /auth/logout`, sent
   in the background with a 5 s limit; `logOut()` in `use-auth-store`). A session the server
-  already refused only clears the phone (`signOut()`).
+  already refused only clears the phone (`signOut()`). `logOut()` also forgets the cached phone, so
+  the login field starts empty.
 - Logout forgets the saved dashboard role. A login without `selected_role` gets the account's own
   saved mode from the backend; sending another account's choice would overwrite it.
 - Fleet setup redirects to the dashboard only while its list is focused.
@@ -169,6 +181,11 @@ Don't repeat a partner's details across screens, and keep rider and fleet-owner 
 - A driver added by name and phone is only **invited** (`driver.invite_id`) until they sign in.
   Drop an invite with `DELETE /fleet/drivers/{invite_id}`; unassign
   (`DELETE /fleet/vehicles/{id}/drivers`) does not remove it (backend item O5).
+- The backend sends no invite SMS yet (backend item O12), so the owner can **Share invite**
+  (`shareFleetInvite`, the system share sheet): from the "Driver invited" alert, the invited
+  driver's menu on the vehicle, and the Drivers list.
+- After a paper upload the alert follows the returned status: `submitDocument` resolves with
+  `verification_status`, and `documentSentMessage()` says "Verified" or "Sent for verification".
 - Joined driver: Unassign keeps them in the fleet; Remove from fleet is
   `DELETE /fleet/drivers/{driver_id}`.
 - **Drivers** (`/fleet-drivers`: owner's Account row, and a Home banner while a request waits)
@@ -176,7 +193,13 @@ Don't repeat a partner's details across screens, and keep rider and fleet-owner 
 - A number that already has a Ryno account cannot be invited (`DRIVER_ALREADY_REGISTERED`). That
   driver sends a join request: during sign-up ("I drive for a fleet owner") or later from My
   vehicle. The owner approves it, then assigns a vehicle by `driver_id` (the backend refuses their
-  name and number). Add driver lists them under "Already in your fleet".
+  name and number). Add driver lists them under "Already in your fleet", and the vehicle's driver
+  sheet names free drivers ("Pick Suresh Babu, or add someone new").
+- After sending a join request the driver sees "Join request sent to …" with the date on My vehicle
+  and on the sign-up vehicle step (`fleetLinkRequest` in the registration store, kept on the
+  device; the backend has no driver-side list yet, item O14). It goes once a fleet vehicle arrives.
+- For a fleet driver the checklist's Vehicle row opens My vehicle (`/setup-vehicle`).
+- The vehicle paper sheet stays above the keyboard and asks before discarding a photo or date.
 - `GET /partner/vehicles` also returns ended assignments; read it through
   `onboardingApi.listVehicles`, which keeps `PENDING` and `ACTIVE` only.
 - The vehicle in use is the profile's `active_vehicle`, named only once approved. A fleet
@@ -192,7 +215,8 @@ Don't repeat a partner's details across screens, and keep rider and fleet-owner 
 - **Vehicle papers (owner):** Vehicle details uploads RC, insurance and (unless electric) pollution
   certificate through `/fleet/vehicles/{id}/documents` (`FLEET_VEHICLE_DOCUMENTS_ENABLED` in
   `features/fleet/config.ts`). Until they are verified the vehicle shows "Verify this vehicle first"
-  instead of Add driver: without them its driver can never go online.
+  instead of Add driver: without them its driver can never go online. The card names what is left
+  (`verifyFirstMessage`: papers to upload, or "Ryno is checking …"); electric leaves out pollution.
 - **Other papers:** a fitness certificate and a state or national permit
   (`driver/components/other-vehicle-papers.tsx`), on Vehicle details and on a rider's My vehicle.
   A row shows when the vehicle needs one or already has one. Rider: the onboarding checklist
@@ -201,7 +225,13 @@ Don't repeat a partner's details across screens, and keep rider and fleet-owner 
   fitness only for its age shows no row until one is uploaded; its driver sees the reason instead.
   No live type needs either on 28 November.
 - The last vehicle cannot be removed while another driver or invite is on it
-  (`LAST_VEHICLE_HAS_DRIVERS`). A removed vehicle can be added again.
+  (`LAST_VEHICLE_HAS_DRIVERS`). The app checks first: Remove on the last vehicle with a driver
+  says "Unassign the driver first" with an Unassign button. A removed vehicle can be added again.
+- After Add vehicle the app opens the new vehicle's page (`useAddFleetVehicle` waits for the list;
+  Vehicle details never swaps a named vehicle for another).
+- Add vehicle marks each empty field in red, and Next on the keyboard moves plate → make → model.
+- Add driver opens after the "Drive myself / Add a driver" choice, so it does not offer Drive
+  myself again. Its button says "Send invite" for a new number, "Assign <name>" for a fleet member.
 
 ### A vehicle someone else owns
 
@@ -275,6 +305,22 @@ Temporary vehicles were removed after each run.
   layout's `DriverSession`, with one app-wide "already opened" list, because two stacked copies of
   the tabs each opened the same offer (two offer screens; Ignore left a dead "no longer
   available" page). Delivery complete no longer repeats the cash line.
+- **Fixed 28 November, later:** GPS now keeps running during a trip even if the driver shows
+  offline (pickup failed with "Could not reach the trip", since there was no GPS fix). After the
+  owner moves onto another fleet vehicle, Home shows the new vehicle (the driver profile is
+  reloaded). An owner who drives their own (non-fleet) vehicle can switch to Driver mode without
+  being made to pick a fleet vehicle.
+- **Fleet tried on the emulator 28 November** (QA Test Rider now also owns "QA Test Fleet"):
+  company sign-up, add / edit / remove a vehicle, the document gate on Driver, Drivers list and
+  mode switching all work. Fixed: the "Switch vehicle" sheet was empty (its list collapsed), the
+  Fleet Owner Home header showed the rider's bike (now the company name), "My Fleet & Vehicles"
+  opened a screen titled "Profile" (now "My Fleet"), and "Phone number* *" on Company details.
+  Not tried: assigning or inviting a driver, link requests and the owner driving a fleet vehicle,
+  because no fleet vehicle has verified documents yet.
+- **Owner with their own vehicle and a fleet vehicle:** the backend keeps both and uses the
+  "active" one to go online (`POST /partner/active-vehicle`); assigning yourself does not change
+  it. So self-assigning now also makes that fleet vehicle active, and "Switch vehicle" on Home
+  lists the owner's own approved vehicles too, to go back to one. Not yet tried on a device.
 - Possible bug: a deep link on cold start (not reproduced yet).
 - Login keyboard nearly covers Continue. The fleet vehicle form says "you'll use for deliveries".
 - **Not yet seen on a device (fixed 7 November):** accept recovery when the accept response is

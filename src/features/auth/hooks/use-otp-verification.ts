@@ -7,6 +7,7 @@ import { authApi, toPartnerRole } from '@/lib/api/auth';
 
 import { isAwaitingApproval, useAuthStore } from '../use-auth-store';
 import { getSavedDashboardRole, useFleetStore } from '@/features/fleet/use-fleet-store';
+import { useRegistrationStore } from '@/features/registration/use-registration-store';
 import { goBack } from '@/lib/go-back';
 
 const DEFAULT_OTP_LENGTH = 6;
@@ -39,6 +40,12 @@ export function useOtpVerification() {
     },
     onSuccess: (session) => {
       useAuthStore.getState().signIn(session);
+      // Invited by a fleet owner and not signed up yet: they drive the owner's vehicle, so the
+      // role and vehicle-type steps are skipped (see Select City).
+      if (!session.user.isOnboarded && session.fleetInvite) {
+        useRegistrationStore.getState().setFleetInvite(session.fleetInvite.companyName);
+        useFleetStore.getState().setDashboardRole('driver');
+      }
       // The backend remembers the dashboard the partner picked (a UI hint only).
       if (session.selectedRole === 'FLEET_OWNER')
         useFleetStore.getState().setDashboardRole('owner');
