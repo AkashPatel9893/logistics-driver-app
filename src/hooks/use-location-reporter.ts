@@ -13,11 +13,11 @@ import { useLocationStore } from '@/stores/location-store';
 /** A cached fix older than this is not trusted as the starting position (in seconds). */
 const MAX_LAST_KNOWN_AGE_SEC = 120;
 /**
- * The backend drops a driver from dispatch when their position is older than
- * 60 s, and GPS sends nothing while parked — so re-send the last fix this often
- * (keep it under that 60 s limit).
+ * The backend marks a driver's location stale after 30 s (`driver_location_ttl_seconds / 2`)
+ * and drops them from dispatch after 60 s. GPS sends nothing while parked, so re-send the last
+ * fix every 20 s to stay fresh.
  */
-const HEARTBEAT_MS = 45_000;
+const HEARTBEAT_MS = 20_000;
 /** Don't let a slow first fix hold up the continuous updates (in seconds). */
 const FIRST_FIX_TIMEOUT_SEC = 10;
 
