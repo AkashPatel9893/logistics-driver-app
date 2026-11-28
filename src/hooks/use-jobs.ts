@@ -10,28 +10,47 @@ import {
   subscribeToOfferStream,
 } from '@/lib/realtime/offer-stream';
 
-export function useOffers(enabled: boolean) {
+/*
+ * Polling rules: only the signed-in session (DriverSession in the tabs layout) polls offers and
+ * the active job, so one timer runs however many screens read them. Screens pass nothing and just
+ * read the cache, which server pushes (offer.new, job.updated) keep current.
+ */
+/** Offer stream connected: polling only backs it up. */
+const OFFERS_BACKUP_POLL_MS = 30_000;
+/** Offer stream down: an offer lives ~30 s, so check often. */
+const OFFERS_NO_STREAM_POLL_MS = 4_000;
+/** On a trip: job.updated pushes changes; this catches a missed push (customer cancel, ops change). */
+const ACTIVE_JOB_ON_TRIP_POLL_MS = 30_000;
+/** No trip: new jobs arrive as offers, so a slow check is enough. */
+const ACTIVE_JOB_IDLE_POLL_MS = 60_000;
+
+export function useOffers(enabled: boolean, { poll = false }: { poll?: boolean } = {}) {
   useEffect(() => (enabled ? subscribeToOfferStream() : undefined), [enabled]);
   const streamLive = useSyncExternalStore(onOfferStreamLiveChange, isOfferStreamLive);
+  const polling = enabled && poll;
   return useQuery({
     queryKey: queryKeys.offers,
     queryFn: ({ signal }) => jobsApi.getOffers(signal),
     enabled,
-    // The offer stream pushes new offers at once; polling only backs it up. Without the stream,
-    // poll fast: an offer lives ~30 s.
-    refetchInterval: enabled ? (streamLive ? 30_000 : 4_000) : false,
+    refetchInterval: polling
+      ? streamLive
+        ? OFFERS_BACKUP_POLL_MS
+        : OFFERS_NO_STREAM_POLL_MS
+      : false,
     // The floating overlay shows offers while the app is in the background, so keep polling there.
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: polling,
   });
 }
 
-export function useActiveJob() {
+export function useActiveJob({ poll = false }: { poll?: boolean } = {}) {
+  const queryClient = useQueryClient();
+  const onTrip = Boolean(queryClient.getQueryData(queryKeys.activeJob));
   return useQuery({
     queryKey: queryKeys.activeJob,
     queryFn: ({ signal }) => jobsApi.getActiveJob(signal),
-    // Picks up a customer cancellation or ops change while the driver is on the trip.
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: true,
+    refetchInterval: poll ? (onTrip ? ACTIVE_JOB_ON_TRIP_POLL_MS : ACTIVE_JOB_IDLE_POLL_MS) : false,
+    // Keep checking in the background only during a trip, when a cancellation matters.
+    refetchIntervalInBackground: poll && onTrip,
   });
 }
 

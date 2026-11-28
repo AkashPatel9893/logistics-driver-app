@@ -1,5 +1,5 @@
-import { useIsFocused, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Alert, Image, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -118,7 +118,6 @@ export function DriverHomeScreen() {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const insets = useSafeAreaInsets();
-  const isFocused = useIsFocused();
   const { refreshing, refresh } = usePullToRefresh();
 
   const profileQuery = useDriverProfile();
@@ -150,18 +149,6 @@ export function DriverHomeScreen() {
     syncOnboardingStatus(profile.onboarding.status);
     if (needsRegistration) router.replace('/registration');
   }, [needsRegistration, dashboardRole, profile, router]);
-
-  // A new offer takes over the screen, like a ringing call.
-  // Up to two offers can be open (priority first): each one rings once.
-  const shownOfferIds = useRef(new Set<string>());
-  const offerList = offersQuery.data;
-  useEffect(() => {
-    if (!isFocused || activeJob || dashboardRole !== 'driver') return;
-    const next = offerList?.find((o) => !shownOfferIds.current.has(o.id));
-    if (!next) return;
-    shownOfferIds.current.add(next.id);
-    router.push({ pathname: '/incoming-job', params: { offerId: next.id } });
-  }, [isFocused, activeJob, offerList, router, dashboardRole]);
 
   if (!profile) {
     return (

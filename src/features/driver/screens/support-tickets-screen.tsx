@@ -1,5 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, RefreshControl } from 'react-native';
 
 import {
   AppPressable,
@@ -17,7 +18,9 @@ import {
   useTicketMessages,
   useTickets,
 } from '@/hooks/use-support';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { getErrorMessage } from '@/lib/api/api-error';
+import { queryKeys } from '@/lib/queries/keys';
 import type { SupportTicket, TicketCategory } from '@/lib/api/support';
 import { formatDayTime } from '@/lib/format';
 
@@ -156,6 +159,24 @@ export function SupportTicketsScreen() {
   const tickets = useTickets();
   const [showForm, setShowForm] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { refreshing, refresh } = usePullToRefresh();
+
+  // Pull to refresh: the request list and the open thread's replies, now.
+  const onRefresh = () =>
+    void refresh(() =>
+      Promise.all([
+        tickets.refetch({ throwOnError: true }),
+        ...(openId
+          ? [
+              queryClient.refetchQueries(
+                { queryKey: queryKeys.ticketMessages(openId) },
+                { throwOnError: true },
+              ),
+            ]
+          : []),
+      ]),
+    );
 
   return (
     <SetupScreenLayout title="My requests" subtitle="Questions you sent to partner care">
@@ -163,6 +184,7 @@ export function SupportTicketsScreen() {
         contentContainerClassName="gap-4 px-5 pb-16 pt-4"
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {showForm ? (
           <NewRequestForm onDone={() => setShowForm(false)} />

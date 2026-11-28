@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useIsFocused } from 'expo-router';
 
 import { safetyApi, type IncidentType } from '@/lib/api/safety';
 import { supportApi, type TicketCategory } from '@/lib/api/support';
@@ -24,13 +25,17 @@ export function useCreateTicket() {
   });
 }
 
+/** Support answers in minutes, not seconds: a slow check is enough. */
+const TICKET_MESSAGES_POLL_MS = 30_000;
+
 export function useTicketMessages(ticketId: string, enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.ticketMessages(ticketId),
     queryFn: ({ signal }) => supportApi.getMessages(ticketId, signal),
     enabled,
-    // Picks up the support team's reply while the thread is open.
-    refetchInterval: enabled ? 15_000 : false,
+    // Picks up the support team's reply while the thread is open and its screen is in front.
+    subscribed: useIsFocused(),
+    refetchInterval: enabled ? TICKET_MESSAGES_POLL_MS : false,
   });
 }
 

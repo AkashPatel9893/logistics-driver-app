@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useIsFocused } from 'expo-router';
 
 import {
   fleetApi,
@@ -155,8 +156,9 @@ export function useFleetLinkRequests(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.fleet.linkRequests,
     enabled: options.enabled ?? true,
-    // A driver sends these from their own phone, so look again while a screen shows them.
-    refetchInterval: 30_000,
+    // A driver sends these from their own phone, so look again while a screen in front shows them.
+    subscribed: useIsFocused(),
+    refetchInterval: 60_000,
     queryFn: ({ signal }) => fleetApi.listPendingLinkRequests(signal),
   });
 }

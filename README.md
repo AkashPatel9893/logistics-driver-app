@@ -270,6 +270,11 @@ Temporary vehicles were removed after each run.
   after a fresh login (fixed 27 November by checking `goToNextStep`, screen not re-run).
 - "Go to Home" after approval once seemed to stay on Documents. The button now clears the stack
   first; other `replace('/home')` calls may stack copies of the tabs and were not checked.
+- **Fixed 28 November (tried with real orders on the emulator):** a new offer now opens from any
+  tab or screen, not only Home (it was silently "Missed" on Trips). The ring lives in the tabs
+  layout's `DriverSession`, with one app-wide "already opened" list, because two stacked copies of
+  the tabs each opened the same offer (two offer screens; Ignore left a dead "no longer
+  available" page). Delivery complete no longer repeats the cash line.
 - Possible bug: a deep link on cold start (not reproduced yet).
 - Login keyboard nearly covers Continue. The fleet vehicle form says "you'll use for deliveries".
 - **Not yet seen on a device (fixed 7 November):** accept recovery when the accept response is

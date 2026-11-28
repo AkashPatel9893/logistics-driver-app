@@ -154,7 +154,10 @@ export function TripCompleteScreen() {
                     : 'Earning is being processed'}
               </AppText>
             ) : null}
-            <AppText className="mt-1 text-[14px] text-muted">{paymentLine(job)}</AppText>
+            {/* The wallet lines below already show the cash, so the payment line would repeat it. */}
+            {orderWallet?.entries.some((e) => e.kind === 'CASH_COLLECTED') ? null : (
+              <AppText className="mt-1 text-[14px] text-muted">{paymentLine(job)}</AppText>
+            )}
             {orderWallet?.entries.map((entry) => (
               <AppText key={entry.id} className="mt-1 text-[14px] text-muted">
                 {ORDER_WALLET_LABEL[entry.kind] ?? entry.kind}: {entry.amount < 0 ? '−' : '+'}

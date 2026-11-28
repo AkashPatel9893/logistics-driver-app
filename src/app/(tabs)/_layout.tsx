@@ -1,4 +1,4 @@
-import { Redirect, Tabs, useRouter, useSegments } from 'expo-router';
+import { Redirect, Tabs, usePathname, useRouter, useSegments } from 'expo-router';
 
 import { FloatingTabBar, FloatingTabBarSpacer, type TabName } from '@/components/floating-tab-bar';
 import { AppSpinner, AppView } from '@/components/ui';
@@ -18,14 +18,34 @@ import {
 import { useDriverRealtime } from '@/hooks/use-driver-realtime';
 import { useLocationReporter } from '@/hooks/use-location-reporter';
 
+/**
+ * Offers already opened, shared app-wide: the tabs can be mounted more than once in the stack, and
+ * each copy must not open the same offer again (two screens stacked on top of each other).
+ */
+const ringedOfferIds = new Set<string>();
+
 /** Background work for a signed-in driver: server pushes and GPS reporting. */
 function DriverSession({ userId }: { userId: string }) {
   const { data: profile } = useDriverProfile();
   const isOnline = profile?.isOnline ?? false;
-  const { data: activeJob = null } = useActiveJob();
-  const { data: offers } = useOffers(isOnline && !activeJob);
+  // The only place that polls these two; every other screen reads the cache.
+  const { data: activeJob = null } = useActiveJob({ poll: true });
+  const { data: offers } = useOffers(isOnline && !activeJob, { poll: true });
   useDriverRealtime(userId);
   useLocationReporter(isOnline);
+
+  // A new offer takes over the screen like a ringing call, from any tab or screen (not only
+  // Home), so it is never missed. Up to two offers can be open (priority first): each rings once.
+  const router = useRouter();
+  const pathname = usePathname();
+  const dashboardRole = useFleetStore.use.dashboardRole();
+  useEffect(() => {
+    if (activeJob || dashboardRole !== 'driver' || pathname === '/incoming-job') return;
+    const next = offers?.find((o) => !ringedOfferIds.has(o.id));
+    if (!next) return;
+    ringedOfferIds.add(next.id);
+    router.push({ pathname: '/incoming-job', params: { offerId: next.id } });
+  }, [activeJob, offers, pathname, router, dashboardRole]);
 
   // Floating bubble (Android): follows online state, the trip and new requests.
   useEffect(() => startBubbleTracking(), []);

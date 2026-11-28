@@ -264,6 +264,7 @@ function StopVerification({ job, stop, onPaymentDue }: StopVerificationProps) {
               arrivedAt={arrivedAt}
               freeWaitingUntil={waitingStop?.freeWaitingUntil}
               ratePerMinute={waitingStop?.waitingRatePerMinute}
+              stopType={stop}
             />
           ) : null}
 
